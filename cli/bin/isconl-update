@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# isconl/hub/cli/bin/isconl-update
+# Pull all isconl + xcorekit repos, update shared libs, re-link binaries.
+# ─────────────────────────────────────────────────────────────────────────────
+# CHANGELOG (newest first)
+# ─────────────────────────────────────────────────────────────────────────────
+#   2026-05-05  v1.0.0 — initial. pulls all repos, updates shared libs.
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+_HUB_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ISCONL_ROOT="$(cd "$_HUB_BIN/../../.." && pwd)"
+_XCORE_ROOT="$(cd "$_ISCONL_ROOT/../XCore" 2>/dev/null && pwd \
+    || echo "${HOME}/_/engineer-systems/Systems/XCore")"
+_USER_BIN="${HOME}/bin"
+
+_ok()  { printf '  \033[32m✓\033[0m  %s\n' "$*"; }
+_run() { printf '  \033[2m~\033[0m  %s\n' "$*"; }
+_sec() { printf '\n  \033[1m%s\033[0m\n  %s\n' "$1" "$(printf '─%.0s' $(seq 1 ${#1}))"; }
+
+_pull() {
+    local dir="$1" label="$2"
+    [[ -d "$dir/.git" ]] || return 0
+    local branch
+    branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+    if git -C "$dir" pull --rebase origin "$branch" --quiet 2>/dev/null; then
+        _ok "Updated: $label"
+    else
+        _ok "Up to date: $label"
+    fi
+}
+
+_link_bin() {
+    local bin_dir="$1"
+    [[ -d "$bin_dir" ]] || return 0
+    chmod +x "$bin_dir"/* 2>/dev/null || true
+    for f in "$bin_dir"/*; do
+        [[ -f "$f" ]] || continue
+        ln -sf "$f" "$_USER_BIN/$(basename "$f")"
+    done
+}
+
+printf '\n  isconl update\n  ─────────────\n'
+
+# ── Pull isconl repos ─────────────────────────────────────────────────────────
+_sec "isconl"
+for repo in scope space spark hub; do
+    _pull "$_ISCONL_ROOT/$repo" "isconl/$repo"
+done
+
+# ── Pull xcorekit repos ───────────────────────────────────────────────────────
+_sec "xcorekit"
+for repo in git-core bash-core animate-core calendar-core finance-core; do
+    _pull "$_XCORE_ROOT/$repo" "xcorekit/$repo"
+done
+
+# ── Pull xcore private ────────────────────────────────────────────────────────
+_XSPACE="$_XCORE_ROOT/xspace"
+if [[ -d "$_XSPACE/.git" ]]; then
+    _pull "$_XSPACE" "xcorekit/xcore"
+fi
+
+# ── Update shared libs ────────────────────────────────────────────────────────
+_sec "Shared libs"
+mkdir -p ~/.local/lib/sconl
+for lib in ui.sh db.sh events.sh; do
+    src="$_ISCONL_ROOT/scope/cli/lib/$lib"
+    dst="$HOME/.local/lib/sconl/$lib"
+    if [[ -f "$src" ]]; then
+        cp "$src" "$dst"
+        _run "Updated: ~/.local/lib/sconl/$lib"
+    fi
+done
+
+# ── Re-link all binaries ──────────────────────────────────────────────────────
+_sec "Re-linking binaries"
+_link_bin "$_ISCONL_ROOT/scope/cli/bin"
+_link_bin "$_ISCONL_ROOT/space/cli/bin"
+_link_bin "$_ISCONL_ROOT/spark/cli/bin"
+_link_bin "$_ISCONL_ROOT/hub/cli/bin"
+_link_bin "$_XCORE_ROOT/git-core/cli/bin"
+_link_bin "$_XCORE_ROOT/bash-core/cli/bin"
+_link_bin "$_XCORE_ROOT/animate-core/cli/bin"
+_link_bin "$_XCORE_ROOT/calendar-core/cli/bin"
+_link_bin "$_XCORE_ROOT/finance-core/cli/bin"
+_ok "All binaries re-linked in ~/bin"
+
+printf '\n  ✓  All tools updated.\n'
+printf '  Run: source ~/.bashrc\n\n'
