@@ -212,7 +212,7 @@ for repo in scope space spark; do
     _install_repo "$_ISCONL_ORG" "$repo" "$dir"
 done
 
-# ── xcorekit tools ────────────────────────────────────────────────────────────
+# ── xcorekit tools (via xcore barrel installer) ────────────────────────────────────────────────────────────
 _sec "xcorekit tools"
 for repo in calendar-core bash-core git-core animate-core finance-core; do
     dir="$_XCORE_ROOT/$repo"
