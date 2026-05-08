@@ -50,7 +50,7 @@ done
 
 # ── Pull xcorekit repos ───────────────────────────────────────────────────────
 _sec "xcorekit"
-for repo in git-core bash-core animate-core calendar-core finance-core; do
+for repo in git-core bash-core animate-core calendar-core finance-core backup-core sys-core; do
     _pull "$_XCORE_ROOT/$repo" "xcorekit/$repo"
 done
 
