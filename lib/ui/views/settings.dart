@@ -1,0 +1,392 @@
+import 'package:flutter/material.dart';
+
+import '../../app_scope.dart';
+import '../../services/branding.dart';
+import '../../theme.dart';
+import '../../util/fmt.dart' as fmt;
+import '../widgets/common.dart';
+
+/// Connection, security, sync, update-on-cue, appearance, about.
+class SettingsView extends StatefulWidget {
+  const SettingsView({super.key});
+
+  @override
+  State<SettingsView> createState() => _SettingsViewState();
+}
+
+class _SettingsViewState extends State<SettingsView> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final services = AppScope.of(context);
+      if (services.sync.online) services.session.probeHealth();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppScope.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 96),
+      child: ListenableBuilder(
+        listenable: Listenable.merge(
+            [services.session, services.sync, services.updater]),
+        builder: (context, _) {
+          final session = services.session;
+          final sync = services.sync;
+          final updater = services.updater;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ---- connection ----
+              const SectionLabel('Connection'),
+              Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    KvRow('Server',
+                        session.serverUrl
+                            .replaceFirst(RegExp(r'^https?://'), ''),
+                        mono: true),
+                    KvRow(
+                        'Status',
+                        sync.online
+                            ? 'online'
+                            : 'offline - local mirror active',
+                        vColor: sync.online ? C.green : C.amber),
+                    if (session.serverHealth != null)
+                      KvRow(
+                          'Agent',
+                          'v${fmt.s(session.serverHealth!['version'])} · ${fmt.s(session.serverHealth!['build'])}',
+                          mono: true),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => _serverSheet(context),
+                          child: const Text('Change server'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () async {
+                            final sure = await confirmDialog(
+                                context,
+                                'Sign out?',
+                                'The session token is discarded. Cached '
+                                    'data stays on this device.',
+                                action: 'Sign out');
+                            if (sure) await session.logout();
+                          },
+                          child: const Text('Sign out'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // ---- security ----
+              const SectionLabel('Security'),
+              Panel(
+                child: Row(
+                  children: [
+                    const Icon(Icons.fingerprint_rounded,
+                        size: 20, color: C.text2),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Biometric lock', style: T.body2),
+                          Text('Require fingerprint on open',
+                              style: T.tiny),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: session.biometricLock,
+                      onChanged: (v) => session.setBiometricLock(v),
+                    ),
+                  ],
+                ),
+              ),
+              // ---- sync ----
+              const SectionLabel('Sync'),
+              Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    KvRow('State', sync.statusLine),
+                    ListenableBuilder(
+                      listenable: services.outbox,
+                      builder: (context, _) => KvRow(
+                          'Queued',
+                          services.outbox.pending == 0
+                              ? 'nothing waiting'
+                              : fmt.plural(
+                                  services.outbox.pending, 'change')),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: sync.online
+                              ? () => sync.fullSync()
+                              : null,
+                          icon: const Icon(Icons.sync_rounded, size: 16),
+                          label: const Text('Sync now'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: sync.online
+                              ? () async {
+                                  try {
+                                    await services.mutations
+                                        .post('/api/vault/sync', {});
+                                    if (context.mounted) {
+                                      toast(context,
+                                          'Vault -> OneDrive sync started');
+                                    }
+                                  } catch (_) {
+                                    if (context.mounted) {
+                                      toast(context, 'Could not start',
+                                          error: true);
+                                    }
+                                  }
+                                }
+                              : null,
+                          icon: const Icon(Icons.cloud_upload_rounded,
+                              size: 16),
+                          label: const Text('Push to OneDrive'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // ---- update on cue ----
+              const SectionLabel('App update'),
+              Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    KvRow('Installed', 'v${updater.installedVersion}',
+                        mono: true),
+                    if (updater.latestVersion != null)
+                      KvRow('Latest', 'v${updater.latestVersion}',
+                          mono: true),
+                    if (updater.state != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(updater.state!,
+                            style: T.small.copyWith(color: C.text3)),
+                      ),
+                    if (updater.busy && updater.progress > 0) ...[
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                            value: updater.progress, minHeight: 5),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: updater.busy || !sync.online
+                              ? null
+                              : () async {
+                                  final newer = await updater.check();
+                                  if (newer != null && context.mounted) {
+                                    final go = await confirmDialog(
+                                        context,
+                                        'Update to v$newer?',
+                                        'The APK downloads from the private '
+                                            'GitHub release and Android '
+                                            'installs it over this version. '
+                                            'Your data stays.',
+                                        action: 'Update');
+                                    if (go) await updater.downloadAndInstall();
+                                  }
+                                },
+                          icon: updater.busy
+                              ? const MiniSpinner()
+                              : const Icon(Icons.system_update_rounded,
+                                  size: 16),
+                          label: const Text('Check for update'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => _patSheet(context),
+                          child: Text(session.ghPat.isEmpty
+                              ? 'Add GitHub token'
+                              : 'Change GitHub token'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // ---- appearance ----
+              const SectionLabel('Appearance'),
+              Panel(
+                child: ListenableBuilder(
+                  listenable: BrandingService.instance,
+                  builder: (context, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'In-app logo. The launcher icon itself is baked per '
+                        'build: drop branding/icon.png in the repo and the '
+                        'next build adopts it.',
+                        style: T.small.copyWith(color: C.text3),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final ok = await BrandingService.instance
+                                  .pickAndSet();
+                              if (context.mounted) {
+                                toast(
+                                    context,
+                                    ok
+                                        ? 'Logo updated'
+                                        : 'No image chosen (max 2 MB)');
+                              }
+                            },
+                            icon: const Icon(Icons.image_rounded, size: 16),
+                            label: const Text('Choose logo'),
+                          ),
+                          if (BrandingService.instance.logoBytes != null)
+                            OutlinedButton(
+                              onPressed: () =>
+                                  BrandingService.instance.reset(),
+                              child: const Text('Reset to default'),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // ---- data ----
+              const SectionLabel('Local data'),
+              Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'The local mirror is cache - the vault on the server '
+                      'remains the single source of truth.',
+                      style: T.small.copyWith(color: C.text3),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final sure = await confirmDialog(
+                            context,
+                            'Clear local mirror?',
+                            'Cached snapshots are wiped and re-pulled on '
+                                'the next sync. Queued changes are kept.',
+                            action: 'Clear');
+                        if (!sure) return;
+                        await services.store.clearAll();
+                        if (context.mounted) {
+                          toast(context, 'Local mirror cleared');
+                        }
+                        if (sync.online) sync.fullSync();
+                      },
+                      icon: const Icon(Icons.cleaning_services_rounded,
+                          size: 16),
+                      label: const Text('Clear cached snapshots'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: Text(
+                  'iSconl · native client v${updater.installedVersion}\n'
+                  'offline-first · vault-backed · gate-armed',
+                  textAlign: TextAlign.center,
+                  style: T.monoSmall,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _serverSheet(BuildContext context) {
+    final services = AppScope.of(context);
+    final controller =
+        TextEditingController(text: services.session.serverUrl);
+    return showFormSheet(
+      context,
+      title: 'Server URL',
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Field(
+              label: 'URL',
+              controller: controller,
+              hint: 'https://isconl-agent.onrender.com',
+              keyboardType: TextInputType.url),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await services.session.setServer(controller.text);
+              if (context.mounted) {
+                toast(context, 'Server updated - sign in again if needed');
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _patSheet(BuildContext context) {
+    final services = AppScope.of(context);
+    final controller = TextEditingController(text: services.session.ghPat);
+    return showFormSheet(
+      context,
+      title: 'GitHub token',
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Fine-grained PAT with contents:read on Sconl/isconl-agent. '
+            'Used only to check and download APK releases. Stored in '
+            'encrypted storage.',
+            style: T.small.copyWith(color: C.text3),
+          ),
+          const SizedBox(height: 12),
+          Field(
+              label: 'Token',
+              controller: controller,
+              hint: 'github_pat_…',
+              obscure: true),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await services.session.setGhPat(controller.text);
+              if (context.mounted) toast(context, 'Token saved');
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+}

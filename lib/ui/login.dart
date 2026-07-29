@@ -1,0 +1,335 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../app_scope.dart';
+import '../main.dart' show BrandMark;
+import '../theme.dart';
+import 'widgets/common.dart';
+
+/// Token gate, mirroring the web overlay: probes /api/auth/methods,
+/// prefers TOTP (6 digits, auto-submit, rotation countdown), falls back to
+/// the static token. Also owns the "waking the server" first-contact UX.
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key, this.onAuthenticated});
+  final VoidCallback? onAuthenticated;
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _totp = TextEditingController();
+  final _token = TextEditingController();
+  final _server = TextEditingController();
+
+  bool _probing = true;
+  bool _waking = false;
+  bool _submitting = false;
+  bool? _totpAvailable;
+  bool _useToken = false;
+  bool _editServer = false;
+  String? _error;
+  Timer? _tick;
+  int _secondsLeft = 30;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final left = 30 - (now % 30);
+      if (left != _secondsLeft && mounted) {
+        setState(() => _secondsLeft = left);
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _probe());
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    _totp.dispose();
+    _token.dispose();
+    _server.dispose();
+    super.dispose();
+  }
+
+  Future<void> _probe() async {
+    final services = AppScope.of(context);
+    _server.text = services.session.serverUrl;
+    setState(() {
+      _probing = true;
+      _waking = true;
+      _error = null;
+    });
+    try {
+      final methods = await services.session.authMethods();
+      if (!mounted) return;
+      setState(() {
+        _totpAvailable = methods['totp'] == true;
+        _useToken = methods['totp'] != true;
+        _waking = false;
+        _probing = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _totpAvailable = null;
+        _waking = false;
+        _probing = false;
+        _error = 'Could not reach the agent. It may be waking up - retry in '
+            'a few seconds, or check the server URL.';
+      });
+    }
+  }
+
+  Future<void> _submitTotp(String code) async {
+    if (_submitting || code.length != 6) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final services = AppScope.of(context);
+    final err = await services.session.loginTotp(code);
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _error = err;
+    });
+    if (err == null) {
+      widget.onAuthenticated?.call();
+    } else {
+      _totp.clear();
+      HapticFeedback.heavyImpact();
+    }
+  }
+
+  Future<void> _submitToken() async {
+    final token = _token.text.trim();
+    if (_submitting || token.isEmpty) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final services = AppScope.of(context);
+    final err = await services.session.loginToken(token);
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _error = err;
+    });
+    if (err == null) {
+      widget.onAuthenticated?.call();
+    } else {
+      HapticFeedback.heavyImpact();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: C.bg,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Center(child: BrandMark(size: 52)),
+                  const SizedBox(height: 18),
+                  Center(
+                    child: Text('iSconl',
+                        style: T.headline.copyWith(
+                            fontSize: 24, letterSpacing: -0.8)),
+                  ),
+                  const SizedBox(height: 4),
+                  Center(
+                    child: Text('Sovereign personal agent',
+                        style: T.small.copyWith(color: C.text3)),
+                  ),
+                  const SizedBox(height: 30),
+                  if (_probing) ...[
+                    const Center(child: MiniSpinner(size: 20)),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Text(
+                        _waking
+                            ? 'Reaching the agent… free tier can take up to a minute to wake.'
+                            : 'Checking…',
+                        style: T.small.copyWith(color: C.text3),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ] else ...[
+                    if (_totpAvailable == true && !_useToken)
+                      _totpForm()
+                    else
+                      _tokenForm(),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(_error!,
+                          style: T.small.copyWith(color: C.red),
+                          textAlign: TextAlign.center),
+                      if (_totpAvailable == null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: OutlinedButton(
+                              onPressed: _probe, child: const Text('Retry')),
+                        ),
+                    ],
+                    const SizedBox(height: 20),
+                    if (_totpAvailable == true)
+                      Center(
+                        child: TextButton(
+                          onPressed: () =>
+                              setState(() => _useToken = !_useToken),
+                          child: Text(
+                            _useToken
+                                ? 'Use authenticator code instead'
+                                : 'Use static token instead',
+                            style: T.small.copyWith(color: C.text3),
+                          ),
+                        ),
+                      ),
+                  ],
+                  const SizedBox(height: 8),
+                  _serverRow(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _totpForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('AUTHENTICATOR CODE', style: T.label),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _totp,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          maxLength: 6,
+          style: const TextStyle(
+            fontFamily: 'JetBrains Mono',
+            fontSize: 26,
+            letterSpacing: 10,
+            color: C.text,
+          ),
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(counterText: '', hintText: '······'),
+          onChanged: (v) {
+            if (v.length == 6) _submitTotp(v);
+          },
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_submitting)
+              const MiniSpinner()
+            else ...[
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  value: _secondsLeft / 30,
+                  strokeWidth: 2,
+                  color: _secondsLeft <= 5 ? C.amber : C.green,
+                  backgroundColor: C.surface,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('code rotates in ${_secondsLeft}s',
+                  style: T.monoSmall),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _tokenForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('ACCESS TOKEN', style: T.label),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _token,
+          autofocus: true,
+          obscureText: true,
+          style: T.mono.copyWith(color: C.text, fontSize: 13),
+          decoration: const InputDecoration(hintText: 'paste token'),
+          onSubmitted: (_) => _submitToken(),
+        ),
+        const SizedBox(height: 12),
+        FilledButton(
+          onPressed: _submitting ? null : _submitToken,
+          child: _submitting
+              ? const SizedBox(
+                  width: 16, height: 16, child: MiniSpinner())
+              : const Text('Unlock'),
+        ),
+      ],
+    );
+  }
+
+  Widget _serverRow() {
+    final services = AppScope.of(context);
+    if (!_editServer) {
+      return Center(
+        child: TextButton(
+          onPressed: () => setState(() => _editServer = true),
+          child: Text(
+            services.session.serverUrl
+                .replaceFirst(RegExp(r'^https?://'), ''),
+            style: T.monoSmall.copyWith(color: C.text3),
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 8),
+        Field(
+          label: 'Server URL',
+          controller: _server,
+          hint: 'https://isconl-agent.onrender.com',
+          keyboardType: TextInputType.url,
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton(
+              onPressed: () => setState(() => _editServer = false),
+              child: Text('Cancel', style: T.small.copyWith(color: C.text3)),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () async {
+                await services.session.setServer(_server.text);
+                if (!mounted) return;
+                setState(() => _editServer = false);
+                _probe();
+              },
+              child: const Text('Save & retry'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
