@@ -93,3 +93,14 @@ no-retrigger rule, so no PAT needed).
   `licenses/*` hash files is the deterministic path.
 - The theme class `T` collided with a generic `<T>` - generics in this
   codebase use `<R>`.
+
+**ADDENDUM (29 Jul, night):** v0.0.0 built locally, signed (CN=ARCHITECT,
+SHA-256 9fca8bf4…), released as `apk-v0.0.0` with
+`20260729_isconl_v0.0.0.apk` attached. Two build snags, both fixed and
+encoded: flutter_local_notifications requires core-library desugaring
+(added desugar_jdk_libs 2.1.5); the keystore password file carried a
+PowerShell UTF-8 BOM into key.properties (stripped - keystore itself was
+always clean). CI note: the push-triggered run start-failed like every
+other run on the repo today - the known private-repo Actions minutes
+exhaustion, not a workflow defect; the pipeline arms itself when the
+billing month resets, after `tool/setup_ci_secrets.ps1` is run.
