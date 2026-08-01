@@ -346,6 +346,142 @@ class Mutations {
         refresh: _store.learning,
       );
 
+  // ---------- ideas (Spark) ----------
+
+  /// Capture is the whole point of having this on a phone: an idea arrives
+  /// away from the desk or it is lost. Queues offline like a journal entry.
+  Future<MutationResult> addIdea({
+    required String title,
+    String body = '',
+    String domain = '',
+    String tags = '',
+    String type = 'personal',
+  }) =>
+      _write(
+        path: '/api/ideas/add',
+        body: {
+          'title': title,
+          if (body.isNotEmpty) 'body': body,
+          if (domain.isNotEmpty) 'domain': domain,
+          if (tags.isNotEmpty) 'tags': tags,
+          'type': type,
+          'source': 'apk',
+        },
+        label: 'Idea · ${fmt.truncate(title, 40)}',
+        view: 'ideas',
+        refresh: _store.ideas,
+        optimistic: () => _store.ideas.patchLocal((current) {
+          final map = fmt.m(current);
+          final ideas = List<Map<String, dynamic>>.from(fmt.lm(map['ideas']));
+          ideas.insert(0, {
+            'ID': 'QUEUED',
+            'TITLE': title,
+            'BODY': body.isEmpty ? '-' : body,
+            'DOMAIN': domain.isEmpty ? '-' : domain,
+            'TAGS': tags.isEmpty ? '-' : tags,
+            'TYPE': type,
+            'STAGE': 'spark',
+            'STATUS': 'open',
+            'IMPACT': '-',
+            'EFFORT': '-',
+            'CREATED_AT': DateTime.now().toIso8601String(),
+          });
+          return {...map, 'ideas': ideas};
+        }),
+      );
+
+  Future<MutationResult> updateIdea(String id, Map<String, dynamic> fields) =>
+      _write(
+        path: '/api/ideas/update',
+        body: {'id': id, ...fields},
+        label: 'Idea update · $id',
+        view: 'ideas',
+        refresh: _store.ideas,
+      );
+
+  // ---------- rhythm ----------
+
+  /// Ticking a habit is the most offline-tolerant write in the app: it is a
+  /// boolean against a date, so a late delivery still lands on the right day.
+  Future<MutationResult> toggleHabit({
+    required String date,
+    required String habitId,
+    required bool done,
+  }) =>
+      _write(
+        path: '/api/personal/rhythm',
+        body: {
+          'toggleHabit': {'date': date, 'habitId': habitId, 'done': done},
+        },
+        label: '${done ? 'Did' : 'Cleared'} $habitId · $date',
+        view: 'rhythm',
+        refresh: _store.rhythm,
+        optimistic: () => _store.rhythm.patchLocal((current) {
+          final map = fmt.m(current);
+          final logs = Map<String, dynamic>.from(fmt.m(map['logs']));
+          final day = Map<String, dynamic>.from(fmt.m(logs[date]));
+          day[habitId] = done;
+          logs[date] = day;
+          return {...map, 'logs': logs};
+        }),
+      );
+
+  // ---------- finance: wishlist ----------
+
+  Future<MutationResult> saveWishlistItem(Map<String, dynamic> item) => _write(
+        path: '/api/finance/wishlist',
+        body: item,
+        label: 'Wishlist · ${fmt.truncate(fmt.s(item['name']), 40)}',
+        view: 'finance',
+        refresh: _store.wishlist,
+      );
+
+  // ---------- learning ----------
+
+  /// Margin notes on a lesson. The tutor reads these and the agent reads them
+  /// when revising a course, so they are worth capturing from the phone
+  /// mid-read. Server keys are `file` and `text` (see /api/learning/notes).
+  Future<MutationResult> saveLessonNote({
+    required String course,
+    required String file,
+    required String text,
+  }) =>
+      _write(
+        path: '/api/learning/notes',
+        body: {'course': course, 'file': file, 'text': text},
+        label: 'Note · $file',
+        view: 'learning',
+      );
+
+  /// Reading position, as a percentage. Never queued: a resume point that
+  /// arrives tomorrow would drag him back to where he was today.
+  Future<MutationResult> saveLessonResume({
+    required String course,
+    required String lesson,
+    required int scrollPct,
+  }) =>
+      _write(
+        path: '/api/learning/resume',
+        body: {'course': course, 'lesson': lesson, 'scrollPct': scrollPct},
+        label: 'Resume point · $lesson',
+        view: 'learning',
+        queueable: false,
+      );
+
+  // ---------- decisions ----------
+
+  /// The decision log is the org's record, so it is never written optimistically
+  /// and never queued: a decision that "probably landed" is worse than none.
+  Future<MutationResult> updateDecision(String id, Map<String, dynamic> fields) =>
+      _write(
+        path: '/api/decisions/update',
+        body: {'id': id, ...fields},
+        label: 'Decision $id',
+        view: 'decisions',
+        refresh: _store.decisions,
+        queueable: false,
+      );
+
   // ---------- online-only passthroughs ----------
 
   /// Natural-language command. Returns the raw /api/act response;

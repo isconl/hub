@@ -20,14 +20,16 @@ class SessionService extends ChangeNotifier {
   bool authenticated = false;
   bool biometricLock = false;
   String serverUrl = defaultServer;
-  String ghPat = ''; // optional, for update checks against the private repo
   Map<String, dynamic>? serverHealth;
 
   Future<void> load() async {
     serverUrl = await _storage.read(key: 'serverUrl') ?? defaultServer;
     final token = await _storage.read(key: 'token') ?? '';
-    ghPat = await _storage.read(key: 'ghPat') ?? '';
     biometricLock = (await _storage.read(key: 'bioLock')) == '1';
+    // Updates come from the agent now, so the GitHub PAT this app used to keep
+    // has no remaining purpose. Delete it on sight rather than leave a live
+    // credential sitting on the phone after the upgrade that stopped using it.
+    await _storage.delete(key: 'ghPat');
     api.baseUrl = serverUrl;
     api.token = token;
     authenticated = token.isNotEmpty;
@@ -47,12 +49,6 @@ class SessionService extends ChangeNotifier {
     serverUrl = url.trim().isEmpty ? defaultServer : url.trim();
     api.baseUrl = serverUrl;
     await _storage.write(key: 'serverUrl', value: serverUrl);
-    notifyListeners();
-  }
-
-  Future<void> setGhPat(String pat) async {
-    ghPat = pat.trim();
-    await _storage.write(key: 'ghPat', value: ghPat);
     notifyListeners();
   }
 
@@ -78,6 +74,30 @@ class SessionService extends ChangeNotifier {
         return null;
       }
       return (map['error'] as String?) ?? 'Invalid or expired code';
+    } on ApiException catch (e) {
+      return e.message;
+    } on OfflineException {
+      return 'No connection - check network or server URL';
+    }
+  }
+
+  /// Exchange the quick PIN for a session. Deliberately weaker than TOTP and
+  /// the server treats it so - a shorter session, its own lockout bucket - so
+  /// this is the way in from a device with no Ente Auth app on it, not the
+  /// everyday door.
+  ///
+  /// Unlike everywhere else in this client, a rejected PIN really is a 401
+  /// rather than the usual 404: /api/auth/pin sits outside the gate, so it can
+  /// afford to say what went wrong, including how many attempts are left.
+  Future<String?> loginPin(String pin) async {
+    try {
+      final res = await api.postJson('/api/auth/pin', {'pin': pin}, cold: true);
+      final map = res is Map ? res.cast<String, dynamic>() : <String, dynamic>{};
+      if (map['success'] == true && map['token'] is String) {
+        await _adopt(map['token'] as String);
+        return null;
+      }
+      return (map['error'] as String?) ?? 'Incorrect PIN';
     } on ApiException catch (e) {
       return e.message;
     } on OfflineException {

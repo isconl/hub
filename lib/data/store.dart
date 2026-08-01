@@ -115,11 +115,32 @@ class Store {
   Snapshot get github => of('github', '/api/github/snapshot');
   Snapshot get ventures => of('ventures', '/api/ventures');
 
+  // Domains the agent grew after the first native build (30 Jul - 1 Aug).
+  Snapshot get ideas => of('ideas', '/api/ideas');
+  Snapshot get rhythm => of('rhythm', '/api/personal/rhythm');
+  Snapshot get insights => of('insights', '/api/insights');
+  Snapshot get decisions => of('decisions', '/api/decisions');
+  Snapshot get wishlist => of('wishlist', '/api/finance/wishlist');
+  Snapshot get chatThreads => of('chatThreads', '/api/chat/threads');
+  Snapshot get articles => of('articles', '/api/articles/list');
+  Snapshot get buffer => of('buffer', '/api/buffer/desk');
+
   /// Per-entity caches (task detail, lessons, DIA profiles...).
   Snapshot detail(String kind, String id, String path) =>
       of('$kind:$id', path);
 
+  /// A OneDrive folder listing. Cached per path so the file manager still opens
+  /// somewhere useful with no connection.
+  Snapshot folder(String folderPath) => of(
+        'folder:$folderPath',
+        '/api/onedrive/list?path=${Uri.encodeQueryComponent(folderPath)}',
+      );
+
   /// Everything worth pulling in a full sync, core first.
+  ///
+  /// Buffer and the OneDrive listings are deliberately absent: both are live
+  /// third-party calls that cost a rate-limit budget, and neither is worth
+  /// spending on a background poll the user may never look at.
   List<Snapshot> get syncSet => [
         state,
         notifications,
@@ -135,6 +156,9 @@ class Store {
         plans,
         projects,
         github,
+        ideas,
+        rhythm,
+        decisions,
         audit,
         refs,
         tags,

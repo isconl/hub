@@ -48,3 +48,12 @@ app.*.map.json
 /dist/
 # custom launcher art is intentionally tracked
 !/branding/
+
+# Sync conflict debris. OneDrive and the vault sync both leave .conflict-N
+# copies beside the original, and on 29 Jul two of them held the APK keystore
+# passwords while key.properties itself had been destroyed - un-ignored, so one
+# git add away from publishing the signing credentials. Never committable.
+*.conflict
+*.conflict[0-9]
+*.conflict-*
+*.backup-*

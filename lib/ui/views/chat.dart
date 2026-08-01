@@ -173,6 +173,146 @@ class _ChatSheetState extends State<ChatSheet> {
     }
   }
 
+  /// The agent keeps named conversations server-side, and the model's context
+  /// window follows whichever one is open. Switching therefore has to be a
+  /// server call, not a local filter - opening a thread here is what makes the
+  /// agent answer inside it.
+  ///
+  /// Online-only for the same reason: there is no honest way to "open" a thread
+  /// offline when the thing being changed lives on the other end.
+  Future<void> _openThreads() async {
+    final services = AppScope.of(context);
+    final threads = services.store.chatThreads;
+    threads.refresh();
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: C.panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
+        side: BorderSide(color: C.border),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (ctx, scroll) => ListenableBuilder(
+          listenable: threads,
+          builder: (ctx, _) {
+            final map = fmt.m(threads.value);
+            final rows = fmt.lm(map['threads']);
+            final current = fmt.s(map['current']);
+            return ListView(
+              controller: scroll,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+              children: [
+                Row(
+                  children: [
+                    Text('Conversations', style: T.title),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await _newThread();
+                      },
+                      icon: const Icon(Icons.add_rounded, size: 16),
+                      label: const Text('New'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                if (threads.loading && rows.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 40),
+                    child: Center(child: MiniSpinner(size: 20)),
+                  )
+                else if (rows.isEmpty)
+                  const EmptyState('No saved conversations',
+                      'Ask something and this one gets a name.',
+                      icon: Icons.forum_outlined)
+                else
+                  for (final t in rows)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Panel(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        borderColor: fmt.s(t['ID']) == current
+                            ? C.greenDim.withValues(alpha: 0.6)
+                            : C.border,
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          await _switchTo(fmt.s(t['ID']));
+                        },
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    fmt.s(t['TITLE']).isEmpty
+                                        ? fmt.s(t['ID'])
+                                        : fmt.s(t['TITLE']),
+                                    style: T.w500(
+                                        T.body2.copyWith(color: C.text)),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(fmt.ago(t['UPDATED_AT']),
+                                      style: T.monoSmall),
+                                ],
+                              ),
+                            ),
+                            if (fmt.s(t['ID']) == current)
+                              const Badge2('open',
+                                  color: C.greenBg, textColor: C.greenBright),
+                          ],
+                        ),
+                      ),
+                    ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _switchTo(String id) async {
+    final services = AppScope.of(context);
+    try {
+      final res =
+          await services.mutations.post('/api/chat/thread/open', {'id': id});
+      final msgs = fmt.lm(fmt.m(res)['messages']);
+      if (!mounted) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(msgs.map((m) => _Msg(
+                fmt.s(m['role']) == 'assistant' ? 'agent' : fmt.s(m['role']),
+                fmt.s(m['content']),
+              )));
+      });
+      _jumpToEnd();
+    } catch (e) {
+      if (mounted) toast(context, 'Could not open that thread', error: true);
+    }
+  }
+
+  Future<void> _newThread() async {
+    final services = AppScope.of(context);
+    try {
+      await services.mutations.post('/api/chat/thread/new', {});
+      if (!mounted) return;
+      setState(_messages.clear);
+      toast(context, 'Started a new conversation');
+    } catch (e) {
+      if (mounted) toast(context, 'Could not start a new one', error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
@@ -190,6 +330,11 @@ class _ChatSheetState extends State<ChatSheet> {
               const Badge2('Guardian Active',
                   color: C.greenBg, textColor: C.greenBright),
               const Spacer(),
+              IconButton(
+                tooltip: 'Conversations',
+                icon: const Icon(Icons.forum_outlined, size: 19, color: C.text3),
+                onPressed: services.sync.online ? _openThreads : null,
+              ),
               IconButton(
                 icon: const Icon(Icons.close_rounded, size: 20, color: C.text3),
                 onPressed: () => Navigator.pop(context),

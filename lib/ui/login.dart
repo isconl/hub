@@ -22,17 +22,25 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _totp = TextEditingController();
   final _token = TextEditingController();
+  final _pin = TextEditingController();
   final _server = TextEditingController();
 
   bool _probing = true;
   bool _waking = false;
   bool _submitting = false;
   bool? _totpAvailable;
+  bool _pinAvailable = false;
   bool _useToken = false;
+  bool _usePin = false;
   bool _editServer = false;
   String? _error;
   Timer? _tick;
   int _secondsLeft = 30;
+
+  // The PIN door is hidden behind three taps on the wordmark, exactly as it is
+  // on the web (/?pin, or tapping the wordmark three times). It is the weaker
+  // credential, so it should take knowing about it to find.
+  int _brandTaps = 0;
 
   @override
   void initState() {
@@ -52,6 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _tick?.cancel();
     _totp.dispose();
     _token.dispose();
+    _pin.dispose();
     _server.dispose();
     super.dispose();
   }
@@ -69,6 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _totpAvailable = methods['totp'] == true;
+        _pinAvailable = methods['pin'] == true;
         _useToken = methods['totp'] != true;
         _waking = false;
         _probing = false;
@@ -102,6 +112,28 @@ class _LoginScreenState extends State<LoginScreen> {
       widget.onAuthenticated?.call();
     } else {
       _totp.clear();
+      HapticFeedback.heavyImpact();
+    }
+  }
+
+  Future<void> _submitPin() async {
+    final pin = _pin.text.trim();
+    if (_submitting || pin.length < 4) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final services = AppScope.of(context);
+    final err = await services.session.loginPin(pin);
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _error = err;
+    });
+    if (err == null) {
+      widget.onAuthenticated?.call();
+    } else {
+      _pin.clear();
       HapticFeedback.heavyImpact();
     }
   }
@@ -144,9 +176,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Center(child: BrandMark(size: 52)),
                   const SizedBox(height: 18),
                   Center(
-                    child: Text('iSconl',
-                        style: T.headline.copyWith(
-                            fontSize: 24, letterSpacing: -0.8)),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _tapBrand,
+                      child: Text('iSconl',
+                          style: T.headline.copyWith(
+                              fontSize: 24, letterSpacing: -0.8)),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Center(
@@ -167,7 +203,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ] else ...[
-                    if (_totpAvailable == true && !_useToken)
+                    if (_usePin)
+                      _pinForm()
+                    else if (_totpAvailable == true && !_useToken)
                       _totpForm()
                     else
                       _tokenForm(),
@@ -184,7 +222,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                     ],
                     const SizedBox(height: 20),
-                    if (_totpAvailable == true)
+                    if (_usePin)
+                      Center(
+                        child: TextButton(
+                          onPressed: () => setState(() {
+                            _usePin = false;
+                            _error = null;
+                          }),
+                          child: Text(
+                            _totpAvailable == true
+                                ? 'Use authenticator code instead'
+                                : 'Use access token instead',
+                            style: T.small.copyWith(color: C.text3),
+                          ),
+                        ),
+                      )
+                    else if (_totpAvailable == true)
                       Center(
                         child: TextButton(
                           onPressed: () =>
@@ -255,6 +308,63 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: T.monoSmall),
             ],
           ],
+        ),
+      ],
+    );
+  }
+
+  /// Three taps on the wordmark opens the PIN door, and only if the server
+  /// actually offers one. A silent no-op otherwise: revealing a box that cannot
+  /// work would be worse than not having the gesture at all.
+  void _tapBrand() {
+    if (_usePin) return;
+    _brandTaps++;
+    if (_brandTaps < 3) return;
+    _brandTaps = 0;
+    if (!_pinAvailable) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _usePin = true;
+      _error = null;
+    });
+  }
+
+  Widget _pinForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('QUICK PIN', style: T.label),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _pin,
+          autofocus: true,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          maxLength: 12,
+          style: const TextStyle(
+            fontFamily: 'JetBrains Mono',
+            fontSize: 26,
+            letterSpacing: 10,
+            color: C.text,
+          ),
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(counterText: '', hintText: '····'),
+          onSubmitted: (_) => _submitPin(),
+        ),
+        const SizedBox(height: 12),
+        FilledButton(
+          onPressed: _submitting ? null : _submitPin,
+          child: _submitting
+              ? const SizedBox(width: 16, height: 16, child: MiniSpinner())
+              : const Text('Unlock'),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'A weaker proof, so it buys a shorter day. Your authenticator code '
+          'is unaffected by PIN lockouts.',
+          style: T.tiny,
+          textAlign: TextAlign.center,
         ),
       ],
     );

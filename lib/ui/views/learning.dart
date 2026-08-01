@@ -203,9 +203,141 @@ class _LessonScreenState extends State<LessonScreen> {
                         'Lesson content loads when online, then stays cached.'))
               else
                 Panel(child: Markdown(content)),
+              const SizedBox(height: 12),
+              _LessonNotes(course: widget.course, file: widget.file),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Margin notes on a lesson.
+///
+/// Two other readers besides him: the tutor loads them as context, and the
+/// agent reads them when revising the course - a note saying "this section is
+/// now wrong" is the cheapest possible course-update instruction. Which is why
+/// this is worth having on the phone, where most of the reading happens.
+class _LessonNotes extends StatefulWidget {
+  const _LessonNotes({required this.course, required this.file});
+  final String course;
+  final String file;
+
+  @override
+  State<_LessonNotes> createState() => _LessonNotesState();
+}
+
+class _LessonNotesState extends State<_LessonNotes> {
+  final _controller = TextEditingController();
+  bool _open = false;
+  bool _loading = false;
+  bool _loaded = false;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    if (_loaded || _loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final res = await AppScope.of(context).api.getJson(
+            '/api/learning/notes?course=${Uri.encodeQueryComponent(widget.course)}'
+            '&file=${Uri.encodeQueryComponent(widget.file)}',
+          );
+      if (!mounted) return;
+      _controller.text = fmt.s(fmt.m(res)['text']);
+      setState(() => _loaded = true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Could not load your notes ($e).');
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final res = await AppScope.of(context).mutations.saveLessonNote(
+          course: widget.course,
+          file: widget.file,
+          text: _controller.text,
+        );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!res.ok) {
+      toast(context, res.error!, error: true);
+    } else if (res.queued) {
+      toast(context, 'Note queued - will sync');
+    } else {
+      toast(context, 'Note saved');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() => _open = !_open);
+              if (_open) _load();
+            },
+            child: Row(
+              children: [
+                const Icon(Icons.edit_note_rounded, size: 17, color: C.text2),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: Text('Your notes', style: T.w500(T.body2))),
+                if (_loading) const MiniSpinner(),
+                Icon(
+                    _open
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 18,
+                    color: C.text3),
+              ],
+            ),
+          ),
+          if (_open) ...[
+            const SizedBox(height: 10),
+            if (_error != null)
+              ErrorRetry(_error!, onRetry: () {
+                _loaded = false;
+                _load();
+              }),
+            TextField(
+              controller: _controller,
+              maxLines: 8,
+              minLines: 4,
+              style: T.body2.copyWith(color: C.text),
+              decoration: const InputDecoration(
+                hintText:
+                    'What you made of it. The tutor reads this, and so does '
+                    'the agent when it revises the course.',
+              ),
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const MiniSpinner()
+                  : const Icon(Icons.save_rounded, size: 16),
+              label: const Text('Save note'),
+            ),
+          ],
+        ],
       ),
     );
   }

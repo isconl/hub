@@ -7,14 +7,18 @@ import '../main.dart' show BrandMark;
 import '../services/alerts.dart';
 import '../theme.dart';
 import '../util/fmt.dart' as fmt;
+import 'views/articles.dart';
 import 'views/audit.dart';
+import 'views/buffer.dart';
 import 'views/calendar.dart';
 import 'views/chat.dart';
 import 'views/circle.dart';
 import 'views/command.dart';
 import 'views/decisions.dart';
+import 'views/files.dart';
 import 'views/finance.dart';
 import 'views/github.dart';
+import 'views/ideas.dart';
 import 'views/inbox.dart';
 import 'views/jira.dart';
 import 'views/journal.dart';
@@ -23,6 +27,7 @@ import 'views/notifications.dart';
 import 'views/outbox_view.dart';
 import 'views/planning.dart';
 import 'views/projects.dart';
+import 'views/rhythm.dart';
 import 'views/settings.dart';
 import 'views/spaces.dart';
 import 'views/tasks.dart';
@@ -416,6 +421,7 @@ class MenuSheet extends StatelessWidget {
     final services = AppScope.of(context);
     final state = fmt.m(services.store.state.value);
     final inboxCount = fmt.i(state['inbox_count']);
+    final ideasCount = fmt.i(state['ideas_count']);
 
     void go(Widget view, String title) {
       Navigator.pop(context);
@@ -452,6 +458,9 @@ class MenuSheet extends StatelessWidget {
               () => go(const PlanningView(), 'Planning')),
           _item(ctx, Icons.calendar_month_rounded, 'Calendar',
               () => go(const CalendarView(), 'Calendar')),
+          _item(ctx, Icons.lightbulb_rounded, 'Ideas',
+              () => go(const IdeasView(), 'Ideas'),
+              badge: ideasCount > 0 ? '$ideasCount' : null),
           const SectionLabel('Channels'),
           _item(ctx, Icons.inbox_rounded, 'Inbox',
               () => go(const InboxView(), 'Inbox'),
@@ -460,9 +469,13 @@ class MenuSheet extends StatelessWidget {
               () => go(const JiraView(), 'Kanban')),
           _item(ctx, Icons.code_rounded, 'GitHub',
               () => go(const GithubView(), 'GitHub')),
+          _item(ctx, Icons.share_rounded, 'Buffer',
+              () => go(const BufferView(), 'Buffer')),
           const SectionLabel('Personal'),
           _item(ctx, Icons.account_balance_wallet_rounded, 'Finance',
               () => go(const FinanceView(), 'Finance')),
+          _item(ctx, Icons.local_fire_department_rounded, 'Rhythm',
+              () => go(const RhythmView(), 'Rhythm')),
           _item(ctx, Icons.auto_stories_rounded, 'Journal',
               () => go(const JournalView(), 'Journal')),
           _item(ctx, Icons.school_rounded, 'Learning',
@@ -479,6 +492,10 @@ class MenuSheet extends StatelessWidget {
               () => go(const ProjectsView(), 'Projects')),
           _item(ctx, Icons.hub_rounded, 'Spaces',
               () => go(const SpacesView(), 'Spaces')),
+          _item(ctx, Icons.folder_rounded, 'Files',
+              () => go(const FilesView(), 'Files')),
+          _item(ctx, Icons.article_rounded, 'Articles',
+              () => go(const ArticlesView(), 'Articles')),
           _item(ctx, Icons.gavel_rounded, 'Decisions & Risks',
               () => go(const DecisionsView(), 'Decisions & Risks')),
           const SectionLabel('System'),

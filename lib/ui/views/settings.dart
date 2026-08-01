@@ -196,19 +196,21 @@ class _SettingsViewState extends State<SettingsView> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        OutlinedButton.icon(
+                        FilledButton.icon(
                           onPressed: updater.busy || !sync.online
                               ? null
                               : () async {
                                   final newer = await updater.check();
                                   if (newer != null && context.mounted) {
+                                    final size = fmt.s(
+                                        updater.available?['sizeLabel']);
                                     final go = await confirmDialog(
                                         context,
                                         'Update to v$newer?',
-                                        'The APK downloads from the private '
-                                            'GitHub release and Android '
-                                            'installs it over this version. '
-                                            'Your data stays.',
+                                        'The agent hands over the signed build'
+                                            '${size.isEmpty ? '' : ' ($size)'} '
+                                            'and Android installs it over this '
+                                            'version. Your data stays.',
                                         action: 'Update');
                                     if (go) await updater.downloadAndInstall();
                                   }
@@ -219,13 +221,15 @@ class _SettingsViewState extends State<SettingsView> {
                                   size: 16),
                           label: const Text('Check for update'),
                         ),
-                        OutlinedButton(
-                          onPressed: () => _patSheet(context),
-                          child: Text(session.ghPat.isEmpty
-                              ? 'Add GitHub token'
-                              : 'Change GitHub token'),
-                        ),
                       ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Updates come from your own agent, not an app store and '
+                      'not GitHub directly - so this phone holds no second '
+                      'credential. Every build is signed with the same key, '
+                      'which is what lets it install over the last one.',
+                      style: T.tiny,
                     ),
                   ],
                 ),
@@ -356,37 +360,4 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Future<void> _patSheet(BuildContext context) {
-    final services = AppScope.of(context);
-    final controller = TextEditingController(text: services.session.ghPat);
-    return showFormSheet(
-      context,
-      title: 'GitHub token',
-      builder: (ctx) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Fine-grained PAT with contents:read on Sconl/isconl-agent. '
-            'Used only to check and download APK releases. Stored in '
-            'encrypted storage.',
-            style: T.small.copyWith(color: C.text3),
-          ),
-          const SizedBox(height: 12),
-          Field(
-              label: 'Token',
-              controller: controller,
-              hint: 'github_pat_…',
-              obscure: true),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await services.session.setGhPat(controller.text);
-              if (context.mounted) toast(context, 'Token saved');
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
 }

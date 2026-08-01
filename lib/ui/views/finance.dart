@@ -245,6 +245,8 @@ class FinanceView extends StatelessWidget {
                     );
                   }),
                 ],
+                // ---- wishlist ----
+                _Wishlist(currency: currency),
                 // ---- recent transactions ----
                 if (recent.isNotEmpty) ...[
                   const SectionLabel('Recent'),
@@ -559,6 +561,201 @@ class FinanceView extends StatelessWidget {
           onChanged: onChanged,
         ),
       ],
+    );
+  }
+}
+
+/// The wishlist: wants, scored before they are bought.
+///
+/// His finance system scores every want on necessity and satisfaction, 1 to 10,
+/// precisely so the decision is made in a calm moment rather than at the till.
+/// Capturing that here, on the device he actually has in a shop, is the point.
+///
+/// The numbers are his, not the model's: nothing on this screen is inferred,
+/// and the totals are plain arithmetic over what he entered.
+class _Wishlist extends StatefulWidget {
+  const _Wishlist({required this.currency});
+  final String currency;
+
+  @override
+  State<_Wishlist> createState() => _WishlistState();
+}
+
+class _WishlistState extends State<_Wishlist> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final snap = AppScope.of(context).store.wishlist;
+      snap.hydrate().then((_) {
+        if (mounted && snap.value == null) snap.refresh();
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppScope.of(context);
+    return ListenableBuilder(
+      listenable: services.store.wishlist,
+      builder: (context, _) {
+        final items = fmt.lm(fmt.m(services.store.wishlist.value)['items'])
+            .where((i) => fmt.s(i['status']) != 'bought')
+            .toList();
+        final total = items.fold<double>(0, (sum, i) => sum + fmt.d(i['cost']));
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionLabel(
+              'Wishlist${items.isEmpty ? '' : ' · ${fmt.money(total, currency: widget.currency, compact: true)}'}',
+              trailing: InkWell(
+                onTap: () => _addSheet(context),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Icon(Icons.add_rounded, size: 17, color: C.text2),
+                ),
+              ),
+            ),
+            if (items.isEmpty)
+              Panel(
+                child: Text(
+                  'Nothing on the list. Score a want here before you buy it, '
+                  'not after.',
+                  style: T.small.copyWith(color: C.text3),
+                ),
+              )
+            else
+              ...items.map((item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _WishTile(item: item, currency: widget.currency),
+                  )),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _addSheet(BuildContext context) {
+    final name = TextEditingController();
+    final cost = TextEditingController();
+    final note = TextEditingController();
+    var necessity = 5.0;
+    var satisfaction = 5.0;
+    final services = AppScope.of(context);
+
+    return showFormSheet(
+      context,
+      title: 'Add to wishlist',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Field(label: 'What', controller: name, autofocus: true),
+            Field(
+                label: 'Cost (${widget.currency})',
+                controller: cost,
+                keyboardType: TextInputType.number),
+            _score('Necessity', necessity,
+                (v) => setSheet(() => necessity = v)),
+            _score('Satisfaction', satisfaction,
+                (v) => setSheet(() => satisfaction = v)),
+            Field(label: 'Note', controller: note, hint: 'optional'),
+            const SizedBox(height: 4),
+            FilledButton(
+              onPressed: () async {
+                if (name.text.trim().isEmpty) return;
+                Navigator.pop(ctx);
+                final res = await services.mutations.saveWishlistItem({
+                  'name': name.text.trim(),
+                  'cost': double.tryParse(cost.text.trim()) ?? 0,
+                  'necessity': necessity.round(),
+                  'satisfaction': satisfaction.round(),
+                  if (note.text.trim().isNotEmpty) 'note': note.text.trim(),
+                  'status': 'open',
+                });
+                if (!context.mounted) return;
+                if (!res.ok) {
+                  toast(context, res.error!, error: true);
+                } else if (res.queued) {
+                  toast(context, 'Queued - will sync');
+                } else {
+                  toast(context, 'Added to the wishlist');
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _score(String label, double value, void Function(double) onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(label.toUpperCase(),
+                style: T.label.copyWith(letterSpacing: 0.6)),
+            const Spacer(),
+            Text('${value.round()}/10',
+                style: T.mono.copyWith(color: C.greenBright)),
+          ],
+        ),
+        Slider(
+            value: value, min: 1, max: 10, divisions: 9, onChanged: onChanged),
+      ],
+    );
+  }
+}
+
+class _WishTile extends StatelessWidget {
+  const _WishTile({required this.item, required this.currency});
+  final Map<String, dynamic> item;
+  final String currency;
+
+  @override
+  Widget build(BuildContext context) {
+    final necessity = fmt.i(item['necessity']);
+    final satisfaction = fmt.i(item['satisfaction']);
+    // Both scores high is a buy; both low is a no. The colour says which
+    // without him having to do the comparison again.
+    final score = necessity + satisfaction;
+    final tone = score >= 15
+        ? C.greenBright
+        : score >= 10
+            ? C.amber
+            : C.text3;
+
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                  child: Text(fmt.s(item['name']),
+                      style: T.w500(T.body2.copyWith(color: C.text)))),
+              Text(fmt.money(item['cost'], currency: currency),
+                  style: T.mono.copyWith(color: tone)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Badge2('necessity $necessity'),
+              const SizedBox(width: 6),
+              Badge2('satisfaction $satisfaction'),
+            ],
+          ),
+          if (fmt.s(item['note']).isNotEmpty) ...[
+            const SizedBox(height: 7),
+            Text(fmt.s(item['note']), style: T.small.copyWith(color: C.text3)),
+          ],
+        ],
+      ),
     );
   }
 }

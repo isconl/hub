@@ -5,6 +5,97 @@ convention. Newest entries on top. Status words: DONE / PARTIAL / BLOCKED.
 
 ---
 
+## 2026-08-01 · Session 2 - catching up with three days of agent work
+
+Built unattended, on ARCHITECT's cue: "build the complete updated apk
+autonomously... the new apk has to have all improvements made to the
+agent", with a dedicated place in Settings to download it.
+
+**DONE - the agent is now the app store.** Three server routes on the
+agent side (`server.js`): `GET /api/apk/latest` reports the current
+build, `POST /api/apk/ticket` mints a 15-minute one-time download
+ticket, `GET /api/apk/download` streams the actual signed binary.
+
+Two decisions worth keeping:
+- The binary is **proxied, not linked**. Releases live on a private
+  repo, whose asset URLs 404 without a token. Linking would mean a
+  GitHub PAT on the phone - which is exactly what the old in-app updater
+  did and the weakest thing about it. The server holds `GITHUB_TOKEN`
+  already, so it fetches and streams; the phone uses the session it has.
+  Verified against the real private asset: 302 to
+  `release-assets.githubusercontent.com`, Authorization deliberately
+  dropped on that hop (the signed URL rejects it), `PK\x03\x04` on the
+  wire, content-length exact.
+- The **ticket** exists because a browser download cannot set an
+  Authorization header. Tapping a link has to work: on Android that
+  means the system download manager, a progress notification, and
+  install straight from the notification. Header auth would force an
+  in-page blob and lose all three. `/api/apk/download` therefore sits
+  above the auth gate but is not ungated - valid session OR live ticket,
+  and a miss 404s like everywhere else.
+
+`apkLocalFile()` falls back to a build on the host's disk, so "CI could
+not run" never means "no APK".
+
+**DONE - Settings card on the web.** Top of Settings: version, size,
+date, release notes, Download, Refresh, plus the absolute URL so the
+desktop can hand it to the phone. Rendered async - `renderSettings()` is
+synchronous and a network call there would stall the page.
+
+**DONE - the client caught up.** 53 agent commits landed between v0.0.0
+and now; the app knew 42 endpoints of ~165. Added:
+- **Ideas** (Spark) - capture is the point of having it on a phone;
+  stage/type/domain/tags, offline-optimistic like the journal.
+- **Rhythm** - today's habits plus the 365-day heatmap. The four derived
+  habits (commits, lessons, journal, tasks) render as evidence, not
+  checkboxes: a tick the next sync overwrites is a lie about control.
+- **Files** - the OneDrive mirror, per-folder cached so a visited folder
+  opens offline. Content is never cached: a stale document shown as
+  current is worse than an honest "offline".
+- **Buffer** - read-only desk. Publishing outward is exactly the class
+  of action the constitution keeps behind a deliberate, online,
+  confirmed gate, not a thumb on a phone.
+- **Articles** - what is written and how far along.
+- **Decisions** rewritten onto `/api/decisions` for the STALE and AGING
+  flags the server computes; playbooks still ride from `/api/refs`.
+- **Learning** margin notes (`/api/learning/notes`) - the tutor and the
+  course-revision pass both read them, and most reading happens here.
+- **Finance wishlist** with necessity/satisfaction scoring, captured in
+  the shop rather than after.
+- **Chat threads** - server-side conversation switching, online-only
+  because the model's context window follows whichever thread is open.
+
+**DONE - PIN sign-in**, feature-detected from `/api/auth/methods`, hidden
+behind three taps on the wordmark exactly as on the web. Silent no-op
+when the server offers no PIN: revealing a box that cannot work is worse
+than not having the gesture.
+
+**DONE - updates come from the agent.** `UpdateService` no longer talks
+to GitHub. The stored `ghPat` is now **deleted on load** - a live
+credential should not sit on the phone after the upgrade that stopped
+using it. Downloads assemble under `.part` and only rename on the last
+byte, so a truncated APK can never reach the installer.
+
+**Quality gates.** `flutter analyze`: No issues found. `flutter test`:
+11/11. Release build signed with the same key as v0.0.0 (SHA-256
+`9fca8bf4…`) - verified with apksigner, which is what lets it install
+over the existing app and keep its data.
+
+**LESSON (cost real time).** Two verification runs passed against the
+wrong directory: the shell's cwd had drifted to the agent repo, where
+`flutter analyze` finds no Dart and cheerfully reports "No issues", and
+`dart analyze lib` analysed the agent's JavaScript `lib/`. A green check
+from the wrong working directory is worse than no check. Every command
+in this session's build steps now carries an explicit `cd`.
+
+**NOT DONE, deliberately.** Buffer composing, OneDrive upload/mkdir/move,
+Jira push/compose, M365 mail, Articles co-writer, task deliverables and
+coverage. Each is either a write to the outside world that belongs on
+the desk, or a large surface with a contract worth reading properly
+first. Say the word and they ship in a patch.
+
+---
+
 ## 2026-07-29 · Session 1 - the whole client, from zero
 
 **DONE - toolchain.** Workstation had no Flutter/Dart/Java/Android SDK.

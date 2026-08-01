@@ -40,7 +40,7 @@ class AppServices {
     final outbox = OutboxService(db, apiOf);
     final sync = SyncEngine(store, outbox, apiOf);
     final mutations = Mutations(store, outbox, sync, apiOf);
-    final updater = UpdateService(() => session.ghPat);
+    final updater = UpdateService(apiOf);
     await outbox.refreshCount();
     await updater.loadInstalled();
     return AppServices._(

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -6,22 +5,26 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../api/client.dart';
 import 'platform.dart';
 
-/// Self-update on cue.
+/// Self-update, served by the agent.
 ///
-/// Every CI build on the `apk` branch publishes a GitHub Release tagged
-/// `apk-vX.Y.Z` with the versioned APK attached. "Check for update" compares
-/// that against the installed version and, if newer, downloads the asset and
-/// hands it to the Android package installer.
+/// This used to talk to the GitHub API directly, which meant the phone had to
+/// carry a fine-grained PAT for a private repo - a second long-lived credential
+/// on the most losable device, for the sole purpose of downloading a file the
+/// agent could already hand over. It now asks the agent instead:
 ///
-/// The repo is private, so a fine-grained PAT (contents: read) is required -
-/// stored in secure storage via Settings.
+///   GET /api/apk/latest    what build exists
+///   GET /api/apk/download  the signed binary itself
+///
+/// Both are gated by the session the app already holds, so there is no second
+/// credential to store, rotate or leak. The server does the GitHub talking with
+/// the token that already lives in the vault.
 class UpdateService extends ChangeNotifier {
-  UpdateService(this._patProvider);
+  UpdateService(this._apiProvider);
 
-  final String Function() _patProvider;
-  static const _repo = 'Sconl/isconl-agent';
+  final ApiClient Function() _apiProvider;
 
   String installedVersion = '';
   String? latestVersion;
@@ -29,63 +32,47 @@ class UpdateService extends ChangeNotifier {
   bool busy = false;
   double progress = 0;
 
+  /// Metadata for the build the agent is offering, once [check] has run.
+  Map<String, dynamic>? available;
+
   Future<void> loadInstalled() async {
     final info = await PackageInfo.fromPlatform();
     installedVersion = info.version;
     notifyListeners();
   }
 
-  Map<String, String> get _headers {
-    final pat = _patProvider();
-    return {
-      'Accept': 'application/vnd.github+json',
-      if (pat.isNotEmpty) 'Authorization': 'Bearer $pat',
-      'X-GitHub-Api-Version': '2022-11-28',
-    };
-  }
-
-  /// Returns null if up to date, otherwise the newer version string.
+  /// Returns the newer version string, or null when up to date or unreachable.
   Future<String?> check() async {
     busy = true;
-    state = 'Checking latest release…';
+    state = 'Asking the agent what build exists...';
     notifyListeners();
     try {
-      final res = await http
-          .get(Uri.parse('https://api.github.com/repos/$_repo/releases'),
-              headers: _headers)
-          .timeout(const Duration(seconds: 30));
-      if (res.statusCode == 404 || res.statusCode == 401) {
-        state = 'GitHub says no: add a fine-grained PAT in Settings '
-            '(the repo is private).';
+      final res = await _apiProvider().getJson('/api/apk/latest', cold: true);
+      final map = res is Map ? res.cast<String, dynamic>() : <String, dynamic>{};
+
+      if (map['available'] != true) {
+        state = (map['error'] as String?) ?? 'No build published yet.';
+        available = null;
         return null;
       }
-      if (res.statusCode != 200) {
-        state = 'GitHub error ${res.statusCode}';
-        return null;
-      }
-      final releases = (_jsonDecodeSafe(res.body) as List?) ?? [];
-      Map<String, dynamic>? best;
-      for (final r in releases.whereType<Map>()) {
-        final tag = (r['tag_name'] ?? '').toString();
-        if (tag.startsWith('apk-v')) {
-          best = r.cast<String, dynamic>();
-          break; // releases come newest-first
-        }
-      }
-      if (best == null) {
-        state = 'No APK releases published yet.';
-        return null;
-      }
-      latestVersion = best['tag_name'].toString().substring(5);
+
+      available = map;
+      latestVersion = (map['version'] ?? '').toString();
       if (compareVersions(latestVersion!, installedVersion) <= 0) {
         state = 'Up to date (v$installedVersion).';
         return null;
       }
-      state = 'v$latestVersion available.';
-      _pendingRelease = best;
+      final size = (map['sizeLabel'] ?? '').toString();
+      state = 'v$latestVersion available${size.isEmpty ? '' : ' · $size'}.';
       return latestVersion;
+    } on OfflineException {
+      state = 'Offline - cannot check for updates.';
+      return null;
+    } on ApiException catch (e) {
+      state = 'Check failed: ${e.message}';
+      return null;
     } catch (e) {
-      state = 'Check failed: offline?';
+      state = 'Check failed: $e';
       return null;
     } finally {
       busy = false;
@@ -93,48 +80,48 @@ class UpdateService extends ChangeNotifier {
     }
   }
 
-  Map<String, dynamic>? _pendingRelease;
-
-  /// Download the APK asset of the pending release and launch the installer.
+  /// Download the agent's copy of the APK and hand it to the system installer.
   Future<bool> downloadAndInstall() async {
-    final release = _pendingRelease;
-    if (release == null) return false;
-    final assets = (release['assets'] as List? ?? []).whereType<Map>();
-    Map<String, dynamic>? apkAsset;
-    for (final a in assets) {
-      if ((a['name'] ?? '').toString().endsWith('.apk')) {
-        apkAsset = a.cast<String, dynamic>();
-        break;
-      }
-    }
-    if (apkAsset == null) {
-      state = 'Release has no APK asset.';
-      notifyListeners();
-      return false;
-    }
+    final api = _apiProvider();
     busy = true;
     progress = 0;
-    state = 'Downloading v$latestVersion…';
+    state = 'Downloading v${latestVersion ?? ''}...';
     notifyListeners();
+
+    File? partial;
     try {
-      // Asset download from a private repo: request the asset id with
-      // octet-stream accept and follow the redirect.
-      final req = http.Request(
-          'GET',
-          Uri.parse(
-              'https://api.github.com/repos/$_repo/releases/assets/${apkAsset['id']}'));
-      req.headers.addAll({..._headers, 'Accept': 'application/octet-stream'});
-      final res = await http.Client().send(req);
+      var base = api.baseUrl.trim();
+      if (base.endsWith('/')) base = base.substring(0, base.length - 1);
+
+      final req = http.Request('GET', Uri.parse('$base/api/apk/download'));
+      if (api.token.isNotEmpty) {
+        req.headers['Authorization'] = 'Bearer ${api.token}';
+      }
+      // Render can be asleep and the file is tens of megabytes: this is the one
+      // request in the app that should not be held to the usual budget.
+      final res = await http.Client().send(req).timeout(
+            const Duration(minutes: 10),
+          );
+
+      if (res.statusCode == 404) {
+        state = 'The agent has no build to give (or the session expired).';
+        return false;
+      }
       if (res.statusCode >= 400) {
         state = 'Download failed (${res.statusCode}).';
         return false;
       }
+
       final total = res.contentLength ?? 0;
       final dir = await getApplicationCacheDirectory();
       final updates = Directory('${dir.path}/updates');
       if (!updates.existsSync()) updates.createSync(recursive: true);
-      final file = File('${updates.path}/isconl-update.apk');
-      final sink = file.openWrite();
+
+      // A half-written APK must never reach the installer, so it is assembled
+      // under a .part name and only renamed once the last byte has landed.
+      partial = File('${updates.path}/isconl-update.apk.part');
+      if (partial.existsSync()) partial.deleteSync();
+      final sink = partial.openWrite();
       var received = 0;
       await for (final chunk in res.stream) {
         sink.add(chunk);
@@ -144,16 +131,35 @@ class UpdateService extends ChangeNotifier {
           notifyListeners();
         }
       }
+      await sink.flush();
       await sink.close();
-      state = 'Handing to installer…';
+
+      if (total > 0 && received != total) {
+        state = 'Download was cut short - not installing a partial build.';
+        try { partial.deleteSync(); } catch (_) {}
+        return false;
+      }
+
+      final file = File('${updates.path}/isconl-update.apk');
+      if (file.existsSync()) file.deleteSync();
+      await partial.rename(file.path);
+      partial = null;
+
+      state = 'Handing to installer...';
       notifyListeners();
       await PlatformBridge.instance.installApk(file.path);
       state = 'Installer launched.';
       return true;
+    } on OfflineException {
+      state = 'Offline - cannot download.';
+      return false;
     } catch (e) {
       state = 'Update failed: $e';
       return false;
     } finally {
+      if (partial != null) {
+        try { partial.deleteSync(); } catch (_) {}
+      }
       busy = false;
       notifyListeners();
     }
@@ -172,13 +178,5 @@ class UpdateService extends ChangeNotifier {
       if (da != db) return da - db;
     }
     return 0;
-  }
-}
-
-dynamic _jsonDecodeSafe(String body) {
-  try {
-    return jsonDecode(body);
-  } catch (_) {
-    return null;
   }
 }
