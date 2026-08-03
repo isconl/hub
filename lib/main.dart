@@ -7,6 +7,8 @@ import 'services/alerts.dart';
 import 'services/branding.dart';
 import 'services/platform.dart';
 import 'theme.dart';
+import 'ui/widgets/brand.dart' as brand;
+import 'ui/widgets/brand.dart' show BrandMotion;
 import 'ui/login.dart';
 import 'ui/shell.dart';
 import 'ui/widgets/common.dart';
@@ -164,7 +166,9 @@ class _LockScreenState extends State<_LockScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const BrandMark(size: 44),
+            // Orbiting, because this screen is an active wait rather than an
+            // idle one - the agent is there, the door is not open yet.
+            const BrandMark(size: 44, motion: BrandMotion.working),
             const SizedBox(height: 18),
             Text('Locked', style: T.title),
             const SizedBox(height: 6),
@@ -182,10 +186,15 @@ class _LockScreenState extends State<_LockScreen> {
   }
 }
 
-/// The brand mark: custom logo if set, else the favicon dot-triple.
+/// The brand mark, wrapped so a custom logo can override it.
+///
+/// The mark itself lives in ui/widgets/brand.dart - exact geometry, two
+/// colours, and its own motion states. This wrapper exists only because
+/// Settings lets ARCHITECT drop in his own image at runtime, and that image wins.
 class BrandMark extends StatelessWidget {
-  const BrandMark({super.key, this.size = 26});
+  const BrandMark({super.key, this.size = 26, this.motion = BrandMotion.rest});
   final double size;
+  final BrandMotion motion;
 
   @override
   Widget build(BuildContext context) {
@@ -200,50 +209,8 @@ class BrandMark extends StatelessWidget {
                 width: size, height: size, fit: BoxFit.cover),
           );
         }
-        return SizedBox(
-          width: size,
-          height: size,
-          child: CustomPaint(painter: _FaviconPainter()),
-        );
+        return brand.BrandMark(size: size, motion: motion);
       },
     );
   }
-}
-
-class _FaviconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.width / 64;
-    final bgPaint = Paint()..color = C.bg;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(16 * s)),
-      bgPaint,
-    );
-    final ring = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4 * s
-      ..color = C.surface;
-    canvas.drawCircle(Offset(32 * s, 32 * s), 24 * s, ring);
-    final arc = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4 * s
-      ..strokeCap = StrokeCap.round
-      ..shader = const LinearGradient(colors: [C.green, C.greenDim])
-          .createShader(Offset.zero & size);
-    canvas.drawArc(
-      Rect.fromCircle(center: Offset(32 * s, 32 * s), radius: 24 * s),
-      -1.5708, // -90deg
-      1.5708, // quarter sweep
-      false,
-      arc,
-    );
-    canvas.drawCircle(Offset(32 * s, 20 * s), 4 * s, Paint()..color = C.green);
-    canvas.drawCircle(
-        Offset(32 * s, 32 * s), 6 * s, Paint()..color = C.greenBright);
-    canvas.drawCircle(
-        Offset(32 * s, 44 * s), 4 * s, Paint()..color = C.greenDim);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

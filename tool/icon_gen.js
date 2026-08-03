@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Generates Android launcher icons.
-// Default art: the iSconl favicon design (ring + gradient arc + dot triple).
+// Default art: the iSconl mark - grey loop, green node on it, gap punched
 // Custom art: drop a square PNG at branding/icon.png (8-bit RGB/RGBA,
 // transparent background recommended) and it is adopted instead.
 // Pure Node (zlib only) - no dependencies. Run: node tool/icon_gen.js
@@ -48,17 +48,33 @@ function encodePng(w, h, rgba) {
   return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
 }
 
-// ---------- scene (favicon.svg geometry, 64-unit design space) ----------
-const BG = [0x0d, 0x11, 0x17];
-const RING = [0x21, 0x26, 0x2d];
-const G1 = [0x3f, 0xb9, 0x50]; // #3fb950
-const G2 = [0x23, 0x86, 0x36]; // #238636
-const GB = [0x56, 0xd3, 0x64]; // #56d364
+// ---------- scene (logo.svg geometry, 256-unit design space) ----------
+//
+// The mark, drawn from the SAME numbers as dashboard/logo.svg and the Flutter
+// painter in lib/ui/widgets/brand.dart. Three implementations of one object, so
+// they share the constants and the derivation rather than three drawings that
+// look similar.
+//
+//   centre C = (128, 128)
+//   ring     R = 85 centreline, W = 42 thick   -> outer 106, inner 64
+//   node     N = (196, 77), r = 30
+//   gap      g = 8, hole radius = r + g = 38
+//
+// N is on the centreline exactly: 68^2 + 51^2 = 7225 = 85^2, which is
+// 17x(3,4,5). Nothing is approximated.
+//
+// TWO COLOURS. The gap is a HOLE, not a fill: the node's disc is subtracted
+// from the ring so the launcher background shows through it, exactly as the SVG
+// mask does. Painting the gap in the background colour would look identical on
+// the night ground and wrong on an adaptive-icon background of any other shade.
+const BG   = [0x0d, 0x11, 0x17]; // #0d1117  launcher plate only
+const RING = [0x7d, 0x85, 0x90]; // #7d8590  --text-3
+const NODE = [0x3f, 0xb9, 0x50]; // #3fb950  --green
 
-function lerp(a, b, t) { return a + (b - a) * t; }
-function mixc(c1, c2, t) { return [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)]; }
+const CX = 128, CY = 128, R = 85, W = 42;
+const NX = CX + 68, NY = CY - 51, NR = 30, HOLE = NR + 8;
 
-// Returns [r,g,b,a] for a point in 64-space; layers composited in order.
+// Returns [r,g,b,a] for a point in 256-space; layers composited in order.
 function sample(x, y, opts) {
   let r = 0, g = 0, b = 0, a = 0;
   const put = (c, ca) => {
@@ -69,33 +85,30 @@ function sample(x, y, opts) {
     b = (c[2] * ca + b * a * (1 - ca)) / na;
     a = na;
   };
-  const aa = 0.75; // edge softness in design units
+  const aa = 3.0; // edge softness in design units (256-space)
   const cov = (d) => Math.max(0, Math.min(1, 0.5 - d / aa));
+
   if (opts.background) {
-    // rounded rect 64x64 r16
-    const rr = 16, hw = 32;
-    const qx = Math.abs(x - 32) - (hw - rr), qy = Math.abs(y - 32) - (hw - rr);
+    const rr = 64, hw = 128;   // 256x256 plate, r64 - same 25% radius as before
+    const qx = Math.abs(x - CX) - (hw - rr), qy = Math.abs(y - CY) - (hw - rr);
     const dOut = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rr;
     put(BG, cov(dOut));
   }
+
   const mono = opts.mono;
-  const cx = 32, cy = 32, R = 24, W = 4;
-  const dc = Math.hypot(x - cx, y - cy);
-  // full ring
-  put(mono ? [255, 255, 255] : RING, cov(Math.abs(dc - R) - W / 2) * (mono ? 0.45 : 1));
-  // gradient arc: angle -90deg (top) to 0deg (right)
-  const ang = Math.atan2(y - cy, x - cx); // -PI..PI, -PI/2 = top
-  if (ang >= -Math.PI / 2 && ang <= 0) {
-    const t = (ang + Math.PI / 2) / (Math.PI / 2);
-    put(mono ? [255, 255, 255] : mixc(G1, G2, t), cov(Math.abs(dc - R) - W / 2));
-  }
-  // round caps at (32,8) and (56,32)
-  put(mono ? [255, 255, 255] : G1, cov(Math.hypot(x - 32, y - 8) - W / 2));
-  put(mono ? [255, 255, 255] : G2, cov(Math.hypot(x - 56, y - 32) - W / 2));
-  // three dots
-  put(mono ? [255, 255, 255] : G1, cov(Math.hypot(x - 32, y - 20) - 4));
-  put(mono ? [255, 255, 255] : GB, cov(Math.hypot(x - 32, y - 32) - 6));
-  put(mono ? [255, 255, 255] : G2, cov(Math.hypot(x - 32, y - 44) - 4));
+  const dc = Math.hypot(x - CX, y - CY);
+  const dn = Math.hypot(x - NX, y - NY);
+
+  // The ring, minus the hole. Coverage is multiplied by the INVERSE of the
+  // hole's coverage, which antialiases the cut edge instead of stair-stepping
+  // it - the same job the SVG mask does for free.
+  const ringCov = cov(Math.abs(dc - R) - W / 2);
+  const holeCov = cov(dn - HOLE);
+  put(mono ? [255, 255, 255] : RING, ringCov * (1 - holeCov) * (mono ? 0.55 : 1));
+
+  // The node.
+  put(mono ? [255, 255, 255] : NODE, cov(dn - NR));
+
   return [r, g, b, a];
 }
 
@@ -103,8 +116,10 @@ function sample(x, y, opts) {
 function render(size, { background, mono, artFrac }) {
   const ss = 3; // supersample
   const rgba = Buffer.alloc(size * size * 4);
-  const scale = (size * artFrac) / 64;
-  const off = (size - 64 * scale) / 2;
+  // Design space is 256 units now (was 64 when the art was the old favicon).
+  const DESIGN = 256;
+  const scale = (size * artFrac) / DESIGN;
+  const off = (size - DESIGN * scale) / 2;
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
       let r = 0, g = 0, b = 0, a = 0;

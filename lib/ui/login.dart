@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
 import '../main.dart' show BrandMark;
+import 'widgets/brand.dart' show BrandMotion;
 import '../theme.dart';
 import 'widgets/common.dart';
 
@@ -173,7 +174,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(child: BrandMark(size: 52)),
+                  // The first thing seen on a cold launch, so it draws itself:
+                  // the node travels one revolution and the loop appears behind
+                  // it. One gesture, 1100ms, ending where it started.
+                  const Center(
+                      child: BrandMark(size: 52, motion: BrandMotion.drawing)),
                   const SizedBox(height: 18),
                   Center(
                     child: GestureDetector(
@@ -186,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 4),
                   Center(
-                    child: Text('Sovereign personal agent',
+                    child: Text('Nothing gets lost',
                         style: T.small.copyWith(color: C.text3)),
                   ),
                   const SizedBox(height: 30),
