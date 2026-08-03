@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import 'api/client.dart';
 import 'data/db.dart';
+import 'data/modules.dart';
 import 'data/mutations.dart';
 import 'data/outbox.dart';
 import 'data/store.dart';
@@ -15,6 +16,7 @@ class AppServices {
     required this.db,
     required this.session,
     required this.store,
+    required this.modules,
     required this.outbox,
     required this.sync,
     required this.mutations,
@@ -24,6 +26,10 @@ class AppServices {
   final AppDb db;
   final SessionService session;
   final Store store;
+
+  /// The local module library. Downloaded modules stay downloaded until their
+  /// content changes - see lib/data/modules.dart.
+  final ModuleLibrary modules;
   final OutboxService outbox;
   final SyncEngine sync;
   final Mutations mutations;
@@ -40,13 +46,16 @@ class AppServices {
     final outbox = OutboxService(db, apiOf);
     final sync = SyncEngine(store, outbox, apiOf);
     final mutations = Mutations(store, outbox, sync, apiOf);
+    final modules = ModuleLibrary(db, store, apiOf);
     final updater = UpdateService(apiOf);
     await outbox.refreshCount();
+    await modules.load();
     await updater.loadInstalled();
     return AppServices._(
       db: db,
       session: session,
       store: store,
+      modules: modules,
       outbox: outbox,
       sync: sync,
       mutations: mutations,

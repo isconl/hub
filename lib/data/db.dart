@@ -76,6 +76,24 @@ class AppDb {
     }
   }
 
+  /// Keys only, for building an index of what is already on the device without
+  /// decoding every cached body. The module library uses it to answer "what can
+  /// I read offline" in one query.
+  Future<List<String>> snapshotKeysWithPrefix(String prefix) async {
+    final rows = await _db.query('snapshots',
+        columns: ['key'], where: 'key LIKE ?', whereArgs: ['$prefix%']);
+    return rows.map((r) => r['key'] as String).toList();
+  }
+
+  Future<void> deleteSnapshot(String key) =>
+      _db.delete('snapshots', where: 'key = ?', whereArgs: [key]).then((_) {});
+
+  /// Wipes every cached body. Sign-out only.
+  ///
+  /// NOTE: this takes the downloaded learning modules with it, which is correct
+  /// on sign-out (the mirror belongs to a session) and would be wrong anywhere
+  /// else. Nothing but sign-out may call it - a downloaded module stays until
+  /// its content changes or ARCHITECT forgets it deliberately.
   Future<void> deleteSnapshots() => _db.delete('snapshots').then((_) {});
 
   // ---- outbox ----

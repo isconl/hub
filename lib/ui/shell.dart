@@ -54,7 +54,13 @@ class _ShellState extends State<Shell> {
       services.sync.onNewAlerts =
           (fresh) => AlertService.instance.showAgentAlerts(fresh);
       services.sync.start();
-      services.sync.fullSync(wake: true);
+      services.sync.fullSync(wake: true).then((_) async {
+        // Downloaded modules stay downloaded. This asks the agent what moved
+        // and re-pulls only that - on a library of ninety modules it is
+        // usually zero requests.
+        await services.modules.check();
+        await services.modules.refreshStale();
+      });
     });
   }
 

@@ -1,59 +1,129 @@
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
+import '../../data/modules.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show ShellAppBar;
 import '../widgets/common.dart';
 import '../widgets/reader.dart';
 
-/// Courses -> lessons -> reader. Lessons cache for offline reading.
-class LearningView extends StatelessWidget {
+/// Courses -> lessons -> reader.
+///
+/// A module downloaded here stays on the device until its content changes. The
+/// state of every module is visible rather than implied, because "can I read
+/// this on the train" is a question the UI should answer before the train and
+/// not at the moment of failure. See lib/data/modules.dart.
+class LearningView extends StatefulWidget {
   const LearningView({super.key});
+
+  @override
+  State<LearningView> createState() => _LearningViewState();
+}
+
+class _LearningViewState extends State<LearningView> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppScope.of(context).modules.check();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
-    return SnapshotView(
-      snapshot: services.store.learning,
-      builder: (context, data) {
-        final courses = fmt.lm(fmt.m(data)['courses']);
-        if (courses.isEmpty) {
-          return const EmptyState(
-            'No courses yet',
-            'Courses live in the vault under memory/learning.',
-            icon: Icons.school_rounded,
+    return ListenableBuilder(
+      listenable: services.modules,
+      builder: (context, _) => SnapshotView(
+        snapshot: services.store.learning,
+        builder: (context, data) {
+          final courses = fmt.lm(fmt.m(data)['courses']);
+          if (courses.isEmpty) {
+            return const EmptyState(
+              'No courses yet',
+              'Courses live in the vault under memory/learning.',
+              icon: Icons.school_rounded,
+            );
+          }
+          final lib = services.modules;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (lib.downloadedCount > 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10, left: 2),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.offline_pin_rounded, size: 13, color: C.green),
+                      const SizedBox(width: 7),
+                      Text(
+                        lib.staleCount > 0
+                            ? '${lib.downloadedCount} modules on this device · ${lib.staleCount} updated on the agent'
+                            : '${lib.downloadedCount} modules on this device, readable offline',
+                        style: T.tiny.copyWith(
+                            color: lib.staleCount > 0 ? C.amber : C.text3),
+                      ),
+                    ],
+                  ),
+                ),
+              for (final course in courses)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _CourseTile(course: course),
+                ),
+            ],
           );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final course in courses)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _CourseTile(course: course),
-              ),
-          ],
-        );
-      },
+        },
+      ),
     );
   }
 }
 
-class _CourseTile extends StatelessWidget {
+class _CourseTile extends StatefulWidget {
   const _CourseTile({required this.course});
   final Map<String, dynamic> course;
 
   @override
+  State<_CourseTile> createState() => _CourseTileState();
+}
+
+class _CourseTileState extends State<_CourseTile> {
+  bool _pulling = false;
+  int _pulled = 0;
+  int _total = 0;
+
+  Future<void> _takeOffline(String courseId, List<String> files) async {
+    setState(() { _pulling = true; _pulled = 0; _total = files.length; });
+    final lib = AppScope.of(context).modules;
+    await lib.downloadCourse(courseId, files, onProgress: (d, t) {
+      if (mounted) setState(() { _pulled = d; _total = t; });
+    });
+    if (!mounted) return;
+    setState(() => _pulling = false);
+    toast(context, '$courseId is on this device');
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final lessons = fmt.lm(course['lessons']);
+    final lib = AppScope.of(context).modules;
+    final lessons = fmt.lm(widget.course['lessons']);
     final done = lessons
         .where((l) => fmt.s(l['status']).toLowerCase() == 'done')
         .length;
     final pct = lessons.isEmpty ? 0.0 : done / lessons.length;
-    final courseId = fmt.s(course['ID']).isEmpty
-        ? fmt.s(course['id'])
-        : fmt.s(course['ID']);
+    final courseId = fmt.s(widget.course['ID']).isEmpty
+        ? fmt.s(widget.course['id'])
+        : fmt.s(widget.course['ID']);
+
+    final files = lessons.map((l) => fmt.s(l['file'])).where((f) => f.isNotEmpty).toList();
+    final offline = files
+        .where((f) => lib.status(courseId, f).downloaded)
+        .length;
+    final stale = files
+        .where((f) => lib.status(courseId, f).state == ModuleState.stale)
+        .length;
+    final allHere = files.isNotEmpty && offline == files.length && stale == 0;
 
     return Panel(
       child: Column(
@@ -63,9 +133,9 @@ class _CourseTile extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  fmt.s(course['TITLE']).isEmpty
+                  fmt.s(widget.course['TITLE']).isEmpty
                       ? courseId
-                      : fmt.s(course['TITLE']),
+                      : fmt.s(widget.course['TITLE']),
                   style: T.w600(T.body2),
                 ),
               ),
@@ -78,58 +148,118 @@ class _CourseTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(3),
             child: LinearProgressIndicator(value: pct, minHeight: 4),
           ),
-          const SizedBox(height: 10),
-          for (final lesson in lessons)
-            InkWell(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => LessonScreen(
-                    course: courseId,
-                    file: fmt.s(lesson['file']),
-                    title: fmt.s(lesson['title']),
-                    status: fmt.s(lesson['status']),
+          if (files.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Row(
+              children: [
+                Icon(
+                    allHere ? Icons.offline_pin_rounded : Icons.cloud_download_rounded,
+                    size: 12,
+                    color: allHere ? C.green : (stale > 0 ? C.amber : C.text3)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _pulling
+                        ? 'Downloading $_pulled of $_total...'
+                        : stale > 0
+                            ? '$offline of ${files.length} on this device · $stale updated'
+                            : allHere
+                                ? 'All ${files.length} on this device'
+                                : '$offline of ${files.length} on this device',
+                    style: T.tiny.copyWith(
+                        color: stale > 0 ? C.amber : (allHere ? C.green : C.text3)),
                   ),
                 ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Icon(
-                      switch (fmt.s(lesson['status']).toLowerCase()) {
-                        'done' => Icons.check_circle_rounded,
-                        'learning' => Icons.play_circle_outline_rounded,
-                        _ => Icons.circle_outlined,
-                      },
-                      size: 15,
-                      color: switch (fmt.s(lesson['status']).toLowerCase()) {
-                        'done' => C.green,
-                        'learning' => C.amber,
-                        _ => C.text3,
-                      },
+                if (!allHere && !_pulling)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(Sz.rSm),
+                    onTap: () => _takeOffline(courseId, files),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      child: Text(stale > 0 ? 'Update all' : 'Take offline',
+                          style: T.tiny.copyWith(
+                              color: C.green, fontWeight: FontWeight.w600)),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        fmt.s(lesson['title']).isEmpty
-                            ? fmt.s(lesson['file'])
-                            : fmt.s(lesson['title']),
-                        style: T.small.copyWith(
-                          color: fmt.s(lesson['status']).toLowerCase() ==
-                                  'done'
-                              ? C.text3
-                              : C.text2,
-                        ),
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded,
-                        size: 15, color: C.text3),
-                  ],
+                  ),
+                if (_pulling) const MiniSpinner(),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          for (final lesson in lessons)
+            _LessonRow(courseId: courseId, lesson: lesson),
+        ],
+      ),
+    );
+  }
+}
+
+class _LessonRow extends StatelessWidget {
+  const _LessonRow({required this.courseId, required this.lesson});
+  final String courseId;
+  final Map<String, dynamic> lesson;
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = AppScope.of(context).modules;
+    final file = fmt.s(lesson['file']);
+    final status = fmt.s(lesson['status']).toLowerCase();
+    final st = lib.status(courseId, file);
+
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LessonScreen(
+            course: courseId,
+            file: file,
+            title: fmt.s(lesson['title']),
+            status: fmt.s(lesson['status']),
+          ),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(
+              switch (status) {
+                'done' => Icons.check_circle_rounded,
+                'learning' => Icons.play_circle_outline_rounded,
+                _ => Icons.circle_outlined,
+              },
+              size: 15,
+              color: switch (status) {
+                'done' => C.green,
+                'learning' => C.amber,
+                _ => C.text3,
+              },
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                fmt.s(lesson['title']).isEmpty ? file : fmt.s(lesson['title']),
+                style: T.small.copyWith(
+                  color: status == 'done' ? C.text3 : C.text2,
                 ),
               ),
             ),
-        ],
+            // Offline state, as a 10px dot rather than a word. It is reference
+            // information you scan a column of, not something to read.
+            if (st.state == ModuleState.stale)
+              const Tooltip(
+                message: 'Updated on the agent - opens the new version',
+                child: Icon(Icons.sync_problem_rounded, size: 12, color: C.amber),
+              )
+            else if (st.downloaded)
+              const Tooltip(
+                message: 'On this device',
+                child: Icon(Icons.offline_pin_rounded, size: 12, color: C.green),
+              ),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right_rounded, size: 15, color: C.text3),
+          ],
+        ),
       ),
     );
   }
@@ -156,6 +286,24 @@ class LessonScreen extends StatefulWidget {
 class _LessonScreenState extends State<LessonScreen> {
   late String _status = widget.status;
   final _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    // The cached body is served immediately - that is the whole point of
+    // keeping it. A refresh is issued ONLY when the agent's revision differs
+    // from the one on disk, so opening a module you already have costs nothing
+    // and works with no signal.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final lib = AppScope.of(context).modules;
+      final st = lib.status(widget.course, widget.file);
+      if (st.state == ModuleState.absent) return;   // SnapshotView fetches it
+      if (st.state == ModuleState.stale) {
+        await lib.download(widget.course, widget.file);
+      }
+    });
+  }
 
   @override
   void dispose() {
