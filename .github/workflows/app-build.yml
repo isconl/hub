@@ -80,6 +80,24 @@ jobs:
           git commit -m "ci: bump to v${{ steps.bump.outputs.version }} [skip ci]"
           git push origin app
 
+      # Created here, exactly once, before any build runs. Three matrix jobs
+      # racing to create-or-upload the same release is how you get two releases
+      # or a lost artefact. The agent skips `apk-v*` releases that carry no
+      # .apk, so this empty release is invisible to the phone until Android
+      # finishes uploading into it.
+      - name: Open the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: apk-v${{ steps.bump.outputs.version }}
+        run: |
+          NOTES='Automated build from the app branch. Android installs over the previous version and data is preserved, because every build is signed with the same key - in-app: Settings -> Check for update. Windows and Linux artefacts are attached to this same release.'
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --target app \
+              --title "iSconl v${{ steps.bump.outputs.version }}" \
+              --notes "$NOTES"
+          fi
+
   build:
     needs: version
     strategy:
@@ -185,19 +203,37 @@ jobs:
           tar -czf "$NAME" -C build/linux/x64/release/bundle .
           echo "ARTEFACT=$NAME" >> "$GITHUB_ENV"
 
-      # First platform to finish creates the release; the rest upload into it.
-      # --clobber makes a re-run idempotent instead of failing on a name clash.
-      - name: Publish artefact
+      # The release already exists (opened by the version job), so every matrix
+      # job only uploads. --clobber makes a re-run idempotent instead of failing
+      # on a name clash.
+      - name: Upload artefact
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: apk-v${{ needs.version.outputs.version }}
+        run: gh release upload "$TAG" "$ARTEFACT" --clobber
+
+  # The update path on an installed phone is unfixable remotely, so it gets an
+  # explicit assertion rather than an assumption. If the APK is missing, this
+  # fails the run loudly instead of leaving a half-published release behind.
+  verify:
+    needs: [version, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert the Android artefact reached the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: apk-v${{ needs.version.outputs.version }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --target app \
-              --title "iSconl v${{ needs.version.outputs.version }}" \
-              --notes "Automated build from the app branch. Android installs over the previous version - data is preserved. In-app: Settings -> Check for update. Windows and Linux artefacts are attached to this same release." \
-              || true
+          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name' || true)
+          echo "Attached to $TAG:"; echo "$ASSETS"
+          if ! echo "$ASSETS" | grep -qE '\.apk$'; then
+            echo "::error::No .apk on $TAG - the phone has nothing to update to."
+            exit 1
           fi
-          gh release upload "$TAG" "$ARTEFACT" --clobber
+          echo "$ASSETS" | grep -qE '_windows_x64\.zip$' \
+            || echo "::warning::No Windows artefact on $TAG."
+          echo "$ASSETS" | grep -qE '_linux_x64\.tar\.gz$' \
+            || echo "::warning::No Linux artefact on $TAG."
