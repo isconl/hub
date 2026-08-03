@@ -55,11 +55,12 @@ class _ShellState extends State<Shell> {
           (fresh) => AlertService.instance.showAgentAlerts(fresh);
       services.sync.start();
       services.sync.fullSync(wake: true).then((_) async {
-        // Downloaded modules stay downloaded. This asks the agent what moved
-        // and re-pulls only that - on a library of ninety modules it is
-        // usually zero requests.
+        // The whole library, on the device, whether or not he has opened it.
+        // check() asks the agent what exists and what moved; prefetchAll() pulls
+        // everything not already current, including modules never touched. On a
+        // library that is already complete this is zero requests.
         await services.modules.check();
-        await services.modules.refreshStale();
+        await services.modules.prefetchAll();
       });
     });
   }

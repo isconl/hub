@@ -50,19 +50,43 @@ class _LearningViewState extends State<LearningView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (lib.downloadedCount > 0)
+              if (lib.prefetching)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10, left: 2),
                   child: Row(
                     children: [
-                      const Icon(Icons.offline_pin_rounded, size: 13, color: C.green),
-                      const SizedBox(width: 7),
+                      const MiniSpinner(),
+                      const SizedBox(width: 8),
                       Text(
-                        lib.staleCount > 0
-                            ? '${lib.downloadedCount} modules on this device · ${lib.staleCount} updated on the agent'
-                            : '${lib.downloadedCount} modules on this device, readable offline',
-                        style: T.tiny.copyWith(
-                            color: lib.staleCount > 0 ? C.amber : C.text3),
+                        'Taking the library offline · ${lib.prefetchDone} of ${lib.prefetchTotal}',
+                        style: T.tiny.copyWith(color: C.text2),
+                      ),
+                    ],
+                  ),
+                )
+              else if (lib.downloadedCount > 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10, left: 2),
+                  child: Row(
+                    children: [
+                      Icon(
+                          lib.staleCount > 0
+                              ? Icons.sync_problem_rounded
+                              : Icons.offline_pin_rounded,
+                          size: 13,
+                          color: lib.staleCount > 0 ? C.amber : C.green),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          lib.staleCount > 0
+                              ? '${lib.downloadedCount} modules on this device · ${lib.staleCount} updated on the agent'
+                              : lib.knownCount > 0 &&
+                                      lib.downloadedCount >= lib.knownCount
+                                  ? 'The whole library is on this device, ${lib.downloadedCount} modules, readable anywhere'
+                                  : '${lib.downloadedCount} of ${lib.knownCount} modules on this device',
+                          style: T.tiny.copyWith(
+                              color: lib.staleCount > 0 ? C.amber : C.text3),
+                        ),
                       ),
                     ],
                   ),

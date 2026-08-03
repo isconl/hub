@@ -183,8 +183,8 @@ class ModuleLibrary extends ChangeNotifier {
 
   /// Refresh only what actually moved, and only when online.
   ///
-  /// Called after a full sync. On a library of ninety modules this is usually
-  /// zero requests, which is the difference between "cached" and "kept".
+  /// On a library of ninety modules this is usually zero requests, which is the
+  /// difference between "cached" and "kept".
   Future<int> refreshStale({int limit = 25}) async {
     final stale = _local.keys
         .where((k) => _manifest[k] != null && fmt.s(_manifest[k]!['rev']) != _local[k])
@@ -195,6 +195,55 @@ class ModuleLibrary extends ChangeNotifier {
       final parts = k.split('/');
       if (parts.length != 2) continue;
       if (await download(parts[0], parts[1])) done++;
+    }
+    return done;
+  }
+
+  /// Whether a full pre-download pass is running, and how far through.
+  bool prefetching = false;
+  int prefetchDone = 0;
+  int prefetchTotal = 0;
+
+  /// EVERY module, downloaded whether or not it has been opened.
+  ///
+  /// ARCHITECT's instruction: he wants the whole library on the phone wherever he
+  /// goes, without having opened each module first. So this is not a cache warm
+  /// that triggers on use - it runs after every sync and pulls anything not
+  /// already current, including modules he has never touched.
+  ///
+  /// Affordable by arithmetic rather than by hope: 91 modules of markdown is
+  /// about 1.5MB, so this is not gated on WiFi and does not need a setting. If
+  /// the library ever grows to where that stops being true, the gate belongs
+  /// here and nowhere else.
+  ///
+  /// Sequential, and it stops the moment a request fails. A phone that just lost
+  /// signal should not grind through ninety timeouts; the next sync picks up
+  /// exactly where this left off, because the manifest comparison is stateless.
+  Future<int> prefetchAll() async {
+    if (prefetching) return 0;
+    final wanted = _manifest.keys
+        .where((k) => status(k.split('/').first, k.split('/').last).needsRefresh)
+        .toList()
+      ..sort();
+    if (wanted.isEmpty) return 0;
+
+    prefetching = true;
+    prefetchDone = 0;
+    prefetchTotal = wanted.length;
+    notifyListeners();
+    var done = 0;
+    try {
+      for (final k in wanted) {
+        final parts = k.split('/');
+        if (parts.length != 2) continue;
+        if (!await download(parts[0], parts[1])) break;   // offline - stop, resume later
+        done++;
+        prefetchDone = done;
+        notifyListeners();
+      }
+    } finally {
+      prefetching = false;
+      notifyListeners();
     }
     return done;
   }
