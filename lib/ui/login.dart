@@ -191,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 4),
                   Center(
-                    child: Text('Nothing gets lost',
+                    child: Text('Enter the Architect...',
                         style: T.small.copyWith(color: C.text3)),
                   ),
                   const SizedBox(height: 30),
