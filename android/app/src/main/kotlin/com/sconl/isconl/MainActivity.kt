@@ -1,6 +1,10 @@
 package com.sconl.isconl
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.provider.Telephony
+import androidx.core.app.ActivityCompat
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -16,6 +20,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingSharedText: String? = null
     private var pickResult: MethodChannel.Result? = null
     private val pickRequestCode = 7301
+    private val smsRequestCode = 7302
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -56,9 +61,90 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                     }
                 }
+
+                // ── SMS ────────────────────────────────────────────────────
+                // Three calls, deliberately small: is it granted, ask for it,
+                // and read the inbox since a timestamp. Parsing happens in Dart
+                // where it can be tested; this side only fetches bytes.
+                "smsGranted" -> result.success(smsGranted())
+
+                "requestSms" -> {
+                    // Android shows the sheet; the answer arrives on the next
+                    // smsGranted() call rather than through a callback, which
+                    // keeps this side free of result bookkeeping that can leak.
+                    if (!smsGranted()) {
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS),
+                            smsRequestCode
+                        )
+                    }
+                    result.success(smsGranted())
+                }
+
+                "readSms" -> {
+                    if (!smsGranted()) {
+                        // Not an error: it is a state the UI must be able to show.
+                        result.success(mapOf("granted" to false, "messages" to emptyList<Any>()))
+                    } else {
+                        try {
+                            val since = (call.argument<Number>("since")?.toLong()) ?: 0L
+                            val limit = (call.argument<Number>("limit")?.toInt()) ?: 500
+                            result.success(mapOf("granted" to true, "messages" to readSms(since, limit)))
+                        } catch (e: Exception) {
+                            result.error("SMS", e.message, null)
+                        }
+                    }
+                }
+
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private fun smsGranted(): Boolean =
+        checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * The inbox since a timestamp, newest first.
+     *
+     * Only the four columns Dart needs are selected. Reading the whole row would
+     * pull the thread id, read state, subject and service centre for no purpose,
+     * and the less of his message store crosses the channel the better.
+     *
+     * Filtered to M-Pesa at the query level so ordinary conversations are never
+     * even loaded into memory, let alone forwarded. The Dart side checks the
+     * sender again - two gates, because this one is an optimisation and that one
+     * is the guarantee.
+     */
+    private fun readSms(since: Long, limit: Int): List<Map<String, Any?>> {
+        val out = ArrayList<Map<String, Any?>>()
+        val cols = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE
+        )
+        val where = "${Telephony.Sms.DATE} > ? AND (${Telephony.Sms.ADDRESS} LIKE ? OR ${Telephony.Sms.ADDRESS} LIKE ?)"
+        val args = arrayOf(since.toString(), "MPESA", "M-PESA")
+        contentResolver.query(
+            Telephony.Sms.Inbox.CONTENT_URI, cols, where, args,
+            "${Telephony.Sms.DATE} DESC LIMIT $limit"
+        )?.use { c ->
+            val iId = c.getColumnIndex(Telephony.Sms._ID)
+            val iAddr = c.getColumnIndex(Telephony.Sms.ADDRESS)
+            val iBody = c.getColumnIndex(Telephony.Sms.BODY)
+            val iDate = c.getColumnIndex(Telephony.Sms.DATE)
+            while (c.moveToNext()) {
+                out.add(mapOf(
+                    "id" to (if (iId >= 0) c.getString(iId) else null),
+                    "sender" to (if (iAddr >= 0) c.getString(iAddr) else null),
+                    "body" to (if (iBody >= 0) c.getString(iBody) else null),
+                    "date" to (if (iDate >= 0) c.getLong(iDate) else 0L)
+                ))
+            }
+        }
+        return out
     }
 
     override fun onNewIntent(intent: Intent) {

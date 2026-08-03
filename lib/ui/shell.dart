@@ -61,6 +61,9 @@ class _ShellState extends State<Shell> {
         // library that is already complete this is zero requests.
         await services.modules.check();
         await services.modules.prefetchAll();
+        // M-Pesa context, every sync. With nothing new this is one cheap
+        // platform call and no network - see services/sms_ingest.dart.
+        await services.sms.run();
       });
     });
   }

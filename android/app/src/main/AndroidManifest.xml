@@ -9,6 +9,22 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
 
+    <!-- SMS ingestion. Reading his messages is how M-Pesa movements and the
+         people in them reach the agent without him typing anything.
+
+         READ_SMS and RECEIVE_SMS are effectively unobtainable for a Play Store
+         app: Google restricts them to default SMS handlers and a handful of
+         approved use cases. This app is served by the agent itself and never
+         touches a store, so the permission is simply granted on the device. That
+         distribution choice is what makes the feature possible at all, and it is
+         worth recording here rather than discovering later.
+
+         Scope discipline: the app reads, parses and forwards. It never sends an
+         SMS, so SEND_SMS is deliberately absent - the permission that could cost
+         money or impersonate him is not requested. -->
+    <uses-permission android:name="android.permission.READ_SMS"/>
+    <uses-permission android:name="android.permission.RECEIVE_SMS"/>
+
     <application
         android:label="iSconl"
         android:name="${applicationName}"
@@ -52,6 +68,18 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Live capture. A backfill on open would miss anything that arrived
+             while the app was closed, and polling the inbox would be both slower
+             and heavier than being told. -->
+        <receiver
+            android:name=".SmsReceiver"
+            android:permission="android.permission.BROADCAST_SMS"
+            android:exported="true">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED"/>
+            </intent-filter>
+        </receiver>
     </application>
     <queries>
         <intent>

@@ -39,6 +39,10 @@ class _SettingsViewState extends State<SettingsView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ---- automatic context ----
+              const SectionLabel('Automatic context'),
+              const SmsCard(),
+
               // ---- connection ----
               const SectionLabel('Connection'),
               Panel(
@@ -360,4 +364,147 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
+}
+
+/// M-Pesa context from SMS.
+///
+/// Every number here is reported rather than implied, because "is this working"
+/// deserves an answer that is not a feeling. The copy is explicit about scope:
+/// only M-Pesa messages are ever read, his conversations are untouched, and the
+/// app holds no permission to send an SMS at all.
+class SmsCard extends StatefulWidget {
+  const SmsCard({super.key});
+
+  @override
+  State<SmsCard> createState() => _SmsCardState();
+}
+
+class _SmsCardState extends State<SmsCard> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppScope.of(context).sms.refreshPermission();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sms = AppScope.of(context).sms;
+    return ListenableBuilder(
+      listenable: sms,
+      builder: (context, _) => Panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(sms.granted ? Icons.sms_rounded : Icons.sms_failed_rounded,
+                    size: 17, color: sms.granted ? C.green : C.text3),
+                const SizedBox(width: 10),
+                Expanded(child: Text('M-Pesa from SMS', style: T.w600(T.body2))),
+                if (sms.busy) const MiniSpinner(),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              sms.granted
+                  ? 'Reading M-Pesa messages only. Every movement becomes a '
+                    'transaction, and money moving to or from someone in your '
+                    'circle also becomes a touchpoint.'
+                  : 'Grant permission and every M-Pesa message becomes a ledger '
+                    'entry automatically. Only messages from M-PESA are read - '
+                    'your conversations are never touched, and the app cannot '
+                    'send an SMS at all.',
+              style: T.small.copyWith(color: C.text3, height: 1.5),
+            ),
+            if (sms.granted) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _Stat('imported', '${sms.imported}'),
+                  _Stat('duplicates skipped', '${sms.skippedDuplicate}'),
+                  _Stat('not recognised', '${sms.unparsedCount}'),
+                ],
+              ),
+              if (sms.lastRun != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text('last read ${fmt.ago(sms.lastRun!.toIso8601String())}',
+                      style: T.monoSmall),
+                ),
+            ],
+            if (sms.lastError != null) ...[
+              const SizedBox(height: 10),
+              Text(sms.lastError!, style: T.tiny.copyWith(color: C.amber, height: 1.5)),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (!sms.granted)
+                  FilledButton.icon(
+                    onPressed: () async {
+                      final ok = await sms.request();
+                      if (!context.mounted) return;
+                      if (ok) {
+                        final n = await sms.run();
+                        if (!context.mounted) return;
+                        toast(context, n > 0
+                            ? '$n movement${n == 1 ? '' : 's'} imported'
+                            : 'Nothing new to import');
+                      }
+                    },
+                    icon: const Icon(Icons.check_rounded, size: 16),
+                    label: const Text('Allow and import'),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: sms.busy ? null : () async {
+                      final n = await sms.run();
+                      if (!context.mounted) return;
+                      toast(context, n > 0
+                          ? '$n movement${n == 1 ? '' : 's'} imported'
+                          : 'Nothing new to import');
+                    },
+                    icon: const Icon(Icons.refresh_rounded, size: 15),
+                    label: const Text('Import now'),
+                  ),
+                const Spacer(),
+                if (sms.granted)
+                  TextButton(
+                    // Safe by construction: the agent deduplicates on the M-Pesa
+                    // code, so a re-read reconciles rather than duplicates.
+                    onPressed: sms.busy ? null : () async {
+                      await sms.resetMark();
+                      if (!context.mounted) return;
+                      toast(context, 'Will re-read the last 90 days on the next import');
+                    },
+                    child: const Text('Re-read 90 days'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: T.mono.copyWith(color: C.text, fontSize: 15)),
+          Text(label, style: T.tiny.copyWith(fontSize: 9.5)),
+        ],
+      ),
+    );
+  }
 }

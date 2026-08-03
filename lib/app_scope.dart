@@ -9,6 +9,7 @@ import 'data/store.dart';
 import 'data/sync.dart';
 import 'services/narration.dart';
 import 'services/session.dart';
+import 'services/sms_ingest.dart';
 import 'services/updater.dart';
 
 /// Composition root: one instance of every service, built in main().
@@ -19,6 +20,7 @@ class AppServices {
     required this.store,
     required this.modules,
     required this.narrator,
+    required this.sms,
     required this.outbox,
     required this.sync,
     required this.mutations,
@@ -36,6 +38,9 @@ class AppServices {
   /// Course audio: the device voice by default, the agent's narration on
   /// request. See services/narration.dart.
   final Narrator narrator;
+
+  /// Automatic M-Pesa context from his SMS. See services/sms_ingest.dart.
+  final SmsIngest sms;
   final OutboxService outbox;
   final SyncEngine sync;
   final Mutations mutations;
@@ -54,6 +59,7 @@ class AppServices {
     final mutations = Mutations(store, outbox, sync, apiOf);
     final modules = ModuleLibrary(db, store, apiOf);
     final narrator = Narrator(apiOf);
+    final sms = SmsIngest(apiOf);
     final updater = UpdateService(apiOf);
     await outbox.refreshCount();
     await modules.load();
@@ -64,6 +70,7 @@ class AppServices {
       store: store,
       modules: modules,
       narrator: narrator,
+      sms: sms,
       outbox: outbox,
       sync: sync,
       mutations: mutations,
