@@ -86,6 +86,17 @@ class ModuleLibrary extends ChangeNotifier {
   /// Every module the agent knows about, whether or not it is on the device.
   int get knownCount => _manifest.length;
 
+  /// The agent's narration state for a module, straight from the manifest:
+  /// { available, rev, stale, bytes, at }, or null when the manifest has not
+  /// been fetched. Null and {available:false} both mean "no audio to play";
+  /// the distinction is whether we have asked the agent yet.
+  Map<String, dynamic>? audioFor(String course, String file) {
+    final e = _manifest[keyOf(course, file)];
+    if (e == null) return null;
+    final a = e['audio'];
+    return a is Map ? a.cast<String, dynamic>() : null;
+  }
+
   ModuleStatus status(String course, String file) {
     final k = keyOf(course, file);
     final entry = _manifest[k];

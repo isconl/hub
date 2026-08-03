@@ -7,6 +7,7 @@ import 'data/mutations.dart';
 import 'data/outbox.dart';
 import 'data/store.dart';
 import 'data/sync.dart';
+import 'services/narration.dart';
 import 'services/session.dart';
 import 'services/updater.dart';
 
@@ -17,6 +18,7 @@ class AppServices {
     required this.session,
     required this.store,
     required this.modules,
+    required this.narrator,
     required this.outbox,
     required this.sync,
     required this.mutations,
@@ -30,6 +32,10 @@ class AppServices {
   /// The local module library. Downloaded modules stay downloaded until their
   /// content changes - see lib/data/modules.dart.
   final ModuleLibrary modules;
+
+  /// Course audio: the device voice by default, the agent's narration on
+  /// request. See services/narration.dart.
+  final Narrator narrator;
   final OutboxService outbox;
   final SyncEngine sync;
   final Mutations mutations;
@@ -47,6 +53,7 @@ class AppServices {
     final sync = SyncEngine(store, outbox, apiOf);
     final mutations = Mutations(store, outbox, sync, apiOf);
     final modules = ModuleLibrary(db, store, apiOf);
+    final narrator = Narrator(apiOf);
     final updater = UpdateService(apiOf);
     await outbox.refreshCount();
     await modules.load();
@@ -56,6 +63,7 @@ class AppServices {
       session: session,
       store: store,
       modules: modules,
+      narrator: narrator,
       outbox: outbox,
       sync: sync,
       mutations: mutations,

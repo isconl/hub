@@ -6,6 +6,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show ShellAppBar;
 import '../widgets/common.dart';
+import '../widgets/listen_bar.dart';
 import '../widgets/reader.dart';
 
 /// Courses -> lessons -> reader.
@@ -389,6 +390,11 @@ class _LessonScreenState extends State<LessonScreen> {
                         ],
                       ),
                     ),
+                    if (content.isNotEmpty)
+                      ListenBar(
+                          course: widget.course,
+                          file: widget.file,
+                          markdown: content),
                     if (content.isEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 26),
