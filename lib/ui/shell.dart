@@ -13,11 +13,11 @@ import 'views/buffer.dart';
 import 'views/calendar.dart';
 import 'views/chat.dart';
 import 'views/circle.dart';
-import 'views/command.dart';
 import 'views/decisions.dart';
 import 'views/files.dart';
 import 'views/finance.dart';
 import 'views/github.dart';
+import 'views/hub.dart';
 import 'views/ideas.dart';
 import 'views/inbox.dart';
 import 'views/jira.dart';
@@ -32,8 +32,9 @@ import 'views/settings.dart';
 import 'views/spaces.dart';
 import 'views/tasks.dart';
 import 'widgets/common.dart';
+import 'widgets/nav_bar.dart';
 
-/// The mobile shell: Command · Tasks · Ask · Alerts · Menu.
+/// The shell: Hub · Tasks · Ask · Alerts · Menu.
 /// "Order mirrors the day: orient, do, ask." (dashboard/index.html)
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -60,7 +61,7 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
-    final titles = ['Command', 'Tasks', 'Alerts'];
+    final titles = ['Hub', 'Tasks', 'Alerts'];
     return Scaffold(
       appBar: ShellAppBar(title: titles[_tab]),
       body: Column(
@@ -70,7 +71,7 @@ class _ShellState extends State<Shell> {
             child: IndexedStack(
               index: _tab,
               children: const [
-                CommandView(),
+                HubView(),
                 TasksView(),
                 NotificationsView(),
               ],
@@ -245,6 +246,13 @@ class OfflineBanner extends StatelessWidget {
   }
 }
 
+/// Hub · Tasks · Ask · Alerts · Menu, in the expanding-pill style ARCHITECT
+/// specified (see `widgets/nav_bar.dart`).
+///
+/// The elevated green Ask circle that used to sit in the middle is gone: a
+/// raised button in the centre of a flat animated row fights it. Ask keeps its
+/// prominence a quieter way - it is the one item tinted green at rest, so it
+/// is still the thing your eye lands on first.
 class _BottomBar extends StatelessWidget {
   const _BottomBar({
     required this.tab,
@@ -258,155 +266,69 @@ class _BottomBar extends StatelessWidget {
   final VoidCallback onAsk;
   final VoidCallback onMenu;
 
+  /// Row order, and the map from row position to tab index. Ask and Menu are
+  /// actions, so they hold no tab.
+  static const _askSlot = 2;
+  static const _menuSlot = 4;
+  static const _tabForSlot = {0: 0, 1: 1, 3: 2};
+  static const _slotForTab = {0: 0, 1: 1, 2: 3};
+
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xEB0D1117),
-        border: Border(top: BorderSide(color: C.border)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 58,
-          child: Row(
-            children: [
-              _tabItem(0, Icons.bolt_rounded, 'Command'),
-              _tabItem(1, Icons.task_alt_rounded, 'Tasks'),
-              // Ask - center, elevated
-              Expanded(
-                child: Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      onAsk();
-                    },
-                    child: Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: C.greenDim,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0x1AF0F6FC)),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: C.greenGlow,
-                              blurRadius: 14,
-                              spreadRadius: 1),
-                        ],
-                      ),
-                      child: const Icon(Icons.forum_rounded,
-                          color: Colors.white, size: 21),
-                    ),
-                  ),
-                ),
-              ),
-              _alertsItem(services),
-              _menuItem(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _tabItem(int idx, IconData icon, String label) {
-    final active = tab == idx;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTab(idx);
-        },
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 21, color: active ? C.greenBright : C.text3),
-            const SizedBox(height: 2),
-            Text(label,
-                style: T.tiny.copyWith(
-                  fontSize: 9.5,
-                  color: active ? C.greenBright : C.text3,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                )),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _alertsItem(AppServices services) {
-    final active = tab == 2;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTab(2);
-        },
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ListenableBuilder(
-              listenable: services.sync,
-              builder: (context, _) {
-                final n = services.sync.newAlerts;
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(Icons.notifications_rounded,
-                        size: 21, color: active ? C.greenBright : C.text3),
-                    if (n > 0)
-                      Positioned(
-                        right: -7,
-                        top: -4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: C.green,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          constraints: const BoxConstraints(minWidth: 15),
-                          child: Text(
-                            n > 99 ? '99' : '$n',
-                            textAlign: TextAlign.center,
-                            style: T.monoSmall.copyWith(
-                                color: C.textInverse,
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
+    return ListenableBuilder(
+      listenable: services.sync,
+      builder: (context, _) {
+        final n = services.sync.newAlerts;
+        return PillNavBar(
+          index: _slotForTab[tab] ?? -1,
+          onSelect: (slot) {
+            if (slot == _askSlot) return onAsk();
+            if (slot == _menuSlot) return onMenu();
+            final t = _tabForSlot[slot];
+            if (t != null) onTab(t);
+          },
+          items: [
+            const PillNavItem(icon: Icons.bolt_rounded, label: 'Hub'),
+            const PillNavItem(icon: Icons.task_alt_rounded, label: 'Tasks'),
+            const PillNavItem(
+              icon: Icons.forum_rounded,
+              label: 'Ask',
+              isTab: false,
+              restingColor: C.green,
             ),
-            const SizedBox(height: 2),
-            Text('Alerts',
-                style: T.tiny.copyWith(
-                  fontSize: 9.5,
-                  color: active ? C.greenBright : C.text3,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                )),
+            PillNavItem(
+              icon: Icons.notifications_rounded,
+              label: 'Alerts',
+              badge: n > 0 ? _AlertCount(n) : null,
+            ),
+            const PillNavItem(
+                icon: Icons.menu_rounded, label: 'Menu', isTab: false),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
+}
 
-  Widget _menuItem() {
-    return Expanded(
-      child: InkWell(
-        onTap: onMenu,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.menu_rounded, size: 21, color: C.text3),
-            const SizedBox(height: 2),
-            Text('Menu', style: T.tiny.copyWith(fontSize: 9.5)),
-          ],
-        ),
+class _AlertCount extends StatelessWidget {
+  const _AlertCount(this.n);
+  final int n;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: C.green,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      constraints: const BoxConstraints(minWidth: 15),
+      child: Text(
+        n > 99 ? '99' : '$n',
+        textAlign: TextAlign.center,
+        style: T.monoSmall.copyWith(
+            color: C.textInverse, fontSize: 8.5, fontWeight: FontWeight.w600),
       ),
     );
   }

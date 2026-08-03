@@ -314,12 +314,17 @@ class SnapshotView extends StatefulWidget {
     required this.builder,
     this.empty,
     this.padding = const EdgeInsets.fromLTRB(14, 10, 14, 96),
+    this.controller,
   });
 
   final Snapshot snapshot;
   final Widget Function(BuildContext context, dynamic data) builder;
   final Widget? empty;
   final EdgeInsetsGeometry padding;
+
+  /// Supplied when the caller needs the scroll offset - the reader uses it to
+  /// drive its progress line.
+  final ScrollController? controller;
 
   @override
   State<SnapshotView> createState() => _SnapshotViewState();
@@ -348,6 +353,7 @@ class _SnapshotViewState extends State<SnapshotView> {
           backgroundColor: C.surface,
           child: snap.value == null
               ? ListView(
+                  controller: widget.controller,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: widget.padding,
                   children: [
@@ -365,6 +371,7 @@ class _SnapshotViewState extends State<SnapshotView> {
                   ],
                 )
               : SingleChildScrollView(
+                  controller: widget.controller,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: widget.padding,
                   child: Column(

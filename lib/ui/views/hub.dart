@@ -6,9 +6,14 @@ import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import 'tasks.dart' show showAddTaskSheet, TaskRowTile;
 
-/// Command (Today): answers "what needs me?" in under two seconds.
-class CommandView extends StatelessWidget {
-  const CommandView({super.key});
+/// Hub: answers "what needs me?" in under two seconds.
+///
+/// Named Command until 3 August 2026. The SPACE is still called COMMAND - it
+/// is the group that holds Hub, Planning, Calendar and Ideas. This view is its
+/// first child, and a child that shares its parent's name reads as though the
+/// group were a single screen.
+class HubView extends StatelessWidget {
+  const HubView({super.key});
 
   @override
   Widget build(BuildContext context) {

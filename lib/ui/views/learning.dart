@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
-import '../../util/markdown.dart';
 import '../shell.dart' show ShellAppBar;
 import '../widgets/common.dart';
+import '../widgets/reader.dart';
 
 /// Courses -> lessons -> reader. Lessons cache for offline reading.
 class LearningView extends StatelessWidget {
@@ -155,6 +155,13 @@ class LessonScreen extends StatefulWidget {
 
 class _LessonScreenState extends State<LessonScreen> {
   late String _status = widget.status;
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -164,50 +171,70 @@ class _LessonScreenState extends State<LessonScreen> {
       '${widget.course}/${widget.file}',
       '/api/learning/lesson?course=${Uri.encodeComponent(widget.course)}&file=${Uri.encodeComponent(widget.file)}',
     );
+    final heading = widget.title.isEmpty ? widget.file : widget.title;
+
     return Scaffold(
-      appBar: ShellAppBar(
-          title: widget.title.isEmpty ? widget.file : widget.title,
-          showBrand: false),
-      body: SnapshotView(
-        snapshot: snap,
-        builder: (context, data) {
-          final content = fmt.s(fmt.m(data)['content']);
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  for (final st in ['new', 'learning', 'done']) ...[
-                    Pill(st,
-                        selected: _status.toLowerCase() == st,
-                        onTap: () async {
-                          setState(() => _status = st);
-                          final res = await services.mutations
-                              .lessonProgress(
-                                  widget.course, widget.file, st);
-                          if (!context.mounted) return;
-                          if (!res.ok) {
-                            toast(context, res.error!, error: true);
-                          } else if (res.queued) {
-                            toast(context, 'Progress queued - will sync');
-                          }
-                        }),
-                    const SizedBox(width: 6),
+      appBar: ShellAppBar(title: heading, showBrand: false),
+      body: Column(
+        children: [
+          ReadingProgress(controller: _scroll),
+          Expanded(
+            child: SnapshotView(
+              snapshot: snap,
+              controller: _scroll,
+              // The reading surface owns its own margins, so the scroll view
+              // contributes nothing horizontally. Bottom room is for the
+              // thumb, not for a nav bar - this screen is pushed, not tabbed.
+              padding: const EdgeInsets.fromLTRB(0, 0, 0, 56),
+              builder: (context, data) {
+                final content = fmt.s(fmt.m(data)['content']);
+                return ReadingSurface(
+                  children: [
+                    ReadingHeader(
+                      title: heading,
+                      kicker: widget.course,
+                      meta: content.isEmpty ? null : readingMeta(content),
+                      trailing: Row(
+                        children: [
+                          for (final st in ['new', 'learning', 'done']) ...[
+                            Pill(st,
+                                selected: _status.toLowerCase() == st,
+                                onTap: () async {
+                                  setState(() => _status = st);
+                                  final res = await services.mutations
+                                      .lessonProgress(
+                                          widget.course, widget.file, st);
+                                  if (!context.mounted) return;
+                                  if (!res.ok) {
+                                    toast(context, res.error!, error: true);
+                                  } else if (res.queued) {
+                                    toast(context,
+                                        'Progress queued - will sync');
+                                  }
+                                }),
+                            const SizedBox(width: 6),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (content.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 26),
+                        child: Text(
+                          'Lesson content loads when online, then stays cached '
+                          'on this device for reading offline.',
+                          style: T.body2.copyWith(color: C.text3, height: 1.6),
+                        ),
+                      )
+                    else
+                      ReadingBody(content),
+                    _LessonNotes(course: widget.course, file: widget.file),
                   ],
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (content.isEmpty)
-                const Panel(
-                    child: Text(
-                        'Lesson content loads when online, then stays cached.'))
-              else
-                Panel(child: Markdown(content)),
-              const SizedBox(height: 12),
-              _LessonNotes(course: widget.course, file: widget.file),
-            ],
-          );
-        },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -285,60 +312,78 @@ class _LessonNotesState extends State<_LessonNotes> {
 
   @override
   Widget build(BuildContext context) {
-    return Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          InkWell(
-            onTap: () {
-              setState(() => _open = !_open);
-              if (_open) _load();
-            },
-            child: Row(
+    return ReadingSection(
+      label: 'Your notes',
+      trailing: InkWell(
+        borderRadius: BorderRadius.circular(Sz.rSm),
+        onTap: () {
+          setState(() => _open = !_open);
+          if (_open) _load();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_loading) ...[const MiniSpinner(), const SizedBox(width: 8)],
+              Text(_open ? 'Close' : 'Write', style: T.tiny.copyWith(color: C.green)),
+              Icon(
+                  _open
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 16,
+                  color: C.green),
+            ],
+          ),
+        ),
+      ),
+      child: !_open
+          ? Text(
+              'What you made of it. The tutor loads these as context, and the '
+              'agent reads them when it revises the course.',
+              style: T.body2.copyWith(color: C.text3, height: 1.6),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(Icons.edit_note_rounded, size: 17, color: C.text2),
-                const SizedBox(width: 10),
-                Expanded(
-                    child: Text('Your notes', style: T.w500(T.body2))),
-                if (_loading) const MiniSpinner(),
-                Icon(
-                    _open
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    size: 18,
-                    color: C.text3),
+                if (_error != null)
+                  ErrorRetry(_error!, onRetry: () {
+                    _loaded = false;
+                    _load();
+                  }),
+                // Borderless while resting, so the note field reads as more
+                // page rather than as a widget dropped onto one. The green
+                // underline on focus is the only state it needs.
+                TextField(
+                  controller: _controller,
+                  maxLines: null,
+                  minLines: 5,
+                  style: T.body.copyWith(
+                      fontSize: 15, height: 1.62, color: C.text),
+                  decoration: InputDecoration(
+                    filled: false,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                    hintText: 'Write it here.',
+                    hintStyle: T.body2.copyWith(color: C.text3, fontSize: 15),
+                    enabledBorder: const UnderlineInputBorder(
+                        borderSide: BorderSide(color: C.border)),
+                    focusedBorder: const UnderlineInputBorder(
+                        borderSide: BorderSide(color: C.green)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed: _saving ? null : _save,
+                    icon: _saving
+                        ? const MiniSpinner()
+                        : const Icon(Icons.save_rounded, size: 16),
+                    label: const Text('Save note'),
+                  ),
+                ),
               ],
             ),
-          ),
-          if (_open) ...[
-            const SizedBox(height: 10),
-            if (_error != null)
-              ErrorRetry(_error!, onRetry: () {
-                _loaded = false;
-                _load();
-              }),
-            TextField(
-              controller: _controller,
-              maxLines: 8,
-              minLines: 4,
-              style: T.body2.copyWith(color: C.text),
-              decoration: const InputDecoration(
-                hintText:
-                    'What you made of it. The tutor reads this, and so does '
-                    'the agent when it revises the course.',
-              ),
-            ),
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              icon: _saving
-                  ? const MiniSpinner()
-                  : const Icon(Icons.save_rounded, size: 16),
-              label: const Text('Save note'),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }

@@ -1,5 +1,5 @@
 name: isconl
-description: "iSconl - sovereign personal agent, native Android client. Offline-first mirror of the web dashboard."
+description: "iSconl - sovereign personal agent, native client for Android, Windows and Linux. Offline-first mirror of the web dashboard."
 publish_to: 'none'
 
 # Version is auto-bumped by CI on every build (patch +1). This one is a hand

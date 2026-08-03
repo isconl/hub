@@ -1,11 +1,11 @@
 # STAGED - not yet active.
 #
 # When ARCHITECT cues the main push, copy this file to .github/workflows/ on the
-# MAIN branch. From then on, every push to main also rebuilds the APK on the
-# apk branch (workflow_dispatch is exempt from GitHub's GITHUB_TOKEN
+# MAIN branch. From then on, every push to main also rebuilds the client on the
+# app branch (workflow_dispatch is exempt from GitHub's GITHUB_TOKEN
 # no-retrigger rule, so the default token is enough - no PAT needed).
 
-name: Trigger APK build
+name: Trigger app build
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Cue the apk branch build
+      - name: Cue the app branch build
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run "Build APK" --repo "$GITHUB_REPOSITORY" --ref apk
+        run: gh workflow run "Build app" --repo "$GITHUB_REPOSITORY" --ref app
