@@ -195,3 +195,52 @@ always clean). CI note: the push-triggered run start-failed like every
 other run on the repo today - the known private-repo Actions minutes
 exhaustion, not a workflow defect; the pipeline arms itself when the
 billing month resets, after `tool/setup_ci_secrets.ps1` is run.
+
+## v0.1.2 - 4 August 2026, built and delivered
+
+Ten commits since `apk-v0.1.0`. Built locally on the workstation toolchain
+(Flutter 3.44.8, Temurin 17, Android SDK 36), released as `apk-v0.1.2` with
+`20260804_isconl_v0.1.2.apk` attached - 59,137,803 bytes, 56.4 MB as Flutter
+reports it.
+
+**Gate order, and why each step was run**
+
+1. `flutter analyze` from the worktree - `No issues found`, 222.8s. From the agent
+   repo it would have said the same thing in two seconds and meant nothing, which
+   is the trap this project already recorded once.
+2. `flutter build apk --release` - 662.6s. The Kotlin Gradle Plugin warning from
+   `flutter_tts` and `package_info_plus` is upstream and non-fatal; MaterialIcons
+   tree-shook 1,645,184 to 17,516 bytes.
+3. `apksigner verify --print-certs` - `CN=ARCHITECT, OU=iSconl, O=iSconl, L=Nairobi,
+   C=KE`, SHA-256 `9fca8bf442de7ec33f19ef29f83a123fb71b072e871c03cf735b03c6d2cedf2d`.
+   Byte-identical to the fingerprint on v0.1.0, so this upgrades the installed app
+   in place rather than asking to be uninstalled first.
+4. `gh release create apk-v0.1.2 --target app` with the notes and the binary.
+
+**Delivery proven, not assumed.** A release existing is not the same as the phone
+being able to get it. Booted the agent and walked the exact path the download card
+walks: `/api/apk/latest` reported `0.1.2` / `apk-v0.1.2` from the private repo,
+`/api/apk/ticket` issued a 15-minute URL, and `/api/apk/download` streamed
+59,137,803 bytes with `Content-Type: application/vnd.android.package-archive`. The
+SHA-256 of the delivered bytes matches the signed file exactly
+(`8657cef0aa6d55aff70a3b0eee385e6f5ce50900d90b5e7c38c9083cca17e4f4`).
+
+**One correction to the record.** The ticket was described as "one-time". It is
+not - the second use returns 200, and that is deliberate: Android's download
+manager retries and range-requests, so burning the ticket on the first byte would
+break exactly the weak-signal download it exists to serve. It is short-lived (15
+minutes), not single-use, and the comment in `server.js` now says so.
+
+**Server side, shipped alongside on `dev`.** The wishlist route was rebuilt around
+TSV columns for the console and would have blanked the wishlist on this client -
+which posts `name`/`cost`/`necessity`/`satisfaction` and reads the same. It now
+speaks both vocabularies, and `finance/wishlist.tsv` carries NECESSITY and
+SATISFACTION as columns so the scores this app has always taken are kept. Caught
+while preparing this release, before it reached the handset.
+
+**Not in this build.** Today's agent work is web-console only so far: the rebuilt
+finance space (Plan, Ledger, Wants, Prices, Income), the price crawl and
+comparison, the message scan that turns M-Pesa alerts into ledger rows, the four
+day blocks, and the 26,378-row day-in-history corpus. This client still shows the
+finance summary, the wishlist and receipt capture. Blocks and prices on the phone
+are the next client increment.
