@@ -28,6 +28,17 @@ class PlatformBridge {
     }
   }
 
+  /// Hand a downloaded file to whatever app on the phone opens that type.
+  ///
+  /// Returns false when nothing on the device can open it - which is an answer
+  /// to show him, not a failure to throw. An exported module goes to the system
+  /// PDF viewer, and he shares, mails or prints it from there.
+  Future<bool> openFile(String path, {String mime = 'application/pdf'}) async {
+    final ok = await _channel.invokeMethod<bool>(
+        'openFile', {'path': path, 'mime': mime});
+    return ok ?? false;
+  }
+
   /// Hand a downloaded APK to the system installer.
   Future<void> installApk(String path) async {
     await _channel.invokeMethod('installApk', {'path': path});

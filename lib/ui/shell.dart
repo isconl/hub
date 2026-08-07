@@ -117,9 +117,17 @@ class _ShellState extends State<Shell> {
 /// App bar shared by the shell and pushed views: brand, title, equicycle
 /// context, live sync indicator.
 class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const ShellAppBar({super.key, required this.title, this.showBrand = true});
+  const ShellAppBar(
+      {super.key,
+      required this.title,
+      this.showBrand = true,
+      this.actions = const []});
   final String title;
   final bool showBrand;
+
+  /// Screen-specific controls, placed before the sync indicator so the
+  /// indicator stays in the same corner on every screen.
+  final List<Widget> actions;
 
   @override
   Size get preferredSize => const Size.fromHeight(56);
@@ -161,6 +169,7 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
+        ...actions,
         const SyncIndicator(),
         const SizedBox(width: 12),
       ],

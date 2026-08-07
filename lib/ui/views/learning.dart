@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../app_scope.dart';
 import '../../data/modules.dart';
+import '../../services/platform.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show ShellAppBar;
@@ -347,7 +351,13 @@ class _LessonScreenState extends State<LessonScreen> {
     final heading = widget.title.isEmpty ? widget.file : widget.title;
 
     return Scaffold(
-      appBar: ShellAppBar(title: heading, showBrand: false),
+      appBar: ShellAppBar(
+        title: heading,
+        showBrand: false,
+        actions: [
+          _ExportPdfButton(course: widget.course, file: widget.file),
+        ],
+      ),
       body: Column(
         children: [
           ReadingProgress(controller: _scroll),
@@ -424,6 +434,75 @@ class _LessonScreenState extends State<LessonScreen> {
 /// agent reads them when revising the course - a note saying "this section is
 /// now wrong" is the cheapest possible course-update instruction. Which is why
 /// this is worth having on the phone, where most of the reading happens.
+/// Export this module as a PDF and hand it to the phone.
+///
+/// The agent builds the PDF - one renderer, one set of callout colours, one
+/// document whether it was asked for from the console or from here. This end
+/// only has to move the bytes to disk and let Android open them, which is what
+/// makes "export from the mobile app" a small feature rather than a second
+/// implementation of the whole document.
+class _ExportPdfButton extends StatefulWidget {
+  const _ExportPdfButton({required this.course, required this.file});
+  final String course;
+  final String file;
+
+  @override
+  State<_ExportPdfButton> createState() => _ExportPdfButtonState();
+}
+
+class _ExportPdfButtonState extends State<_ExportPdfButton> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final services = AppScope.of(context);
+    try {
+      final res = await services.api.getBytes(
+          '/api/learning/export?course=${Uri.encodeComponent(widget.course)}'
+          '&lesson=${Uri.encodeComponent(widget.file)}');
+
+      final tmp = await getTemporaryDirectory();
+      final dir = Directory('${tmp.path}/exports');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final name = res.filename.isEmpty
+          ? '${widget.course}-${widget.file.replaceAll(RegExp(r'\.md$'), '')}.pdf'
+          : res.filename;
+      final out = File('${dir.path}/$name');
+      await out.writeAsBytes(res.bytes, flush: true);
+
+      if (!mounted) return;
+      final opened = await PlatformBridge.instance.openFile(out.path);
+      if (!mounted) return;
+      toast(
+          context,
+          opened
+              ? '${(res.bytes.length / 1024).round()} KB - opening'
+              : 'Saved, but nothing on this phone opens a PDF',
+          error: !opened);
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, 'Export failed: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: _busy ? null : _run,
+      tooltip: 'Export this module as a PDF',
+      icon: _busy
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.picture_as_pdf_outlined, size: 20),
+    );
+  }
+}
+
 class _LessonNotes extends StatefulWidget {
   const _LessonNotes({required this.course, required this.file});
   final String course;

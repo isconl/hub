@@ -44,6 +44,21 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                     }
                 }
+                "openFile" -> {
+                    val path = call.argument<String>("path")
+                    val mime = call.argument<String>("mime") ?: "application/octet-stream"
+                    if (path == null) {
+                        result.error("ARG", "path required", null)
+                    } else {
+                        try {
+                            // false, not an error: "no app can open this" is an
+                            // answer the caller can show him, not a crash.
+                            result.success(openFile(File(path), mime))
+                        } catch (e: Exception) {
+                            result.error("OPEN", e.message, null)
+                        }
+                    }
+                }
                 "pickImage" -> {
                     if (pickResult != null) {
                         result.error("BUSY", "picker already open", null)
@@ -169,6 +184,36 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
         return null
+    }
+
+    /**
+     * Hand any downloaded file to whatever app on the phone opens that type.
+     *
+     * Same FileProvider mechanism installApk already relies on, generalised: an
+     * exported PDF goes to the system PDF viewer, from which he can share, mail
+     * or print it. Building a viewer inside this app would be a worse copy of
+     * something every phone already has.
+     *
+     * ACTION_VIEW is wrapped in a chooser so a phone with two PDF readers asks
+     * rather than silently picking, and a phone with none reports it instead of
+     * throwing ActivityNotFoundException up the channel as a crash.
+     */
+    private fun openFile(file: File, mime: String): Boolean {
+        val uri: Uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val view = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val chooser = Intent.createChooser(view, "Open with").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return try {
+            startActivity(chooser)
+            true
+        } catch (e: android.content.ActivityNotFoundException) {
+            false
+        }
     }
 
     private fun installApk(file: File) {

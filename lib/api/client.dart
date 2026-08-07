@@ -58,6 +58,27 @@ class ApiClient {
     return _decode(res, path);
   }
 
+  /// GET returning raw bytes, for routes that answer with a file rather than
+  /// JSON - the PDF export, for one. `_decode` cannot be used here: it parses
+  /// every body as JSON and would reject a perfectly good PDF as a bad
+  /// response. The error path still reads a JSON `error` when the server sends
+  /// one, so a failure is still a sentence rather than a status code.
+  Future<({List<int> bytes, String filename})> getBytes(String path,
+      {bool cold = true}) async {
+    final res = await _send('GET', path, cold: cold);
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode,
+          _errorFrom(res.body, 'Could not fetch the file'),
+          authSuspect: res.statusCode == 404 && token.isNotEmpty);
+    }
+    // The server names the file, and the name carries the date and the course.
+    var name = '';
+    final cd = res.headers['content-disposition'] ?? '';
+    final m = RegExp(r'filename="([^"]+)"').firstMatch(cd);
+    if (m != null) name = m.group(1)!;
+    return (bytes: res.bodyBytes, filename: name);
+  }
+
   Future<dynamic> postJson(String path, Map<String, dynamic> body,
       {bool cold = false}) async {
     final res = await _send('POST', path, body: body, cold: cold);
