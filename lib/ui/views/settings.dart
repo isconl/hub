@@ -347,7 +347,7 @@ class _SettingsViewState extends State<SettingsView> {
           Field(
               label: 'URL',
               controller: controller,
-              hint: 'https://isconl-agent.onrender.com',
+              hint: 'http://192.168.1.10:8888',
               keyboardType: TextInputType.url),
           FilledButton(
             onPressed: () async {

@@ -87,6 +87,15 @@ class ApiClient {
 
   Future<http.Response> _send(String method, String path,
       {Map<String, dynamic>? body, bool cold = false}) async {
+    // No base URL is a CONFIGURATION state, not a network failure. Without this
+    // guard an empty base produces a relative URI, http throws a ClientException,
+    // and the app reports "offline" - which sends him looking at his signal
+    // instead of at the empty field that is actually the problem. There is no
+    // default server any more, so this path is reachable on every fresh install.
+    if (baseUrl.trim().isEmpty) {
+      throw ApiException(0,
+          'No agent address set. Open Settings and enter the address of your iSconl agent.');
+    }
     final req = http.Request(method, _uri(path));
     req.headers.addAll(_headers());
     if (body != null) req.body = jsonEncode(body);

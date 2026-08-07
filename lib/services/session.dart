@@ -11,7 +11,22 @@ class SessionService extends ChangeNotifier {
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
-  static const defaultServer = 'https://isconl-agent.onrender.com';
+  /* THERE IS NO DEFAULT SERVER, AND THAT IS THE POINT.
+   *
+   * This used to be 'https://isconl-agent.onrender.com'. That host is declared in
+   * render.yaml as a layout instance - "FOR LOOKING AT THE INTERFACE, NOT FOR
+   * HOLDING ANYTHING REAL" - with no Bitwarden token, no vault, and
+   * ISCONL_DEMO_SEED=1 filling the board with invented placeholder tasks. So the
+   * shipped app opened onto fabricated data and looked like it was working.
+   *
+   * A wrong default is worse than no default: it fails silently and plausibly.
+   * An empty one fails immediately and says what it needs.
+   *
+   * ARCHITECT's instruction, 7 Aug 2026: "i especially do not want the client apps
+   * relying on the render server, eliminate this completely". This is step one of
+   * that - the client no longer carries the address of a box holding nothing.
+   */
+  static const defaultServer = '';
 
   late final ApiClient api =
       ApiClient(baseUrl: defaultServer)..onAuthFailure = _onAuthFailure;
@@ -21,6 +36,11 @@ class SessionService extends ChangeNotifier {
   bool biometricLock = false;
   String serverUrl = defaultServer;
   Map<String, dynamic>? serverHealth;
+
+  /// True when no agent address has been set yet. The shell uses it to ask for
+  /// one rather than firing requests at an empty base URL and reporting them as
+  /// network failures, which is what "no server" used to look like.
+  bool get needsServer => serverUrl.trim().isEmpty;
 
   Future<void> load() async {
     serverUrl = await _storage.read(key: 'serverUrl') ?? defaultServer;
