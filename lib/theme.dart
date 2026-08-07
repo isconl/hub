@@ -35,6 +35,21 @@ class C {
   static const cyan = Color(0xFF58A6FF);
   static const cyanBg = Color(0x1A58A6FF);
   static const violet = Color(0xFFBC8CFF);
+  static const violetBg = Color(0x1ABC8CFF);
+
+  // The five lesson callouts, one colour each. Ported 1:1 from
+  // dashboard/style.css (--call-*), because a module has to look the same on
+  // the phone as it does in the console - his instruction, 7 Aug 2026.
+  static const callLearn = green;
+  static const callLearnBg = Color(0x1A3FB950);
+  static const callJargon = cyan;
+  static const callJargonBg = Color(0x1A58A6FF);
+  static const callWatch = amber;
+  static const callWatchBg = Color(0x1AD29922);
+  static const callBook = violet;
+  static const callBookBg = Color(0x1ABC8CFF);
+  static const callQuote = Color(0xFFF0883E);
+  static const callQuoteBg = Color(0x1AF0883E);
 
   static Color forPriority(String p) => switch (p.toLowerCase()) {
         'high' => red,

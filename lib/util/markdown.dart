@@ -146,6 +146,8 @@ class Markdown extends StatelessWidget {
             ],
           ),
         );
+      case _Kind.callout:
+        return _callout(block, style);
       case _Kind.table:
         return _table(block, style);
       case _Kind.paragraph:
@@ -155,6 +157,62 @@ class Markdown extends StatelessWidget {
           child: Text.rich(_inline(block.text, style)),
         );
     }
+  }
+
+  /// One callout: coloured background, left strip line, label above the body.
+  ///
+  /// Same shape for all five so the eye learns it once; only the colour and the
+  /// label change. It is a Container rather than a Card on purpose - a card
+  /// would set it apart from the prose, and a callout is part of the reading,
+  /// not an aside beside it.
+  Widget _callout(_Block block, TextStyle style) {
+    final c = block.callout!;
+    final pad = _reading ? 14.0 : 10.0;
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.symmetric(vertical: _reading ? 14 : 6),
+      padding: EdgeInsets.fromLTRB(pad, pad * 0.8, pad, pad * 0.8),
+      decoration: BoxDecoration(
+        color: c.background,
+        border: Border(left: BorderSide(color: c.colour, width: 3)),
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(Sz.rMd),
+          bottomRight: Radius.circular(Sz.rMd),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            c.label.toUpperCase(),
+            style: T.mono.copyWith(
+              fontSize: 9.5,
+              letterSpacing: 1.1,
+              fontWeight: FontWeight.w600,
+              color: c.colour,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text.rich(_inline(
+            block.text,
+            style.copyWith(
+              color: C.text,
+              fontSize: _reading ? 15 : 13,
+              height: 1.62,
+              fontStyle: c.kind == 'quote' ? FontStyle.italic : null,
+            ),
+          )),
+          if (block.cite.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              block.cite,
+              style: T.mono.copyWith(
+                fontSize: 10.5, height: 1.5, color: C.text3),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _table(_Block block, TextStyle style) {
@@ -269,7 +327,52 @@ class Markdown extends StatelessWidget {
   }
 }
 
-enum _Kind { paragraph, heading, code, quote, rule, listItem, table }
+enum _Kind { paragraph, heading, code, quote, rule, listItem, table, callout }
+
+/// The five lesson callouts.
+///
+/// Ported from dashboard/app.js (LESSON_CALLOUTS) deliberately as a straight
+/// mirror rather than as an interpretation: a module has to look the same on the
+/// phone as it does in the console, so both renderers match the SAME openers and
+/// print the SAME canonical labels. If one side gains a sixth kind the other
+/// gains it in the same commit.
+///
+/// The aliases are not decoration. Modules already in the vault open with "You
+/// will be able to", "In plain language" and "Watch for", written before the
+/// canon settled, and on the phone they used to render as ordinary bold prose.
+class _Callout {
+  const _Callout(this.kind, this.label, this.colour, this.background, this.pattern);
+  final String kind;
+  final String label;
+  final Color colour;
+  final Color background;
+  final RegExp pattern;
+}
+
+final _callouts = <_Callout>[
+  _Callout('learn', 'What you will learn', C.callLearn, C.callLearnBg,
+      RegExp(r'^\*\*(?:What you will learn|What will be learnt|You will be able to|Learning outcomes?):?\*\*\s*',
+          caseSensitive: false)),
+  _Callout('jargon', 'Jargon', C.callJargon, C.callJargonBg,
+      RegExp(r'^\*\*(?:Jargon|In plain language|Plain language|The word):?\*\*\s*',
+          caseSensitive: false)),
+  _Callout('watch', 'What to watch for', C.callWatch, C.callWatchBg,
+      RegExp(r'^\*\*(?:What to watch for|Watch out for|Watch for|Watch|Careful):?\*\*\s*',
+          caseSensitive: false)),
+  _Callout('book', 'In a book', C.callBook, C.callBookBg,
+      RegExp(r'^\*\*(?:In a book|Book|From the literature):?\*\*\s*',
+          caseSensitive: false)),
+  _Callout('quote', 'Book quote', C.callQuote, C.callQuoteBg,
+      RegExp(r'^\*\*(?:Book quote|Quote|In their words):?\*\*\s*',
+          caseSensitive: false)),
+];
+
+_Callout? _matchCallout(String line) {
+  for (final c in _callouts) {
+    if (c.pattern.hasMatch(line)) return c;
+  }
+  return null;
+}
 
 class _Block {
   _Block(this.kind,
@@ -284,6 +387,10 @@ class _Block {
   final bool ordered;
   final int index;
   final List<List<String>> rows;
+
+  /// Set only on callout blocks.
+  _Callout? callout;
+  String cite = '';
 }
 
 List<_Block> _parseBlocks(String source) {
@@ -346,6 +453,29 @@ List<_Block> _parseBlocks(String source) {
         trimmed.isNotEmpty) {
       flushPara();
       blocks.add(_Block(_Kind.rule));
+      idx++;
+      continue;
+    }
+
+    // A callout is a single line and claims it before anything else can, because
+    // it opens with bold text and would otherwise be swallowed into a paragraph.
+    final callout = _matchCallout(trimmed);
+    if (callout != null) {
+      flushPara();
+      var body = trimmed.replaceFirst(callout.pattern, '').trim();
+      var cite = '';
+      if (callout.kind == 'book' || callout.kind == 'quote') {
+        // A trailing [Author, Title, Year, chapter] is the part that makes a
+        // book callout checkable rather than decorative, so it gets its own line.
+        final m = RegExp(r'\[([^\]]{4,})\]\s*$').firstMatch(body);
+        if (m != null) {
+          cite = m.group(1)!;
+          body = body.substring(0, m.start).trim();
+        }
+      }
+      blocks.add(_Block(_Kind.callout, text: body)
+        ..callout = callout
+        ..cite = cite);
       idx++;
       continue;
     }
