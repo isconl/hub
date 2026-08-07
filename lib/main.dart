@@ -170,9 +170,13 @@ class _LockScreenState extends State<_LockScreen> {
             // idle one - the agent is there, the door is not open yet.
             const BrandMark(size: 44, motion: BrandMotion.working),
             const SizedBox(height: 18),
-            Text('Locked', style: T.title),
+            Text('Welcome back', style: T.title),
             const SizedBox(height: 6),
-            Text('Biometric unlock required', style: T.small),
+            // Not "Locked / Biometric unlock required". This is the everyday
+            // door now, not an error state - the copy should read like being
+            // let in, because that is what is happening. The session is still
+            // signed in behind this screen; the fingerprint is the only step.
+            Text('Unlock with your fingerprint', style: T.small),
             const SizedBox(height: 22),
             OutlinedButton.icon(
               onPressed: widget.onUnlock,

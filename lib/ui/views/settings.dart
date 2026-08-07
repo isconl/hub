@@ -103,8 +103,14 @@ class _SettingsViewState extends State<SettingsView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Biometric lock', style: T.body2),
-                          Text('Require fingerprint on open',
-                              style: T.tiny),
+                          // Says what is true rather than what the switch does.
+                          // It arms itself after the first code, so the useful
+                          // information is that turning it OFF is the decision.
+                          Text(
+                            session.biometricLock
+                                ? 'On. You stay signed in - a fingerprint is all it asks for.'
+                                : 'Off. The app opens without asking anything.',
+                            style: T.tiny),
                         ],
                       ),
                     ),

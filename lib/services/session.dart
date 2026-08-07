@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:local_auth/local_auth.dart';
 
 import '../api/client.dart';
 
@@ -46,6 +47,7 @@ class SessionService extends ChangeNotifier {
     serverUrl = await _storage.read(key: 'serverUrl') ?? defaultServer;
     final token = await _storage.read(key: 'token') ?? '';
     biometricLock = (await _storage.read(key: 'bioLock')) == '1';
+    _bioChosen = (await _storage.read(key: 'bioChosen')) == '1';
     // Updates come from the agent now, so the GitHub PAT this app used to keep
     // has no remaining purpose. Delete it on sight rather than leave a live
     // credential sitting on the phone after the upgrade that stopped using it.
@@ -72,10 +74,51 @@ class SessionService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// True once HE has decided, either way, in Settings. Until then the lock is
+  /// armed automatically - see _armBiometricsIfUnchosen.
+  bool _bioChosen = false;
+
   Future<void> setBiometricLock(bool enabled) async {
     biometricLock = enabled;
+    _bioChosen = true;
     await _storage.write(key: 'bioLock', value: enabled ? '1' : '0');
+    await _storage.write(key: 'bioChosen', value: '1');
     notifyListeners();
+  }
+
+  /* ── ONE CODE, THEN A FINGERPRINT ────────────────────────────────────────
+   *
+   * ARCHITECT's instruction, 7 Aug 2026: "i would like just one login with the
+   * code, after that, i would like the session to persist and to login with
+   * just biometrics".
+   *
+   * The session already persisted - sliding tokens landed earlier. What did not
+   * happen was the second half: biometricLock defaulted to FALSE and was an
+   * opt-in buried in Settings, so after the code the app simply opened. The
+   * device lock was the only thing standing between a picked-up phone and his
+   * entire vault.
+   *
+   * So the lock ARMS ITSELF on the first successful login, on a device that can
+   * actually do it. Deliberately not a prompt: he has already said he wants
+   * this, and a dialog asking him to confirm a preference he stated is a worse
+   * experience than the preference simply being true.
+   *
+   * It arms once and never fights him. The moment he touches the toggle in
+   * Settings, `bioChosen` is set and this never runs again - turning it off
+   * stays off, which is the whole difference between a default and a policy.
+   */
+  Future<void> _armBiometricsIfUnchosen() async {
+    if (_bioChosen || biometricLock) return;
+    try {
+      final auth = LocalAuthentication();
+      final can = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+      if (!can) return;   // no sensor: arming it would lock him out of his own brain
+      biometricLock = true;
+      await _storage.write(key: 'bioLock', value: '1');
+      notifyListeners();
+    } catch (_) {
+      // A sensor that throws on probe is a sensor we do not trust to unlock.
+    }
   }
 
   /// Which login methods the server offers.
@@ -147,6 +190,9 @@ class SessionService extends ChangeNotifier {
     await _storage.write(key: 'token', value: token);
     authenticated = true;
     notifyListeners();
+    // After the code, the fingerprint. Awaited after notifying so the shell
+    // paints immediately rather than waiting on a sensor probe.
+    await _armBiometricsIfUnchosen();
   }
 
   Future<void> logout() async {

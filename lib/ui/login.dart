@@ -314,6 +314,16 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ],
         ),
+        const SizedBox(height: 14),
+        // The promise, made where he is being asked to do the work. Typing a
+        // rotating code is a small cost he will pay happily once and resent
+        // every morning, so the screen should say which one this is.
+        Text(
+          'Once only. After this the session stays signed in and your '
+          'fingerprint is all it asks for.',
+          textAlign: TextAlign.center,
+          style: T.tiny.copyWith(color: C.text3, height: 1.5),
+        ),
       ],
     );
   }
