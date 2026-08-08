@@ -31,6 +31,7 @@ import 'views/rhythm.dart';
 import 'views/settings.dart';
 import 'views/spaces.dart';
 import 'views/tasks.dart';
+import 'views/teams.dart';
 import 'widgets/common.dart';
 import 'widgets/nav_bar.dart';
 
@@ -408,6 +409,8 @@ class MenuSheet extends StatelessWidget {
               badge: inboxCount > 0 ? '$inboxCount' : null),
           _item(ctx, Icons.view_kanban_rounded, 'Kanban',
               () => go(const JiraView(), 'Kanban')),
+          _item(ctx, Icons.groups_rounded, 'Teams',
+              () => go(const TeamsView(), 'Teams')),
           _item(ctx, Icons.code_rounded, 'GitHub',
               () => go(const GithubView(), 'GitHub')),
           _item(ctx, Icons.share_rounded, 'Buffer',

@@ -260,6 +260,25 @@ class Mutations {
         refresh: _store.finance,
       );
 
+  /// A pasted message - an M-Pesa text, a bank alert, a paybill confirmation -
+  /// distilled into a transaction. The server re-parses the text itself (the
+  /// ledger takes its numbers from the message, never from the client) via the
+  /// same moneytalk parser the inbox scan uses, writes an idempotent row keyed
+  /// on the transaction code, and pushes finance/transactions.tsv online. The
+  /// payload is {success, written, skipped, rows}; offline it queues and the
+  /// distillation happens on reconnect, so the record still lands online.
+  Future<MutationResult> distillMessage(String text) => _write(
+        path: '/api/finance/messages/commit',
+        body: {
+          'rows': [
+            {'text': text},
+          ],
+        },
+        label: 'Distil a pasted message',
+        view: 'finance',
+        refresh: _store.finance,
+      );
+
   // ---------- circle ----------
 
   Future<MutationResult> logTouch({

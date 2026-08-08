@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app_scope.dart';
@@ -352,6 +353,14 @@ class FinanceView extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               FloatingActionButton.small(
+                heroTag: 'paste',
+                backgroundColor: C.surface,
+                foregroundColor: C.text2,
+                onPressed: () => _pasteMessage(context),
+                child: const Icon(Icons.content_paste_rounded, size: 18),
+              ),
+              const SizedBox(height: 10),
+              FloatingActionButton.small(
                 heroTag: 'receipt',
                 backgroundColor: C.surface,
                 foregroundColor: C.text2,
@@ -399,6 +408,87 @@ class FinanceView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Paste any money message - an M-Pesa text, a bank alert, a paybill
+  /// confirmation - and let the agent distil it into a transaction. The parse
+  /// is the server's (one parser of record, idempotent on the code), so this
+  /// only carries the text there and reports what actually landed.
+  Future<void> _pasteMessage(BuildContext context) async {
+    final controller = TextEditingController();
+    final clip = await Clipboard.getData(Clipboard.kTextPlain);
+    final pre = clip?.text?.trim() ?? '';
+    if (pre.isNotEmpty) controller.text = pre;
+    if (!context.mounted) return;
+    final text = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: C.panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
+        side: BorderSide(color: C.border),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Distil a message', style: T.headline.copyWith(fontSize: 16)),
+            const SizedBox(height: 4),
+            Text(
+              'Paste an M-Pesa text or bank alert. The agent reads the amount, '
+              'the counterparty and the code, and files it once - online.',
+              style: T.monoSmall,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: pre.isEmpty,
+              minLines: 3,
+              maxLines: 6,
+              style: T.body2,
+              decoration: const InputDecoration(
+                hintText:
+                    'e.g. TAB1A2B3C4 Confirmed. Ksh1,500.00 sent to JOHN DOE …',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Distil into a record'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (text == null || text.isEmpty || !context.mounted) return;
+    final services = AppScope.of(context);
+    toast(context, 'Reading the message…');
+    final res = await services.mutations.distillMessage(text);
+    if (!context.mounted) return;
+    if (res.queued) {
+      toast(context, 'Message queued - it will file on reconnect');
+      return;
+    }
+    if (!res.ok) {
+      toast(context, res.error!, error: true);
+      return;
+    }
+    final map = fmt.m(res.payload);
+    final written = fmt.d(map['written']).toInt();
+    if (written > 0) {
+      toast(context, written == 1 ? 'Filed 1 record' : 'Filed $written records');
+    } else {
+      toast(context, 'No transaction found in that message', error: true);
+    }
   }
 
   /// Camera/gallery receipt -> /api/finance/receipt (native capability).

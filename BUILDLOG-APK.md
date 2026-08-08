@@ -5,6 +5,35 @@ convention. Newest entries on top. Status words: DONE / PARTIAL / BLOCKED.
 
 ---
 
+## 2026-08-08 · Teams on the phone, and paste-to-ledger
+
+Carried the two in-flight features through to the client, on ARCHITECT's cue to
+"carry through all implementations" and to "provision, in the mobile app, the
+option to paste messages that would be distilled into financial records".
+
+**DONE - Teams view (`lib/ui/views/teams.dart`), a Channels entry.** Reads the
+model the agent computes (`/api/teams`, lib/teams.js): each team's health as
+green/amber/red people, each person's ready-work DEPTH as a number, span-over
+flagged where a leader carries more than five directs, past-due surfaced. It is
+read-focused by design - the doctrine keeps team MANAGEMENT on the console; the
+phone is where he SEES, offline-tolerant, whether anyone is about to run dry.
+Pull to refresh; offline and error states are the shared `ErrorRetry`.
+
+**DONE - paste a message, get a ledger row.** A paste FAB on Finance opens a
+sheet prefilled from the clipboard; the text posts to `/api/finance/messages/
+commit`, which RE-PARSES it server-side with the one moneytalk parser (the
+ledger never trusts the client's numbers), writes an idempotent transaction
+keyed on the M-Pesa code, breaks out the transaction fee, and pushes
+finance/transactions.tsv online - so the record lands on Render and syncs back
+to every device. Offline, the raw text queues in the outbox and distils on
+reconnect, so it still ends up online. `Mutations.distillMessage` carries it.
+
+`flutter analyze lib` clean; the whole feature set is additive UI over routes
+that already shipped on dev. Version bump + build + `apk-v*` release are the
+CI's job on push (bump commits carry [skip ci]).
+
+---
+
 ## 2026-08-01 · Session 2 - catching up with three days of agent work
 
 Built unattended, on ARCHITECT's cue: "build the complete updated apk
