@@ -16,6 +16,7 @@ const { createRouter } = require('../lib/router');
 const { createAuthProxy } = require('../lib/auth-proxy');
 const { createRenderClient } = require('../lib/render');
 const { createDeployClient } = require('../lib/deploy');
+const { findRoute } = require('../lib/api-compat');
 const manifest = require('../lib/manifest');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
@@ -81,6 +82,16 @@ async function main() {
   const router = createRouter({ registry, engines, auditLog });
   const authProxy = createAuthProxy({ vault: engines.vault });
 
+  // The legacy monolith (Sconl/isconl-agent, currently isconl-agent.onrender.com)
+  // -- the /api/* compat layer proxies here for anything a new engine doesn't
+  // serve yet, so the already-installed Flutter app can point at hub with
+  // zero rebuild and nothing breaks mid-migration. Optional: if unset, those
+  // routes report a clear 502 instead of silently 404ing.
+  const legacy = process.env.LEGACY_API_URL
+    ? createEngineClient({ name: 'legacy', baseUrl: process.env.LEGACY_API_URL,
+        getToken: () => process.env.LEGACY_TOKEN || secretStore.get('LEGACY_TOKEN') || '' })
+    : null;
+
   const render = createRenderClient({ getApiKey: () => process.env.RENDER_API_KEY || secretStore.get('RENDER_API_KEY') || '', auditLog });
   // Render service name per engine defaults to the engine name itself
   // (matches the single-word-slug naming preference already established,
@@ -114,11 +125,14 @@ async function main() {
       }
     }
     // Login is public -- it IS the auth, same reasoning as vault's own /auth/* routes.
-    if (pathname === '/auth/totp' && req.method === 'POST') {
+    // The /api/-prefixed aliases exist ONLY because the already-installed Flutter
+    // app calls those literal paths (see lib/api-compat.js's header comment) --
+    // same handler either way, not a second login implementation.
+    if ((pathname === '/auth/totp' || pathname === '/api/auth/totp') && req.method === 'POST') {
       const r = await authProxy.totp(JSON.parse(await readBody(req) || '{}'));
       return sendJson(res, r.status, r.data);
     }
-    if (pathname === '/auth/pin' && req.method === 'POST') {
+    if ((pathname === '/auth/pin' || pathname === '/api/auth/pin') && req.method === 'POST') {
       const r = await authProxy.pin(JSON.parse(await readBody(req) || '{}'));
       return sendJson(res, r.status, r.data);
     }
@@ -138,6 +152,39 @@ async function main() {
         if (!p.capability) return sendJson(res, 400, { ok: false, error: 'capability required' });
         const r = await router.route(p.capability, { params: p.params, query: p.query, body: p.body });
         return sendJson(res, r.status || (r.ok ? 200 : 502), r);
+      }
+
+      // -- /api/* compatibility layer for the real, already-signed Flutter app --
+      if (pathname.startsWith('/api/')) {
+        const route = findRoute(req.method, pathname);
+        if (!route) return sendJson(res, 404, { error: 'Not Found' });
+
+        if (route.gap) {
+          return sendJson(res, 501, { error: 'Not implemented -- this route has no working backend today, on the legacy monolith or any new engine (pre-existing gap, not a migration regression).' });
+        }
+
+        const bodyText = await readBody(req);
+        const body = bodyText ? JSON.parse(bodyText) : undefined;
+        const query = Object.fromEntries(url.searchParams);
+
+        if (route.legacy) {
+          if (!legacy) return sendJson(res, 502, { error: 'Legacy backend not configured on this hub (LEGACY_API_URL unset)' });
+          const qs = new URLSearchParams(query).toString();
+          const r = await legacy.raw(req.method, pathname + (qs ? `?${qs}` : ''), body, { token: bearerToken(req) || undefined });
+          return sendJson(res, r.status, r.data);
+        }
+
+        // route.capability: reshape query -> params per paramFromQuery, then route deterministically.
+        let params;
+        if (route.paramFromQuery) {
+          params = {};
+          for (const [paramKey, queryKey] of Object.entries(route.paramFromQuery)) {
+            params[paramKey] = query[queryKey];
+            delete query[queryKey];
+          }
+        }
+        const r = await router.route(route.capability, { params, query, body });
+        return sendJson(res, r.status || (r.ok ? 200 : 502), r.data !== undefined ? r.data : r);
       }
 
       if (pathname === '/act' && req.method === 'POST') {

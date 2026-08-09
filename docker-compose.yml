@@ -119,6 +119,8 @@ services:
       CIRCLE_URL: http://circle:8084
       SPARK_URL: http://spark:8085
       RENDER_API_KEY: ${RENDER_API_KEY}
+      LEGACY_API_URL: ${LEGACY_API_URL}
+      LEGACY_TOKEN: ${LEGACY_TOKEN}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
     ports:

@@ -173,6 +173,77 @@ test('POST /act reports 502 without a crash when spark is not configured at all'
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
 
+test('/api/tasks/detail?taskId=X (the app\'s literal call) maps taskId onto scope\'s tasks.get :id path param', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const scope = await startFakeEngine({ name: 'scope',
+    manifestCapabilities: [{ name: 'tasks.get', method: 'GET', path: '/tasks/:id' }],
+    routes: { 'GET /tasks/T1': () => [200, { task: { ID: 'T1', TITLE: 'Ship it' } }] },
+  });
+  const { server, port, cleanup } = await startHub({ vault, scope });
+  const auth = { Authorization: 'Bearer test-static-token' };
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/tasks/detail?taskId=T1`, { headers: auth });
+    const body = await res.json();
+    assert.equal(body.task.ID, 'T1');
+  } finally { server.close(); vault.server.close(); scope.server.close(); cleanup(); }
+});
+
+test('an /api/* route marked legacy proxies verbatim to LEGACY_API_URL, forwarding the caller\'s own bearer token', async () => {
+  const vault = await startFakeEngine({ name: 'vault', routes: { 'POST /auth/verify': () => [200, { valid: true }] } });
+  const legacyServer = await startFakeEngine({ name: 'legacy', routes: {
+    'GET /api/state': (body, req) => [200, { legacy: true, auth: req.headers.authorization }],
+  } });
+  const { server, port, cleanup } = await startHub({ vault }, { LEGACY_API_URL: `http://127.0.0.1:${legacyServer.port}` });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { Authorization: 'Bearer callers-own-token' } });
+    const body = await res.json();
+    assert.equal(body.legacy, true);
+    assert.equal(body.auth, 'Bearer callers-own-token');
+  } finally { server.close(); vault.server.close(); legacyServer.server.close(); cleanup(); }
+});
+
+test('a legacy /api/* route reports a clean 502 (not a crash) when LEGACY_API_URL is not configured', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  const auth = { Authorization: 'Bearer test-static-token' };
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/state`, { headers: auth });
+    assert.equal(res.status, 502);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('a gap /api/* route (no working backend anywhere) reports 501, not a silent 404 or a crash', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  const auth = { Authorization: 'Bearer test-static-token' };
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/teams`, { headers: auth });
+    assert.equal(res.status, 501);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('/api/auth/totp (the app\'s literal path) is public and reaches the same handler as /auth/totp', async () => {
+  const vault = await startFakeEngine({ name: 'vault', routes: {
+    'POST /auth/totp': (body) => [200, { success: true, token: 'sess-1', received: body.code }],
+  } });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/auth/totp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: '654321' }) });
+    const body = await res.json();
+    assert.equal(body.received, '654321');
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('an unmapped /api/* path 404s cleanly rather than falling through', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  const auth = { Authorization: 'Bearer test-static-token' };
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/definitely-not-a-real-route`, { headers: auth });
+    assert.equal(res.status, 404);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
 test('the audit log recorded requests made during this test run', async () => {
   const vault = await startFakeEngine({ name: 'vault' });
   const { server, port, auditLog, cleanup } = await startHub({ vault });
