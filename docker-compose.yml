@@ -114,10 +114,15 @@ services:
       HUB_BIND: 0.0.0.0
       HUB_TOKEN: ${HUB_TOKEN}
       VAULT_URL: http://vault:8081
+      VAULT_TOKEN: ${VAULT_TOKEN}
       PULSE_URL: http://pulse:8082
+      PULSE_TOKEN: ${PULSE_TOKEN}
       SCOPE_URL: http://scope:8083
+      SCOPE_TOKEN: ${SCOPE_TOKEN}
       CIRCLE_URL: http://circle:8084
+      CIRCLE_TOKEN: ${CIRCLE_TOKEN}
       SPARK_URL: http://spark:8085
+      SPARK_TOKEN: ${SPARK_TOKEN}
       RENDER_API_KEY: ${RENDER_API_KEY}
       LEGACY_API_URL: ${LEGACY_API_URL}
       LEGACY_TOKEN: ${LEGACY_TOKEN}
