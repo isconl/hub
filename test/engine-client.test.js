@@ -56,6 +56,15 @@ test('call() fills :param path placeholders and throws when a required param is 
   await assert.rejects(() => client.call('GET', '/vault/:collection'), /missing path param "collection"/);
 });
 
+test('call() accepts a per-call token override, without changing the client\'s own configured token', async () => {
+  const fetchFn = fakeFetch(() => ({ status: 200, body: {} }));
+  const client = createEngineClient({ name: 'vault', baseUrl: 'http://x', getToken: () => 'hub-own-token', fetchFn });
+  await client.call('POST', '/auth/verify', { body: {}, token: 'callers-session-token' });
+  assert.equal(fetchFn.calls[0].opts.headers.Authorization, 'Bearer callers-session-token');
+  await client.call('GET', '/manifest');
+  assert.equal(fetchFn.calls[1].opts.headers.Authorization, 'Bearer hub-own-token');
+});
+
 test('call() appends a query string, dropping undefined/null values', async () => {
   const fetchFn = fakeFetch((url) => ({ status: 200, body: { url } }));
   const client = createEngineClient({ name: 'circle', baseUrl: 'http://x', fetchFn });

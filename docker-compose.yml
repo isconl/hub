@@ -1,0 +1,133 @@
+# Local / self-hosted deployment of the whole isconl-agent fleet: one
+# Docker network, one compose file, six engines. This is the "most portable
+# means" the owner asked for -- runs identically on a laptop, a bare-metal
+# box, or an Oracle Compute instance (the server-space rebuild's target).
+#
+# ASSUMES the standard local checkout layout: all 6 repos as sibling
+# directories under engineer-systems/Systems/iSconl/ (matches how this
+# session cloned them). Production deployment is per-service (Render today,
+# Oracle later) rather than this compose file -- this is for running the
+# whole stack together: local dev, self-hosted, or a single-box fallback.
+#
+# Secrets: every engine pulls its own from Bitwarden at boot via
+# BWS_ACCESS_TOKEN/BWS_ORGANIZATION_ID (see lib/secrets.js in each repo) --
+# nothing sensitive belongs in this file or a baked-in image, matching the
+# owner's "Render holds no data/secrets" design intent applied here too.
+#
+# Usage: cp .env.example .env, fill in tokens, then `docker compose up -d`.
+
+services:
+  vault:
+    build: ../vault
+    container_name: isconl-vault
+    restart: unless-stopped
+    environment:
+      VAULT_BIND: 0.0.0.0
+      VAULT_TOKEN: ${VAULT_TOKEN}
+      BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
+      BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
+    volumes:
+      - vault-memory:/app/memory
+      - vault-runtime:/app/runtime
+    ports:
+      - "8081:8081"
+
+  pulse:
+    build: ../pulse
+    container_name: isconl-pulse
+    restart: unless-stopped
+    depends_on: [vault]
+    environment:
+      PULSE_BIND: 0.0.0.0
+      PULSE_TOKEN: ${PULSE_TOKEN}
+      # Same-host stopgap (documented gap, see the refactor canvas): pulse
+      # reads/writes vault's memory dir directly rather than over HTTP.
+      PULSE_MEMORY_DIR: /app/memory
+      BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
+      BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
+    volumes:
+      - vault-memory:/app/memory
+      - pulse-runtime:/app/runtime
+    ports:
+      - "8082:8082"
+
+  scope:
+    build: ../scope
+    container_name: isconl-scope
+    restart: unless-stopped
+    depends_on: [vault]
+    environment:
+      SCOPE_BIND: 0.0.0.0
+      SCOPE_TOKEN: ${SCOPE_TOKEN}
+      SCOPE_MEMORY_DIR: /app/memory
+      JIRA_HOST: ${JIRA_HOST}
+      JIRA_EMAIL: ${JIRA_EMAIL}
+      JIRA_PROJECT: ${JIRA_PROJECT}
+      BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
+      BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
+    volumes:
+      - vault-memory:/app/memory
+      - scope-runtime:/app/runtime
+    ports:
+      - "8083:8083"
+
+  circle:
+    build: ../circle
+    container_name: isconl-circle
+    restart: unless-stopped
+    depends_on: [vault]
+    environment:
+      CIRCLE_BIND: 0.0.0.0
+      CIRCLE_TOKEN: ${CIRCLE_TOKEN}
+      CIRCLE_MEMORY_DIR: /app/memory
+      BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
+      BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
+    volumes:
+      - vault-memory:/app/memory
+      - circle-runtime:/app/runtime
+    ports:
+      - "8084:8084"
+
+  spark:
+    build: ../spark
+    container_name: isconl-spark
+    restart: unless-stopped
+    depends_on: [vault, scope]
+    environment:
+      SPARK_BIND: 0.0.0.0
+      SPARK_TOKEN: ${SPARK_TOKEN}
+      SPARK_MEMORY_DIR: /app/memory
+      BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
+      BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
+    volumes:
+      - vault-memory:/app/memory
+      - spark-runtime:/app/runtime
+    ports:
+      - "8085:8085"
+
+  hub:
+    build: .
+    container_name: isconl-hub
+    restart: unless-stopped
+    depends_on: [vault, pulse, scope, circle, spark]
+    environment:
+      HUB_BIND: 0.0.0.0
+      HUB_TOKEN: ${HUB_TOKEN}
+      VAULT_URL: http://vault:8081
+      PULSE_URL: http://pulse:8082
+      SCOPE_URL: http://scope:8083
+      CIRCLE_URL: http://circle:8084
+      SPARK_URL: http://spark:8085
+      RENDER_API_KEY: ${RENDER_API_KEY}
+      BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
+      BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
+    ports:
+      - "8080:8080"
+
+volumes:
+  vault-memory:
+  vault-runtime:
+  pulse-runtime:
+  scope-runtime:
+  circle-runtime:
+  spark-runtime:
