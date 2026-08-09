@@ -1,0 +1,18 @@
+{
+  "name": "@isconl/hub",
+  "version": "0.1.0",
+  "private": false,
+  "description": "isconl-agent orchestrator: single entry point, capability registry, deterministic routing, deploy control over the other engines",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@bitwarden/sdk-napi": "^1.0.0"
+  },
+  "license": "MIT"
+}

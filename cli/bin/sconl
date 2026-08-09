@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# hub/cli/bin/sconl — public entry point, delegates to isconl
-exec "$(dirname "${BASH_SOURCE[0]}")/isconl" "$@"
