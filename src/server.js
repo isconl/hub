@@ -116,6 +116,17 @@ async function main() {
     if (pathname === '/health' && req.method === 'GET') {
       return sendJson(res, 200, { status: 'ok', engine: 'hub', version: manifest.version });
     }
+    // The bare root has no API meaning of its own -- it exists so a human
+    // opening the URL directly (in a browser, sanity-checking a deploy)
+    // sees a real status line instead of a bare {"error":"Not Found"},
+    // which reads as "the whole thing is broken" even when every engine is
+    // healthy. Not a route the app or any client should ever call.
+    if (pathname === '/' && req.method === 'GET') {
+      return sendJson(res, 200, {
+        engine: 'hub', status: 'ok', version: manifest.version,
+        note: 'This is the isconl hub API, not a web page. See /health, /manifest, or /engines (authenticated).',
+      });
+    }
     if (pathname === '/manifest' && req.method === 'GET') {
       try {
         const { capabilities, down } = await registry.list();
