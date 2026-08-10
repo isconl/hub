@@ -120,6 +120,19 @@ test('POST /auth/totp is public and proxies straight through to vault', async ()
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
 
+test('GET /auth/methods is public and reports what vault actually has configured', async () => {
+  const vault = await startFakeEngine({ name: 'vault', routes: {
+    'GET /auth/methods': () => [200, { totp: true, pin: false }],
+  } });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/auth/methods`);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, { totp: true, pin: false });
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
 test('POST /call routes a capability to its owning engine, deterministically, no model involved', async () => {
   const vault = await startFakeEngine({ name: 'vault' });
   const scope = await startFakeEngine({ name: 'scope',
@@ -231,6 +244,19 @@ test('/api/auth/totp (the app\'s literal path) is public and reaches the same ha
     const res = await fetch(`http://127.0.0.1:${port}/api/auth/totp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: '654321' }) });
     const body = await res.json();
     assert.equal(body.received, '654321');
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('/api/auth/methods (the app\'s literal path) is public and reaches the same handler as /auth/methods', async () => {
+  const vault = await startFakeEngine({ name: 'vault', routes: {
+    'GET /auth/methods': () => [200, { totp: false, pin: true }],
+  } });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/auth/methods`);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.deepEqual(body, { totp: false, pin: true });
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
 

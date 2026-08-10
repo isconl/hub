@@ -139,6 +139,10 @@ async function main() {
     // The /api/-prefixed aliases exist ONLY because the already-installed Flutter
     // app calls those literal paths (see lib/api-compat.js's header comment) --
     // same handler either way, not a second login implementation.
+    if ((pathname === '/auth/methods' || pathname === '/api/auth/methods') && req.method === 'GET') {
+      const r = await authProxy.methods();
+      return sendJson(res, r.status, r.data);
+    }
     if ((pathname === '/auth/totp' || pathname === '/api/auth/totp') && req.method === 'POST') {
       const r = await authProxy.totp(JSON.parse(await readBody(req) || '{}'));
       return sendJson(res, r.status, r.data);

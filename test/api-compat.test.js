@@ -32,7 +32,7 @@ test('every real inventoried app call has SOME entry -- the exact set found by g
   const inventoried = [
     'POST /api/act', 'GET /api/apk/latest',
     'GET /api/articles/list', 'GET /api/audit',
-    'POST /api/auth/logout', 'GET /api/auth/methods',
+    'POST /api/auth/logout',
     'GET /api/buffer/desk', 'GET /api/calendar/events', 'POST /api/chat',
     'GET /api/chat/stream', 'POST /api/chat/thread/new', 'POST /api/chat/thread/open', 'GET /api/chat/threads',
     'GET /api/circle', 'POST /api/circle/touch', 'GET /api/dates', 'POST /api/dates/add',
