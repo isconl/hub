@@ -40,13 +40,11 @@ services:
     environment:
       PULSE_BIND: 0.0.0.0
       PULSE_TOKEN: ${PULSE_TOKEN}
-      # Same-host stopgap (documented gap, see the refactor canvas): pulse
-      # reads/writes vault's memory dir directly rather than over HTTP.
-      PULSE_MEMORY_DIR: /app/memory
+      VAULT_URL: http://vault:8081
+      VAULT_TOKEN: ${VAULT_TOKEN}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
     volumes:
-      - vault-memory:/app/memory
       - pulse-runtime:/app/runtime
     ports:
       - "8082:8082"
@@ -59,14 +57,14 @@ services:
     environment:
       SCOPE_BIND: 0.0.0.0
       SCOPE_TOKEN: ${SCOPE_TOKEN}
-      SCOPE_MEMORY_DIR: /app/memory
+      VAULT_URL: http://vault:8081
+      VAULT_TOKEN: ${VAULT_TOKEN}
       JIRA_HOST: ${JIRA_HOST}
       JIRA_EMAIL: ${JIRA_EMAIL}
       JIRA_PROJECT: ${JIRA_PROJECT}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
     volumes:
-      - vault-memory:/app/memory
       - scope-runtime:/app/runtime
     ports:
       - "8083:8083"
@@ -79,11 +77,11 @@ services:
     environment:
       CIRCLE_BIND: 0.0.0.0
       CIRCLE_TOKEN: ${CIRCLE_TOKEN}
-      CIRCLE_MEMORY_DIR: /app/memory
+      VAULT_URL: http://vault:8081
+      VAULT_TOKEN: ${VAULT_TOKEN}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
     volumes:
-      - vault-memory:/app/memory
       - circle-runtime:/app/runtime
     ports:
       - "8084:8084"
@@ -96,11 +94,11 @@ services:
     environment:
       SPARK_BIND: 0.0.0.0
       SPARK_TOKEN: ${SPARK_TOKEN}
-      SPARK_MEMORY_DIR: /app/memory
+      VAULT_URL: http://vault:8081
+      VAULT_TOKEN: ${VAULT_TOKEN}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
     volumes:
-      - vault-memory:/app/memory
       - spark-runtime:/app/runtime
     ports:
       - "8085:8085"
