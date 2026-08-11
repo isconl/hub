@@ -15,6 +15,10 @@
 # owner's "Render holds no data/secrets" design intent applied here too.
 #
 # Usage: cp .env.example .env, fill in tokens, then `docker compose up -d`.
+#
+# Per-service cpus/memory limits below deliberately sum below a single
+# Oracle Always-Free Ampere A1 instance's 4 OCPU/24GB, leaving headroom for
+# other services sharing the same box rather than claiming the whole thing.
 
 services:
   vault:
@@ -31,6 +35,9 @@ services:
       - vault-runtime:/app/runtime
     ports:
       - "8081:8081"
+    deploy:
+      resources:
+        limits: { cpus: "0.75", memory: 1536m }
 
   pulse:
     build: ../pulse
@@ -48,6 +55,9 @@ services:
       - pulse-runtime:/app/runtime
     ports:
       - "8082:8082"
+    deploy:
+      resources:
+        limits: { cpus: "0.4", memory: 768m }
 
   scope:
     build: ../scope
@@ -68,6 +78,9 @@ services:
       - scope-runtime:/app/runtime
     ports:
       - "8083:8083"
+    deploy:
+      resources:
+        limits: { cpus: "0.4", memory: 768m }
 
   circle:
     build: ../circle
@@ -85,6 +98,9 @@ services:
       - circle-runtime:/app/runtime
     ports:
       - "8084:8084"
+    deploy:
+      resources:
+        limits: { cpus: "0.4", memory: 768m }
 
   spark:
     build: ../spark
@@ -102,6 +118,9 @@ services:
       - spark-runtime:/app/runtime
     ports:
       - "8085:8085"
+    deploy:
+      resources:
+        limits: { cpus: "0.4", memory: 768m }
 
   hub:
     build: .
@@ -128,6 +147,9 @@ services:
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
     ports:
       - "8080:8080"
+    deploy:
+      resources:
+        limits: { cpus: "0.75", memory: 1536m }
 
 volumes:
   vault-memory:
