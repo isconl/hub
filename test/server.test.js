@@ -279,3 +279,91 @@ test('the audit log recorded requests made during this test run', async () => {
     assert.equal(auditLog.verifyChain().ok, true);
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
+
+// -- web console static serving (lib/static.js) --------------------------
+
+function fakeWebBuild() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-web-build-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<html>fake console</html>');
+  fs.mkdirSync(path.join(dir, 'assets'));
+  fs.writeFileSync(path.join(dir, 'assets', 'app.wasm'), Buffer.from([0, 1, 2]));
+  return dir;
+}
+
+test('GET / serves the built web console when HUB_WEB_DIR is configured, with no auth required', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault }, { HUB_WEB_DIR: fakeWebBuild() });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type'), /text\/html/);
+    assert.equal(await res.text(), '<html>fake console</html>');
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('a nested static asset is served with the right content-type by extension', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault }, { HUB_WEB_DIR: fakeWebBuild() });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/assets/app.wasm`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'application/wasm');
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('GET / falls back to the JSON status route when no web console is built', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  // Explicit empty dir, not the default: app/build/web is a real build on
+  // any machine that has run `flutter build web`, which would otherwise
+  // make this test pass for the wrong reason (or fail on a fresh checkout).
+  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-no-web-build-'));
+  const { server, port, cleanup } = await startHub({ vault }, { HUB_WEB_DIR: emptyDir });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`);
+    const body = await res.json();
+    assert.equal(body.engine, 'hub');
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('existing API routes are unaffected by a configured web console (no shadowing)', async () => {
+  const vault = await startFakeEngine({ name: 'vault', routes: {
+    'GET /auth/methods': () => [200, { totp: true, pin: true }],
+  } });
+  const { server, port, cleanup } = await startHub({ vault }, { HUB_WEB_DIR: fakeWebBuild() });
+  try {
+    const health = await fetch(`http://127.0.0.1:${port}/health`);
+    assert.equal((await health.json()).engine, 'hub');
+    const methods = await fetch(`http://127.0.0.1:${port}/auth/methods`);
+    assert.deepEqual(await methods.json(), { totp: true, pin: true });
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('a path-traversal attempt against the web console 404s rather than escaping the build dir', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault }, { HUB_WEB_DIR: fakeWebBuild() });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/../../../../../etc/passwd`, { redirect: 'manual' });
+    assert.notEqual(res.status, 200);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('an unknown path under the web console 404s rather than falling back to index.html', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault }, { HUB_WEB_DIR: fakeWebBuild() });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/definitely-not-a-real-asset.js`);
+    assert.equal(res.status, 404);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('a matching If-Modified-Since revalidates with 304 instead of re-sending the body', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault }, { HUB_WEB_DIR: fakeWebBuild() });
+  try {
+    const first = await fetch(`http://127.0.0.1:${port}/`);
+    const lastModified = first.headers.get('last-modified');
+    assert.ok(lastModified);
+    const second = await fetch(`http://127.0.0.1:${port}/`, { headers: { 'If-Modified-Since': lastModified } });
+    assert.equal(second.status, 304);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});

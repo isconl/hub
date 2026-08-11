@@ -17,11 +17,17 @@ const { createAuthProxy } = require('../lib/auth-proxy');
 const { createRenderClient } = require('../lib/render');
 const { createDeployClient } = require('../lib/deploy');
 const { findRoute } = require('../lib/api-compat');
+const { createStaticServer } = require('../lib/static');
 const manifest = require('../lib/manifest');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
 const BIND = process.env.HUB_BIND || '127.0.0.1';
 const LOGS_DIR = process.env.HUB_LOGS_DIR || require('path').join(__dirname, '..', 'runtime', 'logs');
+// `flutter build web`'s output, if it exists -- see lib/static.js. Absent by
+// default (no HUB_WEB_DIR, no app/build/web) is a fully supported state:
+// the static server just reports itself unavailable and every request
+// behaves exactly as it does today.
+const WEB_DIR = process.env.HUB_WEB_DIR || require('path').join(__dirname, '..', 'app', 'build', 'web');
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -109,6 +115,9 @@ async function main() {
     process.exit(1);
   }
 
+  const staticServer = createStaticServer({ webDir: WEB_DIR });
+  console.log(`  web console: ${staticServer.available ? `serving ${WEB_DIR}` : 'not built (no app/build/web) -- API only'}`);
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const { pathname } = url;
@@ -116,11 +125,19 @@ async function main() {
     if (pathname === '/health' && req.method === 'GET') {
       return sendJson(res, 200, { status: 'ok', engine: 'hub', version: manifest.version });
     }
+    // The web console's own static assets (index.html, main.dart.js, wasm,
+    // fonts...) are public by construction: a browser has to load the page
+    // before it can even show a login form to obtain a token. Tried before
+    // every other route, including '/' below, which becomes its fallback --
+    // see lib/static.js's own header for why this can never shadow the API.
+    if (await staticServer.maybeServe(req, pathname, res)) return;
     // The bare root has no API meaning of its own -- it exists so a human
     // opening the URL directly (in a browser, sanity-checking a deploy)
     // sees a real status line instead of a bare {"error":"Not Found"},
     // which reads as "the whole thing is broken" even when every engine is
-    // healthy. Not a route the app or any client should ever call.
+    // healthy. Not a route the app or any client should ever call. Only
+    // reachable when no web console is built (staticServer.available is
+    // false), since the branch above already claims '/' otherwise.
     if (pathname === '/' && req.method === 'GET') {
       return sendJson(res, 200, {
         engine: 'hub', status: 'ok', version: manifest.version,
