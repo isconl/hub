@@ -119,6 +119,22 @@ async function main() {
   console.log(`  web console: ${staticServer.available ? `serving ${WEB_DIR}` : 'not built (no app/build/web) -- API only'}`);
 
   const server = http.createServer(async (req, res) => {
+    // Everything below can throw on malformed input (a bare `//` path makes
+    // `new URL` throw ERR_INVALID_URL, for one) -- this handler runs inside
+    // an async function passed to http.createServer, so an uncaught throw
+    // here becomes an unhandled promise rejection, which crashes the whole
+    // process, not just this request (reproduced in production: one scanner
+    // probe with a `//` path took the entire service down until Render
+    // auto-restarted it). One outer catch is the actual fix; the inner catch
+    // around the authenticated routes stays for its own error shape.
+    try {
+      return await handleRequest(req, res);
+    } catch (e) {
+      return sendJson(res, 400, { error: 'Bad Request', detail: String(e.message || e) });
+    }
+  });
+
+  async function handleRequest(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const { pathname } = url;
 
@@ -237,7 +253,7 @@ async function main() {
     }
 
     return sendJson(res, 404, { error: 'Not Found' });
-  });
+  }
 
   return new Promise((resolve) => {
     server.listen(PORT, BIND, () => {

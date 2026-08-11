@@ -356,6 +356,22 @@ test('an unknown path under the web console 404s rather than falling back to ind
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
 
+test('a malformed URL (e.g. a bare "//" path) 400s instead of crashing the process (reproduced in production, 11 Aug 2026)', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    // `new URL('//', base)` throws ERR_INVALID_URL -- this used to be an
+    // uncaught throw inside the async request handler, which becomes an
+    // unhandled promise rejection and kills the whole process, not just
+    // this one request.
+    const res = await fetch(`http://127.0.0.1:${port}//`);
+    assert.equal(res.status, 400);
+    // The process is still alive and serving other requests.
+    const health = await fetch(`http://127.0.0.1:${port}/health`);
+    assert.equal((await health.json()).engine, 'hub');
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
 test('a matching If-Modified-Since revalidates with 304 instead of re-sending the body', async () => {
   const vault = await startFakeEngine({ name: 'vault' });
   const { server, port, cleanup } = await startHub({ vault }, { HUB_WEB_DIR: fakeWebBuild() });
