@@ -18,6 +18,7 @@ const { createRenderClient } = require('../lib/render');
 const { createDeployClient } = require('../lib/deploy');
 const { findRoute } = require('../lib/api-compat');
 const { createStaticServer } = require('../lib/static');
+const servicesRegistry = require('../lib/services-registry');
 const manifest = require('../lib/manifest');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
@@ -193,6 +194,33 @@ async function main() {
     try {
       if (pathname === '/engines' && req.method === 'GET') {
         return sendJson(res, 200, { engines: await registry.healthAll() });
+      }
+
+      // Every named service the owner runs, isconl and otherwise -- the
+      // future "Services" panel's data source. Read-only: enriches the
+      // static catalogue with live status where it's cheap to get (engine
+      // health already computed for /engines, Render suspension state from
+      // the same render client /deploy/:engine already uses), degrades to
+      // the bare catalogue entry if a lookup fails rather than 500ing.
+      if (pathname === '/services' && req.method === 'GET') {
+        const base = servicesRegistry.list();
+        const [engineHealth, renderServices] = await Promise.all([
+          registry.healthAll().catch(() => []),
+          render.listServices().catch(() => []),
+        ]);
+        const engineUp = Object.fromEntries((engineHealth || []).map(e => [e.engine, e.up]));
+        const renderByName = Object.fromEntries((renderServices || []).map(s => [s.name, s]));
+        const enriched = base.map(s => {
+          if (s.kind === 'engine') {
+            return { ...s, configured: !!engines[s.name], up: engineUp[s.name] ?? null };
+          }
+          if (s.provider === 'render' && s.renderService) {
+            const r = renderByName[s.renderService];
+            return { ...s, found: !!r, suspended: r ? r.suspended : null, suspenders: r ? r.suspenders : null };
+          }
+          return s;
+        });
+        return sendJson(res, 200, { services: enriched });
       }
 
       if (pathname === '/call' && req.method === 'POST') {

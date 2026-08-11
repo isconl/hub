@@ -383,3 +383,34 @@ test('a matching If-Modified-Since revalidates with 304 instead of re-sending th
     assert.equal(second.status, 304);
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
+
+test('GET /services returns the full catalogue, enriched with real up/down for configured engines', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const scope = await startFakeEngine({ name: 'scope' });
+  const { server, port, cleanup } = await startHub({ vault, scope });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/services`, { headers: { Authorization: 'Bearer test-static-token' } });
+    assert.equal(res.status, 200);
+    const { services } = await res.json();
+    const byName = Object.fromEntries(services.map(s => [s.name, s]));
+    assert.equal(byName.vault.configured, true);
+    assert.equal(byName.vault.up, true);
+    assert.equal(byName.scope.configured, true);
+    assert.equal(byName.circle.configured, false);
+    assert.equal(byName.circle.up, null);
+    // Render-provider entries degrade cleanly with no RENDER_API_KEY configured in tests.
+    assert.equal(byName.keyvanos.provider, 'render');
+    assert.equal(byName.keyvanos.found, false);
+    // Not-yet-hosted services are still listed, just unenriched.
+    assert.equal(byName.wellpath.provider, 'planned');
+  } finally { server.close(); vault.server.close(); scope.server.close(); cleanup(); }
+});
+
+test('GET /services requires auth, same as every other non-public route', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/services`);
+    assert.equal(res.status, 404);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
