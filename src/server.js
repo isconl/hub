@@ -24,11 +24,14 @@ const manifest = require('../lib/manifest');
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
 const BIND = process.env.HUB_BIND || '127.0.0.1';
 const LOGS_DIR = process.env.HUB_LOGS_DIR || require('path').join(__dirname, '..', 'runtime', 'logs');
-// `flutter build web`'s output, if it exists -- see lib/static.js. Absent by
-// default (no HUB_WEB_DIR, no app/build/web) is a fully supported state:
-// the static server just reports itself unavailable and every request
-// behaves exactly as it does today.
-const WEB_DIR = process.env.HUB_WEB_DIR || require('path').join(__dirname, '..', 'app', 'build', 'web');
+// webconsole/ -- the real web frontend, native HTML/CSS/JS ported from the
+// legacy dashboard and wired to hub's own API (see lib/static.js). This
+// replaced the Flutter-web build as the default: Flutter-compiled-to-web
+// carried its own runtime (CanvasKit) and didn't feel like a web page.
+// Absent (no HUB_WEB_DIR, no webconsole/) is still a fully supported state
+// -- the static server just reports itself unavailable and every request
+// behaves exactly as it does today (API only).
+const WEB_DIR = process.env.HUB_WEB_DIR || require('path').join(__dirname, '..', 'webconsole');
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -246,7 +249,7 @@ async function main() {
         if (route.legacy) {
           if (!legacy) return sendJson(res, 502, { error: 'Legacy backend not configured on this hub (LEGACY_API_URL unset)' });
           const qs = new URLSearchParams(query).toString();
-          const r = await legacy.raw(req.method, pathname + (qs ? `?${qs}` : ''), body, { token: bearerToken(req) || undefined });
+          const r = await legacy.raw(req.method, pathname + (qs ? `?${qs}` : ''), body);
           return sendJson(res, r.status, r.data);
         }
 

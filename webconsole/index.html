@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>iSconl</title>
+  <meta name="description" content="iSconl - Sovereign Personal AI Console. Command, Calendar, Kanban, GitHub, File Manager, OneDrive, Buffer, Microsoft 365 and Buffer.">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <!-- Versioned asset URLs: a URL the browser has never seen is always fetched
+       fresh, which makes stale-cache archaeology impossible regardless of any
+       heuristic. Bump the v token whenever a release must land instantly. -->
+  <link rel="stylesheet" href="/static/style.css?v=20260731f">
+  <!-- Design-token engine, ported from QSpace Pages' brand_config.dart/app_theme.dart:
+       a few seed colors regenerate the derived palette (light/dark/on-color
+       variants) instead of every shade being separately hand-picked. Runs
+       synchronously, before body paint, so --primary-light etc. are set the
+       first time anything using them renders. -->
+  <script src="/static/brand-system.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Barlow: QSpace Pages' brand_config.dart names this the "fontDisplay"
+       role - page/section headings. Used here the same way: the sidebar
+       wordmark, plus a light sprinkle on view headings - not body text,
+       which stays Inter. ExtraBold (800) for the wordmark's bold segments,
+       Light (300) for its light segment. -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300..700&family=JetBrains+Mono:wght@400;500&family=Barlow:wght@300;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+</head>
+<body>
+
+  <!-- OMNI-COMMAND PALETTE -->
+  <div id="cmd-overlay" class="cmd-overlay hidden" role="dialog" aria-label="Command Palette">
+    <div class="cmd-modal">
+      <div class="cmd-header">
+        <svg class="cmd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="cmd-input" type="text" placeholder="Ask iSconl anything, or type 'gh ...' for GitHub CLI..." autocomplete="off" spellcheck="false">
+        <kbd class="cmd-esc">ESC</kbd>
+      </div>
+      <!-- One word per destination, ordered the way a day flows: orient, then
+           work, then money, then the channels, then the plumbing. -->
+      <div id="cmd-suggestions" class="cmd-suggestions">
+        <div class="cmd-group-label">GO TO</div>
+        <div class="cmd-item" data-view="today">Today</div>
+        <div class="cmd-item" data-view="tasks">Tasks</div>
+        <div class="cmd-item" data-view="planning">Planning</div>
+        <div class="cmd-item" data-view="ideas">Ideas</div>
+        <div class="cmd-item" data-view="journal">Journal</div>
+        <div class="cmd-item" data-view="learning">Learning</div>
+        <div class="cmd-item" data-view="circle">Circle</div>
+        <div class="cmd-item" data-view="projects">Projects</div>
+        <div class="cmd-item" data-view="notifications">Alerts</div>
+        <div class="cmd-item" data-view="inbox">Inbox</div>
+        <div class="cmd-item" data-view="finance">Finance</div>
+        <div class="cmd-item" data-view="calendar">Calendar</div>
+        <div class="cmd-item" data-view="jira">Jira</div>
+        <div class="cmd-item" data-view="decisions">Decisions</div>
+        <div class="cmd-item" data-view="articles">Articles</div>
+        <div class="cmd-item" data-view="files">Files</div>
+        <div class="cmd-item" data-view="github">GitHub</div>
+        <div class="cmd-item" data-view="social">Buffer</div>
+        <div class="cmd-item" data-view="settings">Settings</div>
+        <div class="cmd-group-label">GITHUB CLI</div>
+        <div class="cmd-item" data-gh="gh repo list">Repos</div>
+        <div class="cmd-item" data-gh="gh pr list">Pulls</div>
+        <div class="cmd-item" data-gh="gh issue list">Issues</div>
+        <div class="cmd-item" data-gh="gh api notifications">Notifications</div>
+      </div>
+      <div id="cmd-result" class="cmd-result hidden"></div>
+    </div>
+  </div>
+
+  <div id="app">
+
+    <!-- ═══ LEFT SIDEBAR ═══ -->
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="brand">
+          <img src="/static/favicon.svg" class="brand-icon" alt="iSconl">
+          <div class="brand-text">
+            <!-- Horizontal wordmark: bold "i" + light "Architect" + bold "hub",
+                 reading as one word "iSconlhub" - same bold/light wordmark-
+                 split pattern as QSpace's _BrandLogoTypographic, adapted from
+                 a 2-part split to this brand's 3-part one. Fully typographic,
+                 no extra glyph styling. -->
+            <div class="wordmark" aria-label="iSconlhub">
+              <span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">hub</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-orientation-block" style="padding: 0.2rem 0.4rem; margin: 0.4rem 0 0.7rem; background: transparent; border: none">
+          <div style="font-size: 0.6rem; font-weight: 650; color: var(--green); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px">Cycle Briefing</div>
+          <div class="sidebar-cycle-copy" id="sidebar-cycle-copy" style="font-size: 0.67rem; color: var(--text-2); line-height: 1.35; font-family: var(--font-mono)"></div>
+        </div>
+
+        <nav class="nav">
+          <!-- Trifractal navigation: three triads (Command / Channels / Personal), the
+               axial spaces with the Circle, and a collapsed System group for
+               plumbing. Groups collapse by click; state persists per browser.
+               New views join a group - the list itself never grows longer. -->
+          <div class="nav-section-label nav-group-head" data-group="command">HUB <span class="nav-caret">▾</span></div>
+          <div class="nav-group-body" id="nav-group-command">
+          <button class="nav-item active" data-view="today" id="nav-today">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/></svg>
+            Hub
+          </button>
+          <button class="nav-item" data-view="tasks" id="nav-tasks">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9,11 12,14 22,4"/><path d="M21,12v7a2,2 0 0,1-2,2H5a2,2 0 0,1-2-2V5a2,2 0 0,1,2-2h11"/></svg>
+            Tasks
+          </button>
+          <button class="nav-item" data-view="planning" id="nav-planning">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="16.2,7.8 13.4,13.4 7.8,16.2 10.6,10.6"/></svg>
+            Planning
+          </button>
+          <button class="nav-item" data-view="calendar" id="nav-calendar">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Calendar
+          </button>
+          <!-- Notifications closes COMMAND. It is where every other surface
+               reports in, so it belongs in the group that is always open -
+               reachable in one click from anywhere, whatever else is folded. -->
+          <button class="nav-item" data-view="notifications" id="nav-notifications">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            Alerts
+            <span class="nav-badge live" id="notif-badge" hidden>0</span>
+          </button>
+          </div>
+
+          <div class="nav-section-label nav-group-head" data-group="flow">CHANNELS <span class="nav-caret">▾</span></div>
+          <div class="nav-group-body" id="nav-group-flow">
+          <button class="nav-item" data-view="inbox" id="nav-inbox">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 16,12 14,15 10,15 8,12 2,12"/><path d="M5.45,5.11L2,12v6a2,2 0 0,0,2,2h16a2,2 0 0,0,2-2V12l-3.45-6.89A2,2 0 0,0,16.76,4H7.24a2,2 0 0,0-1.79,1.11z"/></svg>
+            Inbox
+            <span class="nav-badge live" id="inbox-badge">0</span>
+          </button>
+          <!-- Named for the tool, not the topic: "Social" is the Circle's ring. -->
+          <button class="nav-item" data-view="social" id="nav-social">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Buffer
+          </button>
+          <button class="nav-item" data-view="jira" id="nav-jira">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Kanban
+            <span class="nav-badge live" id="jira-badge">0</span>
+          </button>
+          <!-- A channel, not plumbing: this is where his own work is published
+               and where reviews and mentions arrive. -->
+          <button class="nav-item" data-view="github" id="nav-github">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            GitHub
+          </button>
+          </div>
+
+          <div class="nav-section-label nav-group-head" data-group="life">PERSONAL <span class="nav-caret">▾</span></div>
+          <div class="nav-group-body" id="nav-group-life">
+          <button class="nav-item" data-view="rhythm" id="nav-rhythm">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Rhythm
+          </button>
+          <button class="nav-item" data-view="finance" id="nav-finance">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Finance
+          </button>
+          <button class="nav-item" data-view="ideas" id="nav-ideas">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>
+            Ideas
+          </button>
+          <button class="nav-item" data-view="journal" id="nav-journal">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Journal
+          </button>
+          <button class="nav-item" data-view="learning" id="nav-learning">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/></svg>
+            Learning
+          </button>
+          </div>
+
+          <!-- The rings ARE the menu: each item opens the Circle filtered to
+               its ring; Everyone shows all three. -->
+          <div class="nav-section-label nav-group-head" data-group="circle">CIRCLE <span class="nav-caret">▾</span></div>
+          <div class="nav-group-body" id="nav-group-circle">
+          <button class="nav-item" data-view="circle" data-ring="family" id="nav-circle-family">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21v-8l9-7 9 7v8"/><path d="M9 21v-6h6v6"/></svg>
+            Family
+          </button>
+          <button class="nav-item" data-view="circle" data-ring="professional" id="nav-circle-professional">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+            Professional
+          </button>
+          <button class="nav-item" data-view="circle" data-ring="social" id="nav-circle-social">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+            Social
+          </button>
+          </div>
+
+          <div class="nav-section-label nav-group-head" data-group="projects">PROJECTS <span class="nav-caret">▾</span></div>
+          <div class="nav-group-body" id="nav-group-projects">
+          <button class="nav-item" data-view="projects" data-cat="portfolio" id="nav-projects-portfolio">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            Portfolio
+          </button>
+          <button class="nav-item" data-view="projects" data-cat="product" id="nav-projects-products">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            Products
+          </button>
+          <button class="nav-item" data-view="projects" data-cat="platform" id="nav-projects-platforms">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            Platforms
+          </button>
+          </div>
+
+          <!-- The three axes. Career Copilot folded into Visionary. -->
+          <div class="nav-section-label nav-group-head" data-group="spaces">SPACES <span class="nav-caret">▾</span></div>
+          <div class="nav-group-body" id="nav-group-spaces">
+          <button class="nav-item nav-axis" data-view="spaces" data-axis="AX-VIS" id="nav-space-visionary">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M12 2v4"/><path d="M12 18v4"/></svg>
+            Visionary
+            <span class="nav-badge pending" id="decisions-badge">1</span>
+          </button>
+          <button class="nav-item nav-axis" data-view="spaces" data-axis="AX-INN" id="nav-space-innovator">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 6 6 1-4.5 4.2L18 20l-6-3-6 3 1.5-6.8L3 9l6-1z"/></svg>
+            Innovator
+          </button>
+          <button class="nav-item nav-axis" data-view="spaces" data-axis="AX-CRE" id="nav-space-creator">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+            Creator
+          </button>
+          </div>
+
+          <!-- Plumbing. Meta group, exempt from the rule of three, collapsed by
+               default - reached when needed, invisible when not. -->
+          <div class="nav-section-label nav-group-head" data-group="system">SYSTEM <span class="nav-caret">▾</span></div>
+          <div class="nav-group-body" id="nav-group-system">
+          <button class="nav-item" data-view="files" id="nav-files">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            File Manager
+          </button>
+          <button class="nav-item" data-view="audit" id="nav-audit">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Audit Chain
+          </button>
+          </div>
+        </nav>
+      </div>
+
+      <!-- Bottom: Settings Button (80%) + Search Icon Button (20%) -->
+      <div class="sidebar-bottom">
+        <span class="logo-sub logo-sub-bottom">Enter the Architect...</span>
+        <div class="sidebar-bottom-row">
+          <button class="nav-item settings-bottom-btn" data-view="settings" id="nav-settings" title="Settings">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Settings</span>
+          </button>
+          <button class="nav-item settings-icon-btn" id="cmd-trigger" title="Command iSconl (Ctrl+K)">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+        </div>
+        <!-- One row, one word each - full detail moves to the title tooltip
+             instead of taking three lines of vertical space. -->
+        <div class="system-status-row">
+          <div class="system-status" title="Agent Online · Gate Armed"><div class="status-dot active"></div><span>Agent</span></div>
+          <div class="system-status" title="Jira API: Token Armed"><div class="status-dot active"></div><span>Jira</span></div>
+          <div class="system-status" title="Audit Chain Verified"><div class="status-dot chain"></div><span>Audit</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ═══ MAIN CONTENT VIEW ═══ -->
+    <main class="main-content">
+      <header class="header">
+        <!-- Date and theme on the left; three uniform meters on the right, each
+             carrying the one number that matters: how many days are LEFT. The
+             old canvas ring said "24" next to text that already said "Day 24" -
+             decoration pretending to be information. -->
+        <div class="eq-header" id="eq-header">
+          <div class="eq-left">
+            <div class="eq-date" id="eq-date">Loading...</div>
+            <div class="eq-cycle" id="eq-cycle">-</div>
+          </div>
+          <div class="eq-meters" id="eq-meters"></div>
+        </div>
+      </header>
+
+      <!-- Where you are, and the way back. Hidden on the top-level view so it
+           never adds chrome you cannot use. Populated by renderNavBar(). -->
+      <nav class="navbar" id="navbar" hidden>
+        <button class="navbar-back" id="navbar-back" title="Back (Alt+←)"></button>
+        <div class="navbar-trail" id="navbar-trail"></div>
+      </nav>
+
+      <!-- Altitude and next move. Deliberately OUTSIDE view-container: several code
+           paths re-render that element directly, and a strip that vanished on a
+           partial repaint would be worse than no strip. Populated by
+           renderOrientation() and refreshed whenever the board changes. -->
+      <div id="orientation-strip" class="orientation" hidden></div>
+
+      <section id="view-container" class="view-container"></section>
+    </main>
+
+    <!-- ═══ RIGHT PANEL - PERMANENT DEDICATED ASSISTANT CHAT ═══ -->
+    <aside class="chat-rail">
+      <div class="chat-rail-mode-bar" style="display:flex;gap:4px;padding:6px 12px;background:var(--bg-raised);border-bottom:1px solid var(--border);align-items:center">
+        <button class="task-tab on" id="rail-tab-context" onclick="setRailMode('context')" style="font-size:0.75rem;padding:4px 10px;display:inline-flex;align-items:center;gap:0.4rem">
+          <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">context</span></span>
+        </button>
+        <button class="task-tab" id="rail-tab-chat" onclick="setRailMode('chat')" style="font-size:0.75rem;padding:4px 10px;display:inline-flex;align-items:center;gap:0.4rem">
+          <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">chat</span></span>
+        </button>
+        <button class="task-tab" id="rail-tab-reader" onclick="setRailMode('reader')" style="font-size:0.75rem;padding:4px 10px;display:inline-flex;align-items:center;gap:0.4rem">
+          <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 1 4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">media</span></span>
+        </button>
+      </div>
+
+      <div class="chat-rail-header">
+        <div class="chat-rail-title">
+          <div class="brand-dot"></div>
+          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">assistant</span></span>
+        </div>
+        <!-- Conversation controls. The transcript is vault data now, so these
+             act on something real: history reopens a stored thread, export
+             writes the whole thing out, select picks messages to lift. -->
+        <div class="chat-tools">
+          <button class="chat-tool" onclick="chatNewThread()" title="Start a new conversation" aria-label="New conversation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button class="chat-tool" onclick="chatToggleHistory()" title="Recent conversations" aria-label="Recent conversations">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+          </button>
+          <button class="chat-tool" onclick="chatToggleSelect()" id="chat-select-btn" title="Select messages" aria-label="Select messages">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 20 6"/><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9"/></svg>
+          </button>
+          <button class="chat-tool" onclick="chatExport()" title="Export this conversation" aria-label="Export conversation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+        </div>
+        <!-- Only exists on a phone, where the assistant is a sheet, not a rail. -->
+        <button class="chat-rail-close" onclick="mChatClose()" aria-label="Close assistant">✕</button>
+      </div>
+
+      <!-- Recent conversations, and the bar that appears while selecting. -->
+      <div class="chat-history hidden" id="chat-history"></div>
+      <div class="chat-selbar hidden" id="chat-selbar">
+        <span id="chat-selcount">0 selected</span>
+        <button class="btn btn-ghost" onclick="chatCopySelected(this)">Copy</button>
+        <button class="btn btn-ghost" onclick="chatExport(true)">Export</button>
+        <button class="btn btn-ghost" onclick="chatToggleSelect()">Done</button>
+      </div>
+
+      <!-- Quick Action Chips -->
+      <div class="chat-chips">
+        <button class="chip chip-highlight" onclick="openDistillModal()">Distill</button>
+        <button class="chip" onclick="quickAsk('Check my Jira issues and summarize status')">Jira status</button>
+        <button class="chip" onclick="quickAsk('List my open GitHub repos and any PRs')">GitHub</button>
+        <button class="chip" onclick="quickAsk('What are my pending decisions and risks?')">Decisions</button>
+        <button class="chip" onclick="quickAsk('Show today high-priority tasks and suggest what to focus on')">Focus</button>
+        <button class="chip" onclick="quickAsk('Write me a professional social media post about productivity')">Social post</button>
+        <button class="chip" onclick="quickAsk('What upcoming calendar events do I have this week?')">Events</button>
+      </div>
+
+      <!-- Chat Messages Container.
+           The greeting used to be hardcoded here and had drifted into stating
+           things that were not true - "Anthropic Claude 3.5 Sonnet: Active" when
+           no Anthropic key worked and that model had been retired, and "Microsoft
+           365: Connect in Settings" while it was already connected. It is now
+           rendered from live service state by renderChatGreeting(). -->
+      <div class="chat-rail-messages" id="chat-rail-messages"></div>
+
+      <!-- Chat Input Area -->
+      <div class="chat-rail-input-wrap">
+        <textarea id="chat-rail-textarea" class="chat-rail-input" rows="2" placeholder="Ask iSconl or type 'gh repo list'..." onkeydown="railChatKeydown(event)"></textarea>
+        <button class="chat-rail-send" id="chat-rail-send-btn" onclick="sendRailChat()">Send</button>
+      </div>
+
+      <!-- ═══ THE READER - the rail doubles as a document preview space ═══
+           Opened by any document reference (a deliverable row, a filename
+           mentioned in a lesson or a brief). It sits OVER the chat, never
+           inside it: the conversation underneath is untouched, and Close (or
+           Esc) returns to it exactly as it was. The rail widens slightly
+           while reading. Read-only by design - name, meta, Download, Close,
+           and the document itself. Nothing else. -->
+      <div class="reader-dock hidden" id="reader-dock" role="dialog" aria-label="Document preview">
+        <div class="reader-head">
+          <div class="reader-title">
+            <div class="reader-name" id="reader-name">document</div>
+            <div class="reader-meta" id="reader-meta"></div>
+          </div>
+          <div class="reader-tools">
+            <button class="chat-tool" id="reader-download" title="Download a copy" aria-label="Download">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <button class="chat-tool" onclick="readerClose()" title="Close (Esc)" aria-label="Close preview">✕</button>
+          </div>
+        </div>
+        <div class="reader-body" id="reader-body"></div>
+      </div>
+
+      <!-- ═══ MODE 3: CONTEXT & OPERATIONS INSPECTOR ═══ -->
+      <div class="chat-rail-context hidden" id="chat-rail-context" style="padding:0.75rem 0.85rem;overflow:hidden;height:calc(100% - 50px);display:flex;flex-direction:column"></div>
+    </aside>
+  </div>
+
+  <!-- ═══ DISTILL MODAL ═══ -->
+  <div id="distill-modal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-header">
+        <span class="modal-title">Distill</span>
+        <button class="btn btn-ghost" onclick="closeDistillModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <label style="font-size:0.72rem;font-weight:600;color:var(--text-2);letter-spacing:0.04em;display:block;margin-bottom:0.3rem">DISTILL AS</label>
+        <div style="display:flex;gap:0.4rem;margin-bottom:0.85rem;flex-wrap:wrap" id="distill-type-btns">
+          <button class="chip distill-type-btn active" data-type="auto" onclick="setDistillType('auto',this)">Auto-detect</button>
+          <button class="chip distill-type-btn" data-type="task" onclick="setDistillType('task',this)">Tasks</button>
+          <button class="chip distill-type-btn" data-type="event" onclick="setDistillType('event',this)">Calendar Event</button>
+          <button class="chip distill-type-btn" data-type="note" onclick="setDistillType('note',this)">Note / Idea</button>
+          <button class="chip distill-type-btn" data-type="decision" onclick="setDistillType('decision',this)">Decision</button>
+        </div>
+        <label style="font-size:0.72rem;font-weight:600;color:var(--text-2);letter-spacing:0.04em;display:block;margin-bottom:0.3rem">PASTE MESSAGE, EMAIL OR MEETING NOTES</label>
+        <textarea id="distill-text-input" rows="7" placeholder="Paste any raw message, email thread, meeting notes, Slack dump… AI will identify tasks, events, decisions or notes and populate your Scope &amp; Jira accordingly."></textarea>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem">
+          <input type="checkbox" id="distill-sync-jira" checked style="width:auto">
+          <label for="distill-sync-jira" style="font-weight:normal;margin:0;font-size:0.78rem;color:var(--text-2)">Auto-publish extracted tasks to Jira Cloud</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeDistillModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitDistillFromModal()">Distill &amp; Wire</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ MOBILE SHELL ═══
+       Invisible above 820px. Below it: the sidebar becomes a drawer, the
+       assistant becomes a full-height sheet, and this bar is the thumb's home
+       row - the three destinations a day actually runs on, the assistant, and
+       the full map. Order mirrors the day: orient, do, ask. -->
+  <div id="m-backdrop" class="m-backdrop" onclick="mShellClose()"></div>
+  <nav class="m-tabs" id="m-tabs" aria-label="Primary">
+    <button class="m-tab active" data-mview="today" onclick="mGo('today')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/></svg>
+      <span>Hub</span>
+    </button>
+    <button class="m-tab" data-mview="tasks" onclick="mGo('tasks')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9,11 12,14 22,4"/><path d="M21,12v7a2,2 0 0,1-2,2H5a2,2 0 0,1-2-2V5a2,2 0 0,1,2-2h11"/></svg>
+      <span>Tasks</span>
+    </button>
+    <button class="m-tab m-tab-ask" id="m-tab-ask" onclick="mChatToggle()" aria-label="Ask iSconl">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      <span>Ask</span>
+    </button>
+    <button class="m-tab" data-mview="notifications" onclick="mGo('notifications')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span>Alerts</span>
+      <span class="m-tab-badge" id="m-notif-badge" hidden>0</span>
+    </button>
+    <button class="m-tab" id="m-tab-menu" onclick="mNavToggle()" aria-label="Full menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      <span>Menu</span>
+    </button>
+  </nav>
+
+  <script src="/static/app.js?v=20260731f"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Geometry ported 1:1 from hub/app/lib/ui/widgets/brand.dart's BrandGeometry
+       and _BrandPainter (rest state): a 256-unit canvas, ring centreline r=85,
+       width=42, node r=30 at (196,77), gap=8 -> hole r=38 punched out of the
+       ring behind the node. Two colours only: ring C.text3 #7d8590, node
+       C.green #3fb950. No background fill - the mark is drawn transparent so
+       it is correct on any surface, same as the Flutter CustomPainter. -->
+  <mask id="ring-hole">
+    <rect width="256" height="256" fill="#fff" />
+    <circle cx="196" cy="77" r="38" fill="#000" />
+  </mask>
+  <circle cx="128" cy="128" r="85" fill="none" stroke="#7d8590" stroke-width="42" mask="url(#ring-hole)" />
+  <circle cx="196" cy="77" r="30" fill="#3fb950" />
+</svg>

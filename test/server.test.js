@@ -201,17 +201,26 @@ test('/api/tasks/detail?taskId=X (the app\'s literal call) maps taskId onto scop
   } finally { server.close(); vault.server.close(); scope.server.close(); cleanup(); }
 });
 
-test('an /api/* route marked legacy proxies verbatim to LEGACY_API_URL, forwarding the caller\'s own bearer token', async () => {
+test('an /api/* route marked legacy proxies verbatim to LEGACY_API_URL, authenticating with hub\'s own configured LEGACY_TOKEN', async () => {
+  // The legacy monolith runs its own separate auth (a static token or a
+  // session minted by ITS OWN login flow) -- it has no idea what a hub
+  // session bearer token is, and correctly 404s it (fail-closed, never
+  // "unauthorized"). Forwarding the caller's own bearer token here was a
+  // real bug: it meant every legacy-proxied route 404'd unconditionally,
+  // confirmed live against the running legacy monolith on 2026-08-13.
   const vault = await startFakeEngine({ name: 'vault', routes: { 'POST /auth/verify': () => [200, { valid: true }] } });
   const legacyServer = await startFakeEngine({ name: 'legacy', routes: {
     'GET /api/state': (body, req) => [200, { legacy: true, auth: req.headers.authorization }],
   } });
-  const { server, port, cleanup } = await startHub({ vault }, { LEGACY_API_URL: `http://127.0.0.1:${legacyServer.port}` });
+  const { server, port, cleanup } = await startHub({ vault }, {
+    LEGACY_API_URL: `http://127.0.0.1:${legacyServer.port}`,
+    LEGACY_TOKEN: 'hubs-own-legacy-token',
+  });
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { Authorization: 'Bearer callers-own-token' } });
     const body = await res.json();
     assert.equal(body.legacy, true);
-    assert.equal(body.auth, 'Bearer callers-own-token');
+    assert.equal(body.auth, 'Bearer hubs-own-legacy-token');
   } finally { server.close(); vault.server.close(); legacyServer.server.close(); cleanup(); }
 });
 
