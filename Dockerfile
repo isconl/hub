@@ -19,6 +19,9 @@ RUN flutter build web --release
 # N-API module: musl (alpine) breaks native bindings built against glibc.
 FROM node:20-slim
 
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 ENV NODE_ENV=production
 
