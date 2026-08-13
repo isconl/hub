@@ -137,6 +137,13 @@ services:
     container_name: isconl-hub
     restart: unless-stopped
     depends_on: [vault, pulse, scope, circle, spark]
+    # Lets LEGACY_API_URL=http://host.docker.internal:PORT reach a legacy
+    # monolith running on the HOST machine (local dev only - real deploys
+    # point LEGACY_API_URL at a real hosted URL, not the host loopback).
+    # host.docker.internal is a Docker Desktop default; native Linux Docker
+    # Engine needs this explicit mapping (added in Docker 20.10+).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       HUB_BIND: 0.0.0.0
       HUB_TOKEN: ${HUB_TOKEN}
