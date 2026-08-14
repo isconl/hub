@@ -28,6 +28,12 @@ services:
     environment:
       VAULT_BIND: 0.0.0.0
       VAULT_TOKEN: ${VAULT_TOKEN}
+      # Without this, a fresh deploy's vault-memory volume starts empty and
+      # STAYS empty -- nothing ever asks OneDrive for the real data (see
+      # _handoff/migration-log.md, 2026-08-14, "the sync loop"). Set here,
+      # not just in dev-local.sh, so this reproduces on ANY machine that
+      # runs this compose file, not only the one it was first fixed on.
+      VAULT_SYNC_INTERVAL_MS: ${VAULT_SYNC_INTERVAL_MS:-900000}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
       BWS_API_URL: ${BWS_API_URL}
