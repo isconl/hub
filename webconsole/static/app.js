@@ -6672,13 +6672,13 @@ function workingDayLeftLine(d) {
  */
 function renderDayBlocks() {
   if (!DAY) { fetchDay(); return `
-    <div class="card"><div class="view-head"><h1>The day</h1></div>
-    <div class="empty-state">Reading your blocks…</div></div>`; }
+    <div class="view-head"><h1>The day</h1></div>
+    <div class="card"><div class="empty-state">Reading your blocks…</div></div>`; }
   if (!DAY.ok) return `
-    <div class="card"><div class="view-head" style="display:flex;align-items:baseline;justify-content:space-between">
+    <div class="view-head" style="display:flex;align-items:baseline;justify-content:space-between">
       <h1>The day</h1>
       <button class="btn btn-ghost rail-btn" onclick="fetchDay(true)">Try again</button></div>
-      <div class="empty-state" style="text-align:left">${escHtml(DAY.error || 'the day model could not be read')}</div></div>`;
+    <div class="card"><div class="empty-state" style="text-align:left">${escHtml(DAY.error || 'the day model could not be read')}</div></div>`;
 
   const n = DAY.now || {};
   const bs = DAY.blocks || (n.blocks) || [];
@@ -6697,13 +6697,19 @@ function renderDayBlocks() {
 
   const nowMin = live?.mins ?? 0;
   const nowRail = railMin(nowMin);
+  // Hover info travels as data-* + a shared floating tooltip (dayRailTip*
+  // below) rather than the native title attribute, so it can be styled and
+  // can float clear of the strip's own overflow:hidden clip.
   const railPieces = bs.flatMap(b => seg(b).map(([s, e]) => {
     const left = (s / DAY_MIN * 100).toFixed(3);
     const width = Math.max(0, (e - s) / DAY_MIN * 100).toFixed(3);
     const state = b.id === currentId ? 'now' : (e <= nowRail ? 'past' : 'ahead');
+    const load = b.placeable ? `${(b.tasks || []).length}/${b.slots} placed` : 'personal';
     return `<div class="day-rail-block ${state}${b.placeable ? ' work' : ' personal'}"
       style="left:${left}%;width:${width}%;--seg:${toneOf(b)}"
-      title="${escAttr(`${b.name} ${b.startClock}-${b.endClock}${b.placeable ? ` · ${(b.tasks||[]).length}/${b.slots} placed` : ' · personal'}${b.quiet ? ' · quiet hours' : ''}`)}"></div>`;
+      onmouseenter="dayRailTipShow(this)" onmouseleave="dayRailTipHide()"
+      data-name="${escAttr(b.name)}" data-time="${escAttr(`${b.startClock} - ${b.endClock}`)}"
+      data-load="${escAttr(load)}" data-quiet="${b.quiet ? '1' : ''}" data-tone="${escAttr(toneOf(b))}"></div>`;
   }));
 
   const slots = bs.reduce((s, b) => s + (b.placeable ? b.slots : 0), 0);
@@ -6711,60 +6717,21 @@ function renderDayBlocks() {
   const days = slots ? (open / slots) : null;
 
   return `
+    <div class="view-head">
+      <h1>The day</h1>
+      <div class="view-head-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</div>
+    </div>
     <div class="card day-card">
-      <div class="view-head">
-        <h1>The day</h1>
-        <div class="view-head-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</div>
-      </div>
-
-      ${live?.current ? (() => {
-        const b = live.current;
-        const tone = toneOf(b);
-        const elapsed = Math.max(0, b.minutes - b.leftMins);
-        const pct = b.minutes ? (elapsed / b.minutes) * 100 : 0;
-        const load = b.placeable
-          ? `${b.tasks?.length ?? 0} of ${b.slots} slots filled`
-          : 'personal time, no board work';
-        return `
-        <div class="dcb" style="--dcb:${tone}">
-          <div class="dcb-top">
-            <span class="dcb-dot"></span>
-            <span class="dcb-name">${escHtml(b.name)}</span>
-            <span class="dcb-axis">${escHtml(b.axis)}</span>
-            ${b.quiet ? '<span class="day-block-quiet">quiet</span>' : ''}
-            <span class="dcb-span">${escHtml(b.startClock)} - ${escHtml(b.endClock)}</span>
-          </div>
-          <div class="dcb-bar"><i id="dcb-bar" style="width:${pct.toFixed(2)}%"></i></div>
-          <div class="dcb-figs">
-            <span class="dcb-fig"><b id="dcb-left">${escHtml(fmtBlockMins(b.leftMins))}</b><em>left</em></span>
-            <span class="dcb-fig"><b id="dcb-in">${escHtml(fmtBlockMins(elapsed))}</b><em>elapsed</em></span>
-            <span class="dcb-fig"><b>${Math.round(b.minutes / 60 * 10) / 10}h</b><em>the block</em></span>
-            <span class="dcb-fig"><b>${escHtml(b.third || '')}</b><em>third of the day</em></span>
-            <span class="dcb-fig wide"><b id="dcb-load">${escHtml(load)}</b><em>what is in it</em></span>
-          </div>
-          ${b.note ? `<div class="dcb-note">${escHtml(b.note)}</div>` : ''}
-        </div>`;
-      })() : ''}
-
       <div class="day-rail day-rail-24" id="day-rail">
-        ${railPieces.join('')}
-        <div class="day-rail-tick" style="left:25%"></div>
-        <div class="day-rail-tick" style="left:50%"></div>
-        <div class="day-rail-tick" style="left:75%"></div>
-        <div class="day-rail-now" id="day-rail-now"
-             style="left:${((nowRail / DAY_MIN) * 100).toFixed(3)}%">
-          <svg class="rail-mark" viewBox="0 0 256 256" role="img" aria-label="Now">
-            <mask id="rail-gap">
-              <rect width="256" height="256" fill="#fff"/>
-              <circle cx="196" cy="77" r="38" fill="#000"/>
-            </mask>
-            <circle class="rail-mark-ring" cx="128" cy="128" r="85" fill="none"
-                    stroke-width="42" mask="url(#rail-gap)"/>
-            <circle class="rail-mark-node" cx="196" cy="77" r="30"/>
-          </svg>
+        <div class="day-rail-strip">
+          ${railPieces.join('')}
         </div>
+        <div class="day-rail-now" id="day-rail-now"
+             style="left:${((nowRail / DAY_MIN) * 100).toFixed(3)}%;--now-tone:${escHtml(toneOf(live?.current) || 'var(--green)')}">
+          <span class="day-rail-now-bar"></span>
+        </div>
+        <div class="day-rail-tip" id="day-rail-tip"></div>
       </div>
-      <div class="day-rail-axis"><span>05</span><span>11</span><span>17</span><span>23</span><span>05</span></div>
 
       <div class="day-capacity">
         <strong>${slots}</strong> half-hour slots a day across the four work blocks ·
@@ -6817,6 +6784,37 @@ function renderDayBlocks() {
           matched no block: ${escHtml(DAY.unplaced.slice(0, 2).map(t => t.title).join('; '))}${
           DAY.unplaced.length > 2 ? ' and others' : ''}.</div>` : ''}
     </div>`;
+}
+
+/**
+ * The day-rail's hover popover. One shared floating element rather than a
+ * native `title` tooltip (which can't be styled) or a per-segment popover
+ * (which would be clipped by .day-rail-strip's overflow:hidden) - positions
+ * itself above the hovered segment, flipping to a right/left-anchored
+ * offset near the rail's own edges so it never runs off the card.
+ */
+function dayRailTipShow(el) {
+  const tip = document.getElementById('day-rail-tip');
+  const rail = document.getElementById('day-rail');
+  if (!tip || !rail) return;
+  const { name, time, load, quiet, tone } = el.dataset;
+  tip.innerHTML = `
+    <div class="day-rail-tip-name" style="--tip-tone:${escHtml(tone || 'var(--text)')}">${escHtml(name)}</div>
+    <div class="day-rail-tip-time">${escHtml(time)}</div>
+    <div class="day-rail-tip-load">${escHtml(load)}${quiet ? ' · quiet hours' : ''}</div>`;
+
+  const railBox = rail.getBoundingClientRect();
+  const segBox = el.getBoundingClientRect();
+  const segMid = segBox.left - railBox.left + segBox.width / 2;
+  tip.style.visibility = 'hidden';
+  tip.classList.add('show');
+  const tipWidth = tip.getBoundingClientRect().width;
+  const clamped = Math.max(tipWidth / 2 + 4, Math.min(railBox.width - tipWidth / 2 - 4, segMid));
+  tip.style.left = `${clamped}px`;
+  tip.style.visibility = '';
+}
+function dayRailTipHide() {
+  document.getElementById('day-rail-tip')?.classList.remove('show');
 }
 
 /** 14 days of habit completion, oldest first - which days were kept, which dropped. */
@@ -7087,6 +7085,16 @@ function renderRailContext() {
   const day = workingDayLeft();
   const REST = -36.869898;   // the brand mark's own rest angle - a still frame of this ring IS the logo
 
+  // The current block's own figures (elapsed, length, third of the day,
+  // board load) - used to live in the Hub's day card as the .dcb panel;
+  // moved here as four quiet corner readouts (his ask, 14 Aug) once that
+  // panel was cut down to just the rail.
+  const dNow = localDayNow();
+  const curBlock = dNow?.current || null;
+  const cornerElapsed = curBlock ? fmtBlockMins(Math.max(0, curBlock.minutes - curBlock.leftMins)) : '';
+  const cornerLength = curBlock ? `${Math.round(curBlock.minutes / 60 * 10) / 10}h · ${curBlock.third || ''}` : '';
+  const cornerLoad = curBlock ? (curBlock.placeable ? `${curBlock.tasks?.length ?? 0}/${curBlock.slots} slots` : 'personal') : '';
+
   container.innerHTML = `
     ${ctxField(isCritical)}
     <div class="ctx">
@@ -7124,6 +7132,11 @@ function renderRailContext() {
           <text x="128" y="142" text-anchor="middle" class="ctx-core-lbl" id="ctx-core-lbl">${day.label}</text>
           <text x="128" y="158" text-anchor="middle" class="ctx-core-sub" id="ctx-core-sub">${day.sub}</text>
         </svg>
+
+        ${curBlock ? `
+        <div class="ctx-corner ctx-corner-tr"><b id="ctx-corner-elapsed">${escHtml(cornerElapsed)}</b><em>elapsed</em></div>
+        <div class="ctx-corner ctx-corner-bl">${escHtml(cornerLength)}</div>
+        <div class="ctx-corner ctx-corner-br"><b id="ctx-corner-load">${escHtml(cornerLoad)}</b><em>${curBlock.placeable ? 'board' : ''}</em></div>` : ''}
       </div>
 
       <div class="ctx-sec-tag"><span class="badge badge-low">${live ? 'IN SESSION' : 'SIGNALS'}</span></div>
@@ -7161,6 +7174,15 @@ function ctxTick() {
         : 'The agent has not answered, so this is the device clock and may be wrong.');
     }
     if (arc) arc.setAttribute('stroke-dashoffset', (534.0708 * (1 - workingDayFraction())).toFixed(2));
+
+    const cornerElapsed = document.getElementById('ctx-corner-elapsed');
+    if (cornerElapsed) {
+      const dn = localDayNow();
+      if (dn?.current) {
+        const txt = fmtBlockMins(Math.max(0, dn.current.minutes - dn.current.leftMins));
+        if (cornerElapsed.textContent !== txt) cornerElapsed.textContent = txt;
+      }
+    }
   }
 
   const d = localDayNow();
@@ -7210,17 +7232,6 @@ function ctxTick() {
       const bar = el.firstElementChild;
       if (bar) bar.style.width = `${pct.toFixed(2)}%`;
     }
-    if (d.current) {
-      const b = d.current;
-      const elapsed = Math.max(0, b.minutes - b.leftMins);
-      const setTxt = (id, v) => { const el = document.getElementById(id); if (el && el.textContent !== v) el.textContent = v; };
-      setTxt('dcb-left', fmtBlockMins(b.leftMins));
-      setTxt('dcb-in', fmtBlockMins(elapsed));
-      setTxt('dcb-load', b.placeable ? `${b.tasks?.length ?? 0} of ${b.slots} slots filled` : 'personal time, no board work');
-      const bar = document.getElementById('dcb-bar');
-      if (bar && b.minutes) bar.style.width = `${((elapsed / b.minutes) * 100).toFixed(2)}%`;
-    }
-
     // A block CHANGE is structural (which two cards win can change), so the
     // rail repaints once on the transition rather than patching numbers.
     // The Hub's day card repaints too, for the same reason (task lists,

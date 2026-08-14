@@ -966,6 +966,24 @@ pre.code-block {
 .ctx-cards { flex:4 1 0; min-height:0; display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; align-items:start; }
 
 .ctx-viz-tag { position:absolute; top:0; left:0; z-index:2; }
+
+/* The current block's own figures, moved here from the Hub day card's old
+   .dcb panel (14 Aug) - four quiet corner readouts around the orb rather
+   than a boxed panel. .ctx-viz-tag already owns the top-left corner (the
+   LIVE/CRITICAL badge), so these take the other three plus a combined one. */
+.ctx-corner {
+  position:absolute; z-index:2; font-family:var(--font-mono); font-size:0.62rem;
+  color:var(--text-3); line-height:1.35; opacity:0.68; transition:opacity .15s ease;
+}
+.ctx-corner:hover { opacity:1; }
+.ctx-corner b { display:block; font-weight:600; color:var(--text-2); font-variant-numeric:tabular-nums; }
+.ctx-corner em {
+  font-style:normal; display:block; font-size:0.52rem; text-transform:uppercase;
+  letter-spacing:0.08em; opacity:0.75;
+}
+.ctx-corner-tr { top:0; right:0; text-align:right; }
+.ctx-corner-bl { bottom:0; left:0; text-align:left; }
+.ctx-corner-br { bottom:0; right:0; text-align:right; }
 .ctx-sec-tag { flex:0 0 auto; margin:0.15rem 0 0.3rem; }
 .ctx-sec-tag .badge { font-size:0.55rem; font-family:var(--font-mono); }
 .ctx-orb { width:100%; flex:1 1 auto; min-height:0; }
@@ -4489,9 +4507,13 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 
 .day-card { padding-bottom:0.9rem; }
 .day-rail {
-  position:relative; height:16px; border-radius:8px; margin:0.2rem 0 0.3rem;
+  position:relative; height:18px; margin:0.3rem 0 0.85rem;
+  overflow:visible;                 /* the marker + tooltip float clear of the strip */
+}
+.day-rail-strip {
+  position:absolute; inset:0; border-radius:9px;
   background:var(--bg, #0d1117); box-shadow:inset 0 0 0 1px var(--border);
-  overflow:hidden;
+  overflow:hidden;                  /* only the coloured segments clip */
 }
 .day-rail-block { position:absolute; top:0; bottom:0; border-radius:0; opacity:0.55;
   background:var(--seg);
@@ -4500,6 +4522,7 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
     var(--seg) 55%,
     color-mix(in srgb, var(--seg) 82%, #000) 100%);
   transition:opacity .4s ease, filter .4s ease;
+  cursor:default;
 }
 .day-rail-block.personal { opacity:0.5; }
 .day-rail-block.personal.past { opacity:0.26; }
@@ -4520,37 +4543,64 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
   50%     { filter:saturate(1.3) brightness(1.22); }
 }
 
-.day-rail-tick {
-  position:absolute; top:0; bottom:0; width:1px;
-  background:rgba(255,255,255,0.10); pointer-events:none;
-}
-
+/* THE MARKER - a slim vertical bar floating on top of the strip rather than
+   the brand ring-mark, per his ask (14 Aug): "elegant... simple but
+   elegant... floating on top of the coloured strip." Taller than the rail
+   itself so it visibly overlaps top and bottom, with a soft glow in the
+   current block's own colour (--now-tone, set inline) and a gentle
+   breathing pulse - one thing moving, no spin. */
 .day-rail-now {
   position:absolute; top:50%; z-index:3;
-  width:28px; height:28px; margin:-14px 0 0 -14px;
+  width:3px; height:28px; margin:-14px 0 0 -1.5px;
   transition:left 1s linear;
   pointer-events:none;
 }
-.rail-mark {
-  width:100%; height:100%; overflow:visible; display:block;
-  background:none;
-  filter:drop-shadow(0 0 2px rgba(0,0,0,0.75)) drop-shadow(0 1px 3px rgba(0,0,0,0.5));
-  animation:rail-mark-spin 9s linear infinite;
+.day-rail-now-bar {
+  display:block; width:100%; height:100%; border-radius:999px;
+  background:linear-gradient(180deg,
+    color-mix(in srgb, var(--now-tone, var(--green)) 40%, transparent) 0%,
+    var(--now-tone, var(--green)) 50%,
+    color-mix(in srgb, var(--now-tone, var(--green)) 40%, transparent) 100%);
+  box-shadow:0 0 6px 1px color-mix(in srgb, var(--now-tone, var(--green)) 65%, transparent);
+  animation:rail-bar-breathe 2.6s ease-in-out infinite;
 }
-.rail-mark-ring { stroke:var(--text-3); }
-.rail-mark-node { fill:var(--green); }
-@keyframes rail-mark-spin {
-  from { transform:rotate(0deg); }
-  to   { transform:rotate(360deg); }
+@keyframes rail-bar-breathe {
+  0%,100% { opacity:0.82; transform:scaleY(0.94); }
+  50%     { opacity:1;    transform:scaleY(1); }
 }
+
+/* THE HOVER POPOVER - one shared floating element (app.js's dayRailTipShow/
+   Hide), styled in the app's own panel language instead of a native
+   tooltip. Anchored to the hovered segment's horizontal centre, clamped so
+   it never runs off the card. */
+.day-rail-tip {
+  position:absolute; bottom:calc(100% + 10px); z-index:4;
+  transform:translateX(-50%);
+  min-width:9rem; max-width:16rem;
+  background:var(--panel, #161b22); border:1px solid var(--border-mid, var(--border));
+  border-radius:var(--r-md); padding:0.5rem 0.65rem;
+  box-shadow:0 8px 24px rgba(0,0,0,0.45);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .15s ease, transform .15s ease;
+}
+.day-rail-tip.show { opacity:1; visibility:visible; transform:translateX(-50%) translateY(-2px); }
+.day-rail-tip::after {
+  content:""; position:absolute; top:100%; left:50%; margin-left:-5px;
+  border:5px solid transparent; border-top-color:var(--panel, #161b22);
+}
+.day-rail-tip-name {
+  font-size:0.78rem; font-weight:600; color:var(--tip-tone, var(--text));
+  margin-bottom:0.15rem;
+}
+.day-rail-tip-time {
+  font-family:var(--font-mono); font-size:0.66rem; color:var(--text-3);
+  margin-bottom:0.3rem;
+}
+.day-rail-tip-load { font-size:0.7rem; color:var(--text-2); }
 
 @media (prefers-reduced-motion:reduce) {
-  .day-rail-now, .rail-mark, .day-block-prog i, .day-rail-block.now { transition:none; animation:none; }
-}
-
-.day-rail-axis {
-  display:flex; justify-content:space-between; font-family:var(--font-mono);
-  font-size:0.55rem; color:var(--text-3); margin-bottom:0.7rem; padding:0 1px;
+  .day-rail-now, .day-rail-now-bar, .day-block-prog i, .day-rail-block.now,
+  .day-rail-tip { transition:none; animation:none; }
 }
 
 .day-capacity {
@@ -4611,49 +4661,6 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 }
 .day-unplaced { margin-top:0.6rem; font-size:0.66rem; color:var(--text-3); line-height:1.55; }
 .day-unplaced code { font-family:var(--font-mono); font-size:0.62rem; color:var(--text-2); }
-
-.dcb {
-  background:var(--bg-raised); border:1px solid var(--border);
-  border-left:3px solid var(--dcb, var(--green));
-  border-radius:var(--r-md); padding:0.6rem 0.75rem; margin-bottom:0.75rem;
-}
-.dcb-top { display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem; }
-.dcb-dot { width:8px; height:8px; border-radius:50%; background:var(--dcb, var(--green)); flex-shrink:0;
-  box-shadow:0 0 8px var(--dcb, var(--green)); }
-.dcb-name { font-size:0.92rem; font-weight:600; color:var(--dcb, var(--text)); letter-spacing:-0.01em; }
-.dcb-axis {
-  font-size:0.54rem; text-transform:uppercase; letter-spacing:0.09em; color:var(--text-3);
-  border:1px solid var(--border); border-radius:3px; padding:0 4px;
-}
-.dcb-span { margin-left:auto; font-family:var(--font-mono); font-size:0.68rem; color:var(--text-3); }
-.dcb-bar {
-  height:4px; border-radius:2px; background:var(--bg, #0d1117); overflow:hidden;
-  box-shadow:inset 0 0 0 1px var(--border); margin-bottom:0.6rem;
-}
-.dcb-bar i {
-  display:block; height:100%; border-radius:2px;
-  background:var(--dcb, var(--green)); transition:width 1s linear;
-}
-.dcb-figs { display:flex; gap:1.1rem; flex-wrap:wrap; }
-.dcb-fig { display:flex; flex-direction:column; gap:1px; min-width:0; }
-.dcb-fig b {
-  font-size:0.88rem; font-weight:600; color:var(--text); line-height:1.15;
-  font-variant-numeric:tabular-nums;
-}
-.dcb-fig em {
-  font-style:normal; font-size:0.56rem; text-transform:uppercase; letter-spacing:0.08em;
-  color:var(--text-3);
-}
-.dcb-fig.wide b { font-size:0.76rem; font-weight:500; color:var(--text-2); }
-.dcb-note {
-  margin-top:0.55rem; padding-top:0.5rem; border-top:1px solid var(--border);
-  font-size:0.68rem; color:var(--text-3); line-height:1.5;
-}
-@media (max-width: 520px) {
-  .dcb-figs { gap:0.85rem; }
-  .dcb-fig.wide { flex-basis:100%; }
-  .dcb-span { margin-left:0; flex-basis:100%; }
-}
 
 .day-blocks-window { grid-template-columns:repeat(3, 1fr); align-items:start; }
 .day-blocks-window .day-block { position:relative; transition:opacity .3s, background .3s; }
