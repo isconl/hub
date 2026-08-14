@@ -46,6 +46,18 @@ start_one() {
     export SPARK_URL="http://127.0.0.1:8085"
     # legacy monolith swapped onto :8080 (hub now on :8888) -- see BUILDLOG
     export LEGACY_API_URL="${LEGACY_API_URL:-http://127.0.0.1:8080}"
+    # career/** (org.yaml, doctrine, power map, decision log, risk
+    # register) and the DIA profiles under circle/dia/ only exist in the
+    # legacy monolith's memory/ tree today -- the fleet checkout's own
+    # circle/memory/ was never seeded. Point circle's LOCAL_DIR at the
+    # real data rather than a directory that doesn't exist, so
+    # career.js's load() (and the /career route, /dia, /analysis) return
+    # real content instead of silently empty ones. Move career/circle
+    # data into the fleet checkout properly is future work -- this is the
+    # correct pointer until then, not a permanent arrangement.
+    if [ "$name" = "circle" ]; then
+      export CIRCLE_LOCAL_DIR="${CIRCLE_LOCAL_DIR:-$ROOT/../legacy/memory}"
+    fi
     # OneDrive sync loop (vault only) -- off by default in server.js itself
     # (the test suite calls main() with no real Graph credentials), so the
     # real running instance needs this set explicitly. 15 min: frequent
