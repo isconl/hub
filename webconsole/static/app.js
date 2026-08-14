@@ -11904,7 +11904,13 @@ function renderLearning() {
           ${lesson.touchedAt ? ` · last read ${fmtWhen(lesson.touchedAt, { rel: true })}` : ''}
           ${lesson.words ? ` · ${lesson.words} words, about ${Math.max(1, Math.round(lesson.words / 200))} min` : ''}
           ${lesson.vaultPath ? `<a href="#" class="learn-artifact" title="Open the source file in the vault"
-             onclick="learnOpenSource('${escHtml(lesson.vaultPath)}');return false">source</a>` : ''}
+             onclick="learnOpenSource('${escHtml(lesson.vaultPath)}');return false">${LESSON_ICONS.source} source</a>` : ''}
+        </div>
+        <div class="lesson-toolbar">
+          <button class="lesson-tool-btn" onclick="learnDownloadPdf()" title="Save this lesson as a PDF (print dialogue)">${LESSON_ICONS.pdf}<span>PDF</span></button>
+          <button class="lesson-tool-btn" id="lesson-listen-btn" onclick="learnToggleListen()" title="Read this lesson aloud">${LESSON_ICONS.listen}<span>Listen</span></button>
+          <button class="lesson-tool-btn" onclick="learnShare()" title="Share a link to this lesson">${LESSON_ICONS.share}<span>Share</span></button>
+          <button class="lesson-tool-btn" onclick="learnViewArtifact()" title="Open a clean, standalone reading page in a new tab">${LESSON_ICONS.artifact}<span>View as artifact</span></button>
         </div>
       </div>
       <div class="card lesson-card">
@@ -12121,9 +12127,116 @@ function renderMathLatex(latex, isBlock = false) {
     : `<span class="m-inline-eq">${formatted}</span>`;
 }
 
+/** Turns a ```chart fenced block into a plain {type,title,rows} spec.
+ *  Body is `key: value` lines - `type:` and `title:` are recognised keys,
+ *  every other `Label: number` line becomes one data point, in the order
+ *  written, which is also the order it plots in. */
+function parseChartSpec(body) {
+  const lines = String(body || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  let type = 'bar', title = '';
+  const rows = [];
+  for (const line of lines) {
+    const typeM = /^type:\s*(bar|line|pie)\s*$/i.exec(line);
+    if (typeM) { type = typeM[1].toLowerCase(); continue; }
+    const titleM = /^title:\s*(.+)$/i.exec(line);
+    if (titleM) { title = titleM[1].trim(); continue; }
+    const rowM = /^(.+?):\s*(-?[\d.]+)\s*$/.exec(line);
+    if (rowM) rows.push({ label: rowM[1].trim(), value: parseFloat(rowM[2]) });
+  }
+  return { type, title, rows };
+}
+
+/** Dependency-free inline SVG so a module can show a real comparison rather
+ *  than a table pretending to be one - no chart library, themed entirely off
+ *  the lesson's own six callout colours so it never clashes with them. */
+function renderChartSVG(spec) {
+  const { type, title, rows } = spec;
+  if (!rows.length) return '<div class="reader-note">Chart has no readable data rows.</div>';
+  const palette = ['var(--lb-accent,#6fc0af)', 'var(--lb-info,#8aa9d9)', 'var(--lb-book,#a892d9)',
+    'var(--lb-quote,#d98a4f)', 'var(--lb-warm,#d9a259)', 'var(--lb-research,#6ea6d9)'];
+  const W = 560, H = 220, padL = 34, padB = 28, padT = 14, padR = 12;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const vals = rows.map(r => r.value);
+  const max = Math.max(...vals, 0), min = Math.min(...vals, 0);
+  let inner = '';
+  if (type === 'pie') {
+    const total = rows.reduce((s, r) => s + Math.max(0, r.value), 0) || 1;
+    let angle = -Math.PI / 2;
+    const cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - 22;
+    rows.forEach((row, i) => {
+      const frac = Math.max(0, row.value) / total;
+      const a2 = angle + frac * Math.PI * 2;
+      const x1 = cx + r * Math.cos(angle), y1 = cy + r * Math.sin(angle);
+      const x2 = cx + r * Math.cos(a2), y2 = cy + r * Math.sin(a2);
+      const large = (a2 - angle) > Math.PI ? 1 : 0;
+      inner += `<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large} 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${palette[i % palette.length]}" opacity="0.85"><title>${escHtml(row.label)}: ${row.value}</title></path>`;
+      angle = a2;
+    });
+  } else if (type === 'line') {
+    const n = rows.length;
+    const x = (i) => padL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+    const y = (v) => padT + plotH - ((v - min) / ((max - min) || 1)) * plotH;
+    inner += `<polyline points="${rows.map((r, i) => `${x(i).toFixed(1)},${y(r.value).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--lb-accent,#6fc0af)" stroke-width="2.5"/>`;
+    rows.forEach((r, i) => { inner += `<circle cx="${x(i).toFixed(1)}" cy="${y(r.value).toFixed(1)}" r="3.5" fill="var(--lb-accent,#6fc0af)"><title>${escHtml(r.label)}: ${r.value}</title></circle>`;
+      inner += `<text x="${x(i).toFixed(1)}" y="${H - 6}" font-size="9" text-anchor="middle" fill="var(--text-3)">${escHtml(String(r.label).slice(0, 12))}</text>`; });
+    inner += `<line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" stroke="var(--border)" stroke-width="1"/>`;
+  } else {
+    const n = rows.length, gap = plotW / n, bw = gap * 0.6;
+    const zeroY = padT + plotH - ((0 - min) / ((max - min) || 1)) * plotH;
+    rows.forEach((r, i) => {
+      const h = Math.abs(((r.value - Math.max(0, min > 0 ? min : 0)) / ((max - min) || 1)) * plotH) || 0;
+      const barH = Math.abs((r.value / ((max - min) || 1)) * plotH);
+      const yPos = r.value >= 0 ? zeroY - barH : zeroY;
+      const xPos = padL + i * gap + (gap - bw) / 2;
+      inner += `<rect x="${xPos.toFixed(1)}" y="${yPos.toFixed(1)}" width="${bw.toFixed(1)}" height="${barH.toFixed(1)}" rx="3" fill="${palette[i % palette.length]}" opacity="0.85"><title>${escHtml(r.label)}: ${r.value}</title></rect>`;
+      inner += `<text x="${(xPos + bw / 2).toFixed(1)}" y="${H - 6}" font-size="9" text-anchor="middle" fill="var(--text-3)">${escHtml(String(r.label).slice(0, 10))}</text>`;
+      inner += `<text x="${(xPos + bw / 2).toFixed(1)}" y="${(yPos - 4).toFixed(1)}" font-size="9" text-anchor="middle" fill="var(--text-2)">${r.value}</text>`;
+    });
+    inner += `<line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${padL + plotW}" y2="${zeroY.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>`;
+  }
+  return `<div class="lesson-chart">${title ? `<div class="lesson-chart-title">${escHtml(title)}</div>` : ''}<svg viewBox="0 0 ${W} ${H}" class="lesson-chart-svg" role="img" aria-label="${escAttr(title || 'chart')}">${inner}</svg></div>`;
+}
+
+/** Turns a ```map fenced block (lat/lon/zoom/label lines) into an embedded
+ *  OpenStreetMap frame - no API key, no external JS, just an iframe against
+ *  OSM's own free embed endpoint. */
+function parseMapSpec(body) {
+  const spec = {};
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const m = /^(lat|lon|zoom|label):\s*(.+)$/i.exec(line.trim());
+    if (m) spec[m[1].toLowerCase()] = m[2].trim();
+  }
+  return spec;
+}
+function renderMapBlock(spec) {
+  const lat = parseFloat(spec.lat), lon = parseFloat(spec.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '<div class="reader-note">Map block is missing lat/lon.</div>';
+  const zoom = Math.max(1, Math.min(19, parseInt(spec.zoom, 10) || 12));
+  const span = 360 / Math.pow(2, zoom);
+  const bbox = [lon - span, lat - span / 2, lon + span, lat + span / 2].map(n => n.toFixed(4)).join('%2C');
+  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lon}`;
+  return `<div class="lesson-map">${spec.label ? `<div class="lesson-chart-title">${escHtml(spec.label)}</div>` : ''}<iframe src="${src}" loading="lazy" title="${escAttr(spec.label || 'map')}"></iframe></div>`;
+}
+
 function learnMd(src) {
   let rawSrc = String(src || '');
+  // Holds any block-level HTML that must survive the escHtml pass below
+  // untouched - equations first (7 Aug), charts and maps joined it (14 Aug).
+  // Same placeholder mechanism for all three: swap the raw markdown for a
+  // token, escape everything, then restore the rendered HTML by index.
   const mathPlaceholders = [];
+
+  // Extract ```chart and ```map fenced blocks, before anything is escaped.
+  rawSrc = rawSrc.replace(/```chart\s*\n([\s\S]*?)```/g, (_m, body) => {
+    const idx = mathPlaceholders.length;
+    mathPlaceholders.push(renderChartSVG(parseChartSpec(body)));
+    return `\n\n___MATH_PH_${idx}___\n\n`;
+  });
+  rawSrc = rawSrc.replace(/```map\s*\n([\s\S]*?)```/g, (_m, body) => {
+    const idx = mathPlaceholders.length;
+    mathPlaceholders.push(renderMapBlock(parseMapSpec(body)));
+    return `\n\n___MATH_PH_${idx}___\n\n`;
+  });
 
   // Extract $$...$$ display math blocks
   rawSrc = rawSrc.replace(/\$\$([\s\S]+?)\$\$/g, (_m, eq) => {
@@ -12357,6 +12470,120 @@ function runFinancialCalc() {
 // The vault's home on OneDrive. A lesson is a real markdown file, so "source"
 // opens the folder it actually lives in rather than describing where it is.
 const VAULT_DRIVE_ROOT = 'Sconl/Core/Apex/Vault/vault-documents/isconl-vault';
+
+// ── LESSON TOOLBAR (PDF · Listen · Share · View as artifact) ──────────────────
+// Small line icons, currentColor throughout so the theme (including the
+// callout colour picker) never fights them - they are chrome, not content.
+const LESSON_ICONS = {
+  source:  `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8l4-4v3h6v2H6v3z"/></svg>`,
+  pdf:     `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 1.5h6l3 3v10h-9z"/><path d="M10 1.5v3h3"/><path d="M5.5 11h1.2c.7 0 1.2-.5 1.2-1.1s-.5-1.1-1.2-1.1H5.5V12"/><path d="M9 8.8v3.2h.9c.9 0 1.5-.7 1.5-1.6s-.6-1.6-1.5-1.6z"/></svg>`,
+  listen:  `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 6h2.5L8 3v10L4.5 10H2z"/><path d="M10.3 5.3a4 4 0 0 1 0 5.4"/><path d="M12 3.5a7 7 0 0 1 0 9"/></svg>`,
+  pause:   `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="0.6"/><rect x="9" y="3" width="3" height="10" rx="0.6"/></svg>`,
+  share:   `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12.5" cy="3.5" r="1.8"/><circle cx="3.5" cy="8" r="1.8"/><circle cx="12.5" cy="12.5" r="1.8"/><path d="M5.1 7.1l5.8-3.2M5.1 8.9l5.8 3.2"/></svg>`,
+  artifact:`<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="9.5" rx="1.3"/><path d="M5.5 14.5h5"/><path d="M8 12v2.5"/></svg>`,
+};
+
+/** The lesson currently open, resolved fresh each call rather than threaded
+ *  through every onclick - keeps the toolbar buttons argument-free, which
+ *  matters because titles carry quotes and dashes that would otherwise have
+ *  to be escaped into an inline attribute. */
+function learnCurrentLessonMeta() {
+  const course = (LEARN?.courses || []).find(c => c.ID === learnOpen.course) || {};
+  const lesson = (course.lessons || []).find(l => l.file === learnOpen.file) || {};
+  return { course, lesson, title: lesson.title || 'Lesson', courseTitle: course.TITLE || 'Course' };
+}
+
+/** Strips the lesson's own markdown idioms down to speakable prose - callout
+ *  labels, table pipes, citation brackets and heading hashes are all noise
+ *  to a screen reader / speech engine and worse, get read aloud verbatim. */
+function learnPlainText(md) {
+  return String(md || '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/\$\$[\s\S]*?\$\$/g, '')
+    .replace(/^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/gim, '')
+    .replace(/^#{1,4}\s*/gm, '')
+    .replace(/^##\s*Check yourself.*$/gim, '')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    .replace(/[*_`|]/g, '')
+    .replace(/^-{3,}$/gm, '')
+    .replace(/\n{2,}/g, '\n\n')
+    .trim();
+}
+
+let learnUtterance = null;
+function learnToggleListen() {
+  const btn = document.getElementById('lesson-listen-btn');
+  if (!('speechSynthesis' in window)) { showToast('This browser has no built-in speech engine', 'error'); return; }
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel(); learnUtterance = null;
+    if (btn) btn.innerHTML = `${LESSON_ICONS.listen}<span>Listen</span>`;
+    return;
+  }
+  const { title } = learnCurrentLessonMeta();
+  const text = learnPlainText(learnOpen.content);
+  learnUtterance = new SpeechSynthesisUtterance(`${title}. ${text}`);
+  learnUtterance.rate = 1.0;
+  learnUtterance.onend = () => { if (btn) btn.innerHTML = `${LESSON_ICONS.listen}<span>Listen</span>`; };
+  learnUtterance.onerror = learnUtterance.onend;
+  if (btn) btn.innerHTML = `${LESSON_ICONS.pause}<span>Stop</span>`;
+  window.speechSynthesis.speak(learnUtterance);
+}
+
+/** One self-contained page, used by both the PDF window (which prints it)
+ *  and "view as artifact" (which just opens it) - the reading register, the
+ *  six callout colours and KaTeX-rendered maths all travel with it, so the
+ *  page still looks like the lesson once it has left the console. */
+function learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint }) {
+  const bodyCss = document.querySelector('link[href*="style.css"]')?.getAttribute('href') || '';
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  :root{--bg:#0d1117;--text:#e6edf3;--text-2:#a8b3bd;--text-3:#7d8790;--border:#30363d;--bg-raised:#161b22;--r-md:8px;--r-lg:10px;--font-mono:ui-monospace,monospace;}
+  @media (prefers-color-scheme: light){:root{--bg:#ffffff;--text:#1b1f23;--text-2:#4b5563;--text-3:#6b7280;--border:#d0d7de;--bg-raised:#f6f8fa;}}
+  *{box-sizing:border-box;} body{background:var(--bg);color:var(--text);margin:0;padding:2.5rem 1.5rem 4rem;font-family:system-ui,sans-serif;}
+  .standalone-head{max-width:720px;margin:0 auto 1.6rem;padding-bottom:1rem;border-bottom:1px solid var(--border);}
+  .standalone-eyebrow{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);margin-bottom:0.3rem;}
+  .standalone-head h1{font-size:1.5rem;margin:0;font-family:Charter,Georgia,serif;}
+  ${forPrint ? '@page{margin:1.6cm;} .standalone-foot{display:none;}' : ''}
+  .standalone-foot{max-width:720px;margin:2.5rem auto 0;font-size:0.7rem;color:var(--text-3);border-top:1px solid var(--border);padding-top:1rem;}
+</style>
+${bodyCss ? `<link rel="stylesheet" href="${escAttr(new URL(bodyCss, location.href).href)}"/>` : ''}
+</head><body class="lesson-standalone">
+<div class="standalone-head"><div class="standalone-eyebrow">${escHtml(courseTitle)}</div><h1>${escHtml(title)}</h1></div>
+<div class="lesson-body">${bodyHtml}</div>
+<div class="standalone-foot">Exported from the Learning module · ${escHtml(new Date().toLocaleDateString())}</div>
+${forPrint ? '<script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script>' : ''}
+</body></html>`;
+}
+
+function learnDownloadPdf() {
+  const { title, courseTitle } = learnCurrentLessonMeta();
+  const bodyHtml = refChips(learnMd(learnOpen.content));
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Allow pop-ups to print this lesson', 'error'); return; }
+  w.document.write(learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint: true }));
+  w.document.close();
+}
+
+function learnViewArtifact() {
+  const { title, courseTitle } = learnCurrentLessonMeta();
+  const bodyHtml = refChips(learnMd(learnOpen.content));
+  const html = learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint: false });
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function learnShare() {
+  const { title, courseTitle } = learnCurrentLessonMeta();
+  const url = location.href;
+  if (navigator.share) {
+    try { await navigator.share({ title: `${title} · ${courseTitle}`, url }); return; }
+    catch (e) { if (e.name === 'AbortError') return; /* fall through to clipboard */ }
+  }
+  try { await navigator.clipboard.writeText(url); showToast('Link copied to clipboard', 'success'); }
+  catch { showToast(url, 'info'); }
+}
 
 function learnOpenSource(vaultPath) {
   const dir = String(vaultPath || '').split('/').slice(0, -1).join('/');
