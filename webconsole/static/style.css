@@ -1804,14 +1804,14 @@ button.task-cb { padding:0; margin-top:4px; background:transparent; }
   background:var(--bg-raised); border-radius:var(--r-md);
 }
 .orient-main { display:flex; flex-direction:column; gap:0.45rem; }
-.orient-row { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
+.orient-row { display:flex; gap:1rem; align-items:baseline; flex-wrap:wrap; }
 
 /* The blind-spot block. Quiet amber eyebrow, then one line per item - a list
    you scan downward, never a run-on sentence to decode. */
 .orient-watch { display:flex; gap:0.15rem 0.7rem; align-items:baseline;
   border-top:1px solid var(--border); padding-top:0.45rem; }
 .orient-watch-label {
-  flex-shrink:0; font-size:0.54rem; text-transform:uppercase; letter-spacing:0.1em;
+  flex-shrink:0; min-width:2.5rem; font-size:0.54rem; text-transform:uppercase; letter-spacing:0.1em;
   color:var(--amber); padding-top:0.15rem;
 }
 .orient-gaps { display:flex; flex-direction:column; gap:0.15rem; min-width:0; }
@@ -1837,7 +1837,7 @@ button.task-cb { padding:0; margin-top:4px; background:transparent; }
 .orient-next.linked { cursor:pointer; transition:background .12s; }
 .orient-next.linked:hover { background:var(--green-bg2, rgba(63,185,80,0.06)); }
 .orient-label {
-  flex-shrink:0; font-size:0.54rem; text-transform:uppercase; letter-spacing:0.1em;
+  flex-shrink:0; min-width:2.5rem; font-size:0.54rem; text-transform:uppercase; letter-spacing:0.1em;
   color:var(--green);
 }
 .orient-title {

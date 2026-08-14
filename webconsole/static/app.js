@@ -6664,10 +6664,11 @@ function workingDayLeftLine(d) {
  */
 function renderDayBlocks() {
   if (!DAY) { fetchDay(); return `
-    <div class="card"><div class="card-header"><span class="card-title">The day</span></div>
+    <div class="card"><div class="view-head"><h1>The day</h1></div>
     <div class="empty-state">Reading your blocks…</div></div>`; }
   if (!DAY.ok) return `
-    <div class="card"><div class="card-header"><span class="card-title">The day</span>
+    <div class="card"><div class="view-head" style="display:flex;align-items:baseline;justify-content:space-between">
+      <h1>The day</h1>
       <button class="btn btn-ghost rail-btn" onclick="fetchDay(true)">Try again</button></div>
       <div class="empty-state" style="text-align:left">${escHtml(DAY.error || 'the day model could not be read')}</div></div>`;
 
@@ -6703,9 +6704,9 @@ function renderDayBlocks() {
 
   return `
     <div class="card day-card">
-      <div class="card-header">
-        <span class="card-title">The day</span>
-        <span class="card-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</span>
+      <div class="view-head">
+        <h1>The day</h1>
+        <div class="view-head-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</div>
       </div>
 
       ${live?.current ? (() => {
