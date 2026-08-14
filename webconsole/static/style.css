@@ -972,14 +972,14 @@ pre.code-block {
    than a boxed panel. .ctx-viz-tag already owns the top-left corner (the
    LIVE/CRITICAL badge), so these take the other three plus a combined one. */
 .ctx-corner {
-  position:absolute; z-index:2; font-family:var(--font-mono); font-size:0.62rem;
-  color:var(--text-3); line-height:1.35; opacity:0.68; transition:opacity .15s ease;
+  position:absolute; z-index:2; font-family:var(--font-mono); font-size:0.78rem;
+  color:var(--text-2); line-height:1.3; opacity:0.92; transition:opacity .15s ease;
 }
 .ctx-corner:hover { opacity:1; }
-.ctx-corner b { display:block; font-weight:600; color:var(--text-2); font-variant-numeric:tabular-nums; }
+.ctx-corner b { display:block; font-weight:700; font-size:0.98rem; color:var(--text); font-variant-numeric:tabular-nums; }
 .ctx-corner em {
-  font-style:normal; display:block; font-size:0.52rem; text-transform:uppercase;
-  letter-spacing:0.08em; opacity:0.75;
+  font-style:normal; display:block; font-size:0.64rem; text-transform:uppercase;
+  letter-spacing:0.08em; color:var(--text-3); opacity:0.9;
 }
 .ctx-corner-tr { top:0; right:0; text-align:right; }
 .ctx-corner-bl { bottom:0; left:0; text-align:left; }
@@ -4546,27 +4546,32 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 /* THE MARKER - a slim vertical bar floating on top of the strip rather than
    the brand ring-mark, per his ask (14 Aug): "elegant... simple but
    elegant... floating on top of the coloured strip." Taller than the rail
-   itself so it visibly overlaps top and bottom, with a soft glow in the
-   current block's own colour (--now-tone, set inline) and a gentle
-   breathing pulse - one thing moving, no spin. */
+   itself so it visibly overlaps top and bottom, with a gentle breathing
+   pulse - one thing moving, no spin.
+   A near-white core, not the current block's own colour (--now-tone still
+   drives the glow beneath it): a marker coloured like its segment
+   disappears the moment it sits over a segment of a similar hue - his own
+   report, 14 Aug ("i struggle to even spot it"). White-on-anything reads
+   at every position on the rail; the coloured glow underneath keeps the
+   per-block identity without gambling contrast on it. */
 .day-rail-now {
   position:absolute; top:50%; z-index:3;
-  width:3px; height:28px; margin:-14px 0 0 -1.5px;
+  width:4px; height:30px; margin:-15px 0 0 -2px;
   transition:left 1s linear;
   pointer-events:none;
 }
 .day-rail-now-bar {
   display:block; width:100%; height:100%; border-radius:999px;
-  background:linear-gradient(180deg,
-    color-mix(in srgb, var(--now-tone, var(--green)) 40%, transparent) 0%,
-    var(--now-tone, var(--green)) 50%,
-    color-mix(in srgb, var(--now-tone, var(--green)) 40%, transparent) 100%);
-  box-shadow:0 0 6px 1px color-mix(in srgb, var(--now-tone, var(--green)) 65%, transparent);
+  background:#fff;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.55),
+    0 0 10px 3px color-mix(in srgb, var(--now-tone, var(--green)) 75%, transparent),
+    0 0 3px 1px rgba(0,0,0,0.4);
   animation:rail-bar-breathe 2.6s ease-in-out infinite;
 }
 @keyframes rail-bar-breathe {
-  0%,100% { opacity:0.82; transform:scaleY(0.94); }
-  50%     { opacity:1;    transform:scaleY(1); }
+  0%,100% { opacity:0.9; transform:scaleY(0.94); }
+  50%     { opacity:1;   transform:scaleY(1); }
 }
 
 /* THE HOVER POPOVER - one shared floating element (app.js's dayRailTipShow/
