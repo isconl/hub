@@ -46,6 +46,14 @@ start_one() {
     export SPARK_URL="http://127.0.0.1:8085"
     # legacy monolith swapped onto :8080 (hub now on :8888) -- see BUILDLOG
     export LEGACY_API_URL="${LEGACY_API_URL:-http://127.0.0.1:8080}"
+    # OneDrive sync loop (vault only) -- off by default in server.js itself
+    # (the test suite calls main() with no real Graph credentials), so the
+    # real running instance needs this set explicitly. 15 min: frequent
+    # enough that an OneDrive edit shows up same-session, gentle enough not
+    # to hammer Graph's throttling across ~35 collections every pass.
+    if [ "$name" = "vault" ]; then
+      export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
+    fi
     nohup node src/server.js >"$LOG_DIR/$name.log" 2>&1 &
     echo $! > "$pidfile"
   )
