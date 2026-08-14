@@ -4,8 +4,14 @@ Status: **plan only, nothing built yet.** Written to survive across Claude
 sessions and machines — lives in the `hub` repo (git-backed, pulled fresh on
 any machine) rather than any one session's memory. Cross-references:
 [[isconl-fleet-layout]] for repo layout, and
-`D:\work\dev\iSconl\scope\docs\document-generation-canon.md` for the
-document-generation system this plan's toggle also governs.
+`D:\work\dev\iSconl\scope\docs\document-generation-canon.md` +
+`document-generation-build-plan.md` for the document-generation system
+this plan's toggle also governs.
+
+**Revised 14 Aug 2026**: §6 replaces an earlier, more speculative build
+sketch after finding this needs far less new infrastructure than first
+assumed — `circle/lib/career.js` and `scope/lib/decisions.js` already do
+most of the data-layer work. Read §6.0 first.
 
 ---
 
@@ -198,26 +204,144 @@ would exist.
 
 ---
 
-## 6. Build phases
+## 6. Build phases — revised 14 Aug 2026, grounded in code that already exists
 
-1. **Data**: add `connections.yaml` to `_template/` and to
-   `viva-valentia/` (empty/false state — nothing connected yet).
-2. **vault**: `lib/google.js` (device-flow client, mirrors `graph.js`),
-   wired to Bitwarden the same way MSGraph is. No UI yet — a scripted
-   connect-and-verify pass first, confirming the identity guardrail
-   actually blocks a mismatched account before any UI is built on top.
-3. **hub API**: read-only endpoints first — engagement list, engagement
-   detail (merging `org.yaml` + live stats from the other engines' existing
-   APIs), before any write path (toggle, connect) is exposed.
-4. **hub Flutter UI**: engagement list screen, then the generic detail
-   template rendering Viva Valentia's data, styled to match the existing
-   console.
-5. **Write paths**: status toggle (with the cascade confirmation copy from
-   §2), connections panel wired to the vault Gmail client from step 2.
-6. **Cascade wiring**: `scope`'s naming-profile selection and archetype
-   visibility read `active_org`/org status (closing the loop with the
-   document-generation canon); repeat for `circle`/`pulse` per the table
-   in §2.
+A closer look at the fleet turned up far more standing infrastructure than
+§1 assumed. This section supersedes the original sketch with the actual
+files to touch, in order, and — per the request that named it — where
+"Corporate" sits in the nav: **the `Projects & Spaces` sidebar group,
+beside `Projects`** (which already exists and lists ventures/products —
+`hub/app/lib/ui/views/projects.dart`'s own doc comment: *"Ventures /
+products / platforms with live health checks"*).
+
+### 6.0 What already exists — read before writing anything new
+
+- **`circle/lib/career.js`** is already the org-agnostic reader this whole
+  plan needs: `load()` returns `{activeOrg, orgs, orgName, role, people,
+  decisions, risks, playbooks, doctrine, available}`, parsed from
+  `career/_active.yaml` + the active org's `org.yaml` / `doctrine.yaml` /
+  `power_map.yaml` / `decision_log.yaml` / `risk_register.yaml` /
+  `playbooks.yaml`. It also exports `orient(tasks)` — a deterministic
+  zoom-out/zoom-in dashboard summary (pending decisions, overdue tasks,
+  standing pressure from the power map) that is *already* most of what a
+  "dashboard stats" requirement asks for. **Do not build a second reader
+  of `career/`** — everything here is a consumer of this module.
+- **`scope/lib/decisions.js`** is the existing, working example of a
+  cross-engine consumer: `createDecisionsClient({ getCareerContext,
+  getActiveOrgId, readCareerFile, writeCareerFile, ... })` — injected
+  fetchers that reach into `circle`'s data, plus a working example of a
+  **write path** (`updateDecision`, surgical YAML line-editing that
+  preserves comments/formatting rather than reserializing the file).
+  `/api/decisions` (`capability: 'decisions.list'`) is wired in
+  `hub/lib/api-compat.js` and already renders in
+  `hub/app/lib/ui/views/decisions.dart`. This triad (engine module → hub
+  capability route → Flutter view reading a `Snapshot`) is the exact
+  pattern the new Corporate space follows.
+- **The sidebar/nav pattern**, both copies (kept in sync by hand — see
+  `sidebar_rail.dart`'s own comment on why they're duplicated rather than
+  shared): `hub/app/lib/ui/widgets/sidebar_rail.dart`'s `navGroups` list
+  and `hub/app/lib/ui/shell.dart`'s `MenuSheet` (~line 436 in both,
+  `'Projects & Spaces'` section). Adding "Corporate" is one `NavItem`/
+  `_item` line in each, next to the existing `Projects` line.
+- **The data-fetch pattern**: `hub/app/lib/data/store.dart` exposes one
+  `Snapshot get <name> => of('<key>', '/api/<path>');` line per view (see
+  `decisions` at line 122, `projects` at line 114) — views read it via
+  `SnapshotView(snapshot: services.store.X, builder: ...)`.
+
+### 6.1 Phase 1 — `scope/lib/corporate.js` (new engine module)
+
+New, not a duplicate of `career.js` — this is the **aggregator**, the same
+role `decisions.js` plays for the decision log specifically:
+
+```
+createCorporateClient({ getCareerContext, getActiveOrgId, readCareerFile,
+                         writeCareerFile, readTSV, ... })
+```
+
+Returns, per engagement: everything `career.js`'s `load()` already gives
+(org facts, doctrine, people, decisions, risks, playbooks) **plus** live
+cross-engine counts the way `decisions.js` cross-references `scope/
+tasks.tsv` — open/overdue task counts (`scope`), last-touch/upcoming
+follow-ups across the org's people (already partly in `career.js`'s
+`people[].lastContact`, cross-check against `circle`'s own touch data),
+Jira gate status (`scope/lib/jira-gate.js`, already exists), and — once
+Phase 5 of the document-generation build plan lands — documents-generated
+count. Also exposes the **write path**: `setEngagementStatus(orgId,
+status, endedDate)`, doing surgical edits to both `career/_active.yaml`
+(the `orgs:` entry) and that org's `org.yaml`, on the same
+`writeCareerFile`/`keepPreviousVersion` pattern `decisions.js` already
+uses — never delete, never invent a second write mechanism.
+
+### 6.2 Phase 2 — `connections.yaml` schema + `vault/lib/google.js`
+
+As originally planned (§1's schema addition, §4's Gmail design) —
+unchanged by this discovery, since nothing in the fleet touches Google
+OAuth yet. Scripted connect-and-verify pass first, confirming the
+identity guardrail blocks a mismatched account, before any UI depends on
+it.
+
+### 6.3 Phase 3 — hub API wiring
+
+Add to `hub/lib/api-compat.js`, in the `-- scope: tasks, jira gate,
+decisions --` block (Corporate belongs beside decisions, same engine,
+same pattern):
+
+```js
+{ method: 'GET',  path: '/api/corporate',        capability: 'corporate.overview' },
+{ method: 'GET',  path: '/api/corporate/detail',  capability: 'corporate.detail', paramFromQuery: { id: 'orgId' } },
+{ method: 'POST', path: '/api/corporate/status',  capability: 'corporate.status.update' },
+{ method: 'POST', path: '/api/corporate/connect', capability: 'corporate.connections.update' },
+```
+
+Read-only (`corporate`, `corporate/detail`) before any write path is
+exposed, matching how `decisions.list` shipped before `decisions.update`.
+
+### 6.4 Phase 4 — Flutter UI
+
+- `hub/app/lib/data/store.dart`: add `Snapshot get corporate => of
+  ('corporate', '/api/corporate');` next to `decisions`/`projects`.
+- `hub/app/lib/ui/views/corporate.dart` (new): `CorporateView`, built the
+  same shape as `DecisionsView` — a `SnapshotView` over
+  `services.store.corporate`, a list of engagement cards (status badge,
+  quick facts), each opening a detail screen (`CorporateDetailView`,
+  parameterized by org id — the actual "corporate engagement template"
+  the request asked for; Viva Valentia is the first org id it renders,
+  nothing in the widget itself names Viva).
+- **Nav wiring — the literal ask**: in `sidebar_rail.dart`'s
+  `'Projects & Spaces'` group, add
+  `NavItem('corporate', Icons.apartment_rounded, 'Corporate', () => const CorporateView())`
+  immediately after the existing `projects` line (so it reads "Projects,
+  Corporate, Spaces, Files, ..." — beside Projects, inside the same
+  group, per the request). Mirror the identical line in `shell.dart`'s
+  `MenuSheet` at the matching spot (~line 438, right after the `Projects`
+  `_item(...)` call). Icon choice: `Icons.apartment_rounded` — distinct
+  from `Projects`' rocket icon and `Decisions & Risks`' gavel icon,
+  reads as "an organization," matches Material's existing icon set (no
+  new asset needed).
+- Detail screen's **stats row** and **controls** are exactly §3.1 of this
+  plan's original design (header from `org.yaml`, live stats from
+  `corporate.js`, connections panel, status toggle with cascade
+  confirmation copy) — unchanged, now backed by a real data source instead
+  of a sketch.
+
+### 6.5 Phase 5 — Write paths + cascade wiring
+
+Status toggle (`corporate/status`) and connections panel
+(`corporate/connect`), then the cascade table in §2 gets implemented
+per-engine: `scope`'s naming-profile/archetype-namespace selection reads
+`career.js`'s `activeOrg` (already exactly how `document-generation-
+build-plan.md`'s Phase 6 describes it — same mechanism, same source of
+truth, built by two different plans converging on one field).
+
+### 6.6 Verify, end to end
+
+Toggle Viva Valentia to `status: past` via the new UI control, confirm:
+`/api/decisions` still returns its history (nothing deleted), a
+`page-truth-brief` generation attempt against the now-inactive org fails
+cleanly (Phase 6 of the doc-gen plan), and the engagement card moves to a
+"past engagements" list in `CorporateView` with its terminal date shown.
+Toggle it back to `active` and confirm everything resumes without
+re-authenticating any connection.
 
 ## 7. Open questions
 
