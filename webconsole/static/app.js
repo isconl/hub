@@ -843,6 +843,8 @@ function renderToday() {
 
         <div id="data-health-slot"></div>
 
+        <div id="day-card-slot">${renderDayBlocks()}</div>
+
         <div class="cards-grid">
           <div class="card">
             <div class="card-header">
@@ -6520,6 +6522,12 @@ async function fetchDay(force = false) {
   } finally {
     dayInFlight = false;
     refreshContextIfActive();
+    // The Hub's day card renders "Reading your blocks…" on first paint
+    // (DAY is null then) and needs a patch once the fetch resolves - same
+    // pattern as #data-health-slot's fetchDataHealth, since nothing else
+    // repaints the 'today' view on this async arrival.
+    const slot = document.getElementById('day-card-slot');
+    if (slot) slot.innerHTML = renderDayBlocks();
   }
 }
 const dayNow = () => (DAY && DAY.ok ? DAY.now : null);
@@ -6601,6 +6609,205 @@ function workingDayLeft(now = trustedNow()) {
   const left = end - mins;
   return { big: `${Math.floor(left / 60)}h ${String(left % 60).padStart(2, '0')}m`,
            label: 'LEFT TODAY', sub: span };
+}
+
+/* ═══ THE DAY CARD - ported from legacy/dashboard/app.js's renderDayBlocks
+ * (~8064-8279), the 24-hour block rail. localDayNow/workingDayLeft/
+ * fmtBlockMins already existed here (built for the orb widget); this adds
+ * the visual rail + current-block panel + 3-block window legacy had and
+ * hub never got. The full "day space" subpage (all twelve blocks, legacy's
+ * renderDaySpace) is NOT ported - this is the Hub card only.
+ */
+
+/** One palette for the day, ported verbatim from legacy (his colours, 6 Aug). */
+const BLOCK_TONE = {
+  protected:  'var(--wx-protected, #8b9cff)',
+  learning:   'var(--wx-learn, #22d3ee)',
+  flex:       'var(--wx-flex, #9aa4b2)',
+  innovator:  'var(--wx-inn, #22c55e)',
+  visionary:  'var(--wx-lead, #3b8cff)',
+  lunch:      'var(--wx-lunch, #d4a017)',
+  creator:    'var(--wx-create, #ff7a1a)',
+  connection: 'var(--wx-connect, #ff4d94)',
+  home:       'var(--wx-home, #14c8a0)',
+  rest:       'var(--wx-rest, #5566cc)',
+};
+const toneOf = (b) => BLOCK_TONE[b?.axis] || 'var(--text-3)';
+
+/** The three blocks the Hub shows: previous, current, next - wraps at both ends of the day. */
+function dayWindow(bs, currentId, live) {
+  if (!bs.length) return [];
+  const i = bs.findIndex(b => b.id === currentId);
+  if (i < 0) return bs.slice(0, 3).map(b => ({ ...b, _rel: 'ahead' }));
+  const n = bs.length;
+  const prev = bs[(i - 1 + n) % n];
+  const next = bs[(i + 1) % n];
+  const out = [];
+  if (n >= 3) out.push({ ...prev, _rel: 'past' });
+  out.push({ ...bs[i], _rel: 'now' });
+  if (n >= 2) out.push({ ...next, _rel: 'next' });
+  return out;
+}
+
+/** The one-line "where the day is" string, from the trusted clock. */
+function workingDayLeftLine(d) {
+  const say = fmtBlockMins;
+  if (d.current) return `${d.current.name} block · ${say(d.current.leftMins)} left${d.current.quiet ? ' · quiet' : ''}`;
+  if (d.next) return `${d.next.name} in ${say(d.next.inMins)}`;
+  return 'between blocks';
+}
+
+/**
+ * The Hub's day card: four windows, the work allocated to each, and what
+ * did not fit. Ported from legacy's renderDayBlocks(); no day-space
+ * subpage here yet, so the header is informational (not a click-through).
+ */
+function renderDayBlocks() {
+  if (!DAY) { fetchDay(); return `
+    <div class="card"><div class="card-header"><span class="card-title">The day</span></div>
+    <div class="empty-state">Reading your blocks…</div></div>`; }
+  if (!DAY.ok) return `
+    <div class="card"><div class="card-header"><span class="card-title">The day</span>
+      <button class="btn btn-ghost rail-btn" onclick="fetchDay(true)">Try again</button></div>
+      <div class="empty-state" style="text-align:left">${escHtml(DAY.error || 'the day model could not be read')}</div></div>`;
+
+  const n = DAY.now || {};
+  const bs = DAY.blocks || (n.blocks) || [];
+  const live = localDayNow();
+  const currentId = live?.current?.id || n.current?.id || null;
+
+  const DAY_MIN = 1440;
+  const DAY_START = 300; // 05:00, matching legacy's rail origin (his day starts when Protected does)
+  const railMin = (m) => (((m - DAY_START) % DAY_MIN) + DAY_MIN) % DAY_MIN;
+  const seg = (b) => {
+    const s = railMin(b.start);
+    let e = railMin(b.end);
+    if (e <= s) e += DAY_MIN;
+    return e > DAY_MIN ? [[s, DAY_MIN], [0, e - DAY_MIN]] : [[s, e]];
+  };
+
+  const nowMin = live?.mins ?? 0;
+  const nowRail = railMin(nowMin);
+  const railPieces = bs.flatMap(b => seg(b).map(([s, e]) => {
+    const left = (s / DAY_MIN * 100).toFixed(3);
+    const width = Math.max(0, (e - s) / DAY_MIN * 100).toFixed(3);
+    const state = b.id === currentId ? 'now' : (e <= nowRail ? 'past' : 'ahead');
+    return `<div class="day-rail-block ${state}${b.placeable ? ' work' : ' personal'}"
+      style="left:${left}%;width:${width}%;--seg:${toneOf(b)}"
+      title="${escAttr(`${b.name} ${b.startClock}-${b.endClock}${b.placeable ? ` · ${(b.tasks||[]).length}/${b.slots} placed` : ' · personal'}${b.quiet ? ' · quiet hours' : ''}`)}"></div>`;
+  }));
+
+  const slots = bs.reduce((s, b) => s + (b.placeable ? b.slots : 0), 0);
+  const open = DAY.counts?.open || 0;
+  const days = slots ? (open / slots) : null;
+
+  return `
+    <div class="card day-card">
+      <div class="card-header">
+        <span class="card-title">The day</span>
+        <span class="card-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</span>
+      </div>
+
+      ${live?.current ? (() => {
+        const b = live.current;
+        const tone = toneOf(b);
+        const elapsed = Math.max(0, b.minutes - b.leftMins);
+        const pct = b.minutes ? (elapsed / b.minutes) * 100 : 0;
+        const load = b.placeable
+          ? `${b.tasks?.length ?? 0} of ${b.slots} slots filled`
+          : 'personal time, no board work';
+        return `
+        <div class="dcb" style="--dcb:${tone}">
+          <div class="dcb-top">
+            <span class="dcb-dot"></span>
+            <span class="dcb-name">${escHtml(b.name)}</span>
+            <span class="dcb-axis">${escHtml(b.axis)}</span>
+            ${b.quiet ? '<span class="day-block-quiet">quiet</span>' : ''}
+            <span class="dcb-span">${escHtml(b.startClock)} - ${escHtml(b.endClock)}</span>
+          </div>
+          <div class="dcb-bar"><i id="dcb-bar" style="width:${pct.toFixed(2)}%"></i></div>
+          <div class="dcb-figs">
+            <span class="dcb-fig"><b id="dcb-left">${escHtml(fmtBlockMins(b.leftMins))}</b><em>left</em></span>
+            <span class="dcb-fig"><b id="dcb-in">${escHtml(fmtBlockMins(elapsed))}</b><em>elapsed</em></span>
+            <span class="dcb-fig"><b>${Math.round(b.minutes / 60 * 10) / 10}h</b><em>the block</em></span>
+            <span class="dcb-fig"><b>${escHtml(b.third || '')}</b><em>third of the day</em></span>
+            <span class="dcb-fig wide"><b id="dcb-load">${escHtml(load)}</b><em>what is in it</em></span>
+          </div>
+          ${b.note ? `<div class="dcb-note">${escHtml(b.note)}</div>` : ''}
+        </div>`;
+      })() : ''}
+
+      <div class="day-rail day-rail-24" id="day-rail">
+        ${railPieces.join('')}
+        <div class="day-rail-tick" style="left:25%"></div>
+        <div class="day-rail-tick" style="left:50%"></div>
+        <div class="day-rail-tick" style="left:75%"></div>
+        <div class="day-rail-now" id="day-rail-now"
+             style="left:${((nowRail / DAY_MIN) * 100).toFixed(3)}%">
+          <svg class="rail-mark" viewBox="0 0 256 256" role="img" aria-label="Now">
+            <mask id="rail-gap">
+              <rect width="256" height="256" fill="#fff"/>
+              <circle cx="196" cy="77" r="38" fill="#000"/>
+            </mask>
+            <circle class="rail-mark-ring" cx="128" cy="128" r="85" fill="none"
+                    stroke-width="42" mask="url(#rail-gap)"/>
+            <circle class="rail-mark-node" cx="196" cy="77" r="30"/>
+          </svg>
+        </div>
+      </div>
+      <div class="day-rail-axis"><span>05</span><span>11</span><span>17</span><span>23</span><span>05</span></div>
+
+      <div class="day-capacity">
+        <strong>${slots}</strong> half-hour slots a day across the four work blocks ·
+        <strong>${open}</strong> open on the board${days ? ` · about <strong>${days.toFixed(1)}</strong> days of work at this capacity` : ''}
+      </div>
+
+      <div class="day-blocks day-blocks-window">
+        ${dayWindow(bs, currentId, live).map(b => `
+          <div class="day-block${b.id === currentId ? ' now' : ''}${b._rel === 'past' ? ' past' : ''}${b.placeable ? '' : ' day-block-personal'}">
+            <div class="day-block-rel">${b._rel === 'past' ? 'just finished' : b._rel === 'next' ? 'next' : 'now'}</div>
+            <div class="day-block-head">
+              <span class="day-block-dot" style="background:${toneOf(b)}"></span>
+              <span class="day-block-name" style="color:${toneOf(b)}">${escHtml(b.name)}</span>
+              <span class="day-block-when">${escHtml(b.startClock)} - ${escHtml(b.endClock)}</span>
+              ${b.quiet ? '<span class="day-block-quiet" title="No notification, reminder or meeting fires in here">quiet</span>' : ''}
+              <span class="day-block-live" data-blk="${escAttr(b.id)}"></span>
+              <span class="day-block-cap">${b.placeable ? `${(b.tasks||[]).length}/${b.slots}` : `${Math.round(b.minutes / 60 * 10) / 10}h`}</span>
+            </div>
+            ${b.id === currentId ? `<div class="day-block-prog" data-blk="${escAttr(b.id)}"><i style="width:0%;background:${toneOf(b)}"></i></div>` : ''}
+            ${b.placeable
+              ? ((b.tasks||[]).length ? `
+                <div class="day-block-tasks">
+                  ${b.tasks.map(t => `
+                    <button class="day-task${t.overdue ? ' overdue' : ''}" onclick="openTask('${escAttr(t.id)}')"
+                            title="${escAttr(`placed here because it ${t.why}`)}">
+                      <span class="day-task-title">${escHtml(t.title)}</span>
+                      <span class="day-task-meta">${t.overdue ? `overdue ${escHtml(t.due)}`
+                        : t.dueToday ? 'due today' : escHtml(t.priority)}</span>
+                    </button>`).join('')}
+                </div>`
+                : `<div class="day-block-empty">${b.done ? 'nothing was placed here' : 'nothing matched this block yet'}</div>`)
+              : `<div class="day-block-note">${escHtml(b.note || 'personal time')}</div>`}
+            ${b.placeable && b.note ? `<div class="day-block-note">${escHtml(b.note)}</div>` : ''}
+          </div>`).join('')}
+      </div>
+
+      ${DAY.overflow?.length ? `
+        <div class="day-overflow">
+          <span class="day-overflow-head">${DAY.overflow.length} beyond today's capacity</span>
+          ${DAY.overflow.slice(0, 4).map(t => `
+            <button class="day-task" onclick="openTask('${escAttr(t.id)}')">
+              <span class="day-task-title">${escHtml(t.title)}</span>
+              <span class="day-task-meta">${t.overdue ? `overdue ${escHtml(t.due)}` : escHtml(t.priority)}</span>
+            </button>`).join('')}
+          ${DAY.overflow.length > 4 ? `<span class="card-meta">and ${DAY.overflow.length - 4} more on the board.</span>` : ''}
+        </div>` : ''}
+
+      ${DAY.unplaced?.length ? `
+        <div class="day-unplaced">${DAY.unplaced.length} task${DAY.unplaced.length === 1 ? '' : 's'}
+          matched no block: ${escHtml(DAY.unplaced.slice(0, 2).map(t => t.title).join('; '))}${
+          DAY.unplaced.length > 2 ? ' and others' : ''}.</div>` : ''}
+    </div>`;
 }
 
 /** 14 days of habit completion, oldest first - which days were kept, which dropped. */
@@ -6956,11 +7163,64 @@ function ctxTick() {
       const txt = `${d.current.name} · ${fmtBlockMins(d.current.leftMins)} left`;
       if (blockCard.textContent !== txt) blockCard.textContent = txt;
     }
+
+    // The Hub's day card shares this same tick - marker slides, the line
+    // re-reads, block-by-block countdowns and the current block's progress
+    // bar update in place, so the card never re-renders while it's on
+    // screen. Ported from legacy's ctxTick (~9224-9312).
+    const marker = document.getElementById('day-rail-now');
+    if (marker) marker.style.left = `${((((d.mins - 300) % 1440 + 1440) % 1440) / 1440 * 100).toFixed(3)}%`;
+    const dayLine = document.getElementById('day-card-line');
+    if (dayLine) {
+      const txt = workingDayLeftLine(d);
+      if (dayLine.textContent !== txt) dayLine.textContent = txt;
+    }
+    for (const el of document.querySelectorAll('.day-block-live')) {
+      const b = (dayNow()?.blocks || []).find(x => x.id === el.dataset.blk);
+      if (!b) continue;
+      const wraps = b.end <= b.start;
+      const inside = wraps ? (d.mins >= b.start || d.mins < b.end) : (d.mins >= b.start && d.mins < b.end);
+      let txt = '', cls = 'day-block-live';
+      if (inside) {
+        const leftM = wraps && d.mins >= b.start ? (b.end + 1440) - d.mins : b.end - d.mins;
+        txt = `${fmtBlockMins(leftM)} left`; cls += ' on';
+      } else if (b.start > d.mins) {
+        txt = `in ${fmtBlockMins(b.start - d.mins)}`;
+      } else {
+        txt = 'done'; cls += ' done';
+      }
+      if (el.textContent !== txt) el.textContent = txt;
+      if (el.className !== cls) el.className = cls;
+    }
+    for (const el of document.querySelectorAll('.day-block-prog')) {
+      const b = (dayNow()?.blocks || []).find(x => x.id === el.dataset.blk);
+      if (!b || !b.minutes) continue;
+      const wraps = b.end <= b.start;
+      const leftM = wraps && d.mins >= b.start ? (b.end + 1440) - d.mins : b.end - d.mins;
+      const pct = Math.max(0, Math.min(100, ((b.minutes - leftM) / b.minutes) * 100));
+      const bar = el.firstElementChild;
+      if (bar) bar.style.width = `${pct.toFixed(2)}%`;
+    }
+    if (d.current) {
+      const b = d.current;
+      const elapsed = Math.max(0, b.minutes - b.leftMins);
+      const setTxt = (id, v) => { const el = document.getElementById(id); if (el && el.textContent !== v) el.textContent = v; };
+      setTxt('dcb-left', fmtBlockMins(b.leftMins));
+      setTxt('dcb-in', fmtBlockMins(elapsed));
+      setTxt('dcb-load', b.placeable ? `${b.tasks?.length ?? 0} of ${b.slots} slots filled` : 'personal time, no board work');
+      const bar = document.getElementById('dcb-bar');
+      if (bar && b.minutes) bar.style.width = `${((elapsed / b.minutes) * 100).toFixed(2)}%`;
+    }
+
     // A block CHANGE is structural (which two cards win can change), so the
     // rail repaints once on the transition rather than patching numbers.
+    // The Hub's day card repaints too, for the same reason (task lists,
+    // now/next labels are structural, not numbers to patch in place).
     if ((d.current?.id || null) !== ctxLastBlockId) {
       ctxLastBlockId = d.current?.id || null;
       refreshContextIfActive();
+      const slot = document.getElementById('day-card-slot');
+      if (slot) slot.innerHTML = renderDayBlocks();
     }
   }
 }
