@@ -5268,7 +5268,9 @@ function renderTaskView() {
     ${renderPeopleCard(career)}
     ${renderGovernsCard(career)}
 
+    ${origin || effort ? `
     <div class="grid-2 task-detail-grid">
+      ${origin ? `
       <div class="card">
         <div class="card-header"><span class="card-title">Where this came from</span></div>
         <div class="kv-rows">
@@ -5278,8 +5280,9 @@ function renderTaskView() {
           ${origin.project ? `<div><span>Project</span>${escHtml(origin.project)}</div>` : ''}
           <div><span>Jira</span>${jk ? escHtml(jk) : 'not linked'}</div>
         </div>
-      </div>
+      </div>` : ''}
 
+      ${effort ? `
       <div class="card">
         <div class="card-header">
           <span class="card-title">Time</span>
@@ -5288,11 +5291,12 @@ function renderTaskView() {
         <div class="effort-line">${escHtml(effort.sitting)}</div>
         <div class="effort-why">
           <div class="effort-why-label">How that was reached</div>
-          <ul>${effort.factors.map(f => `<li>${escHtml(f)}</li>`).join('')}</ul>
+          <ul>${(effort.factors || []).map(f => `<li>${escHtml(f)}</li>`).join('')}</ul>
         </div>
-      </div>
-    </div>
+      </div>` : ''}
+    </div>` : ''}
 
+    ${tools?.length ? `
     <div class="card">
       <div class="card-header"><span class="card-title">Tools you will need</span></div>
       <div class="tool-chips">
@@ -5300,8 +5304,9 @@ function renderTaskView() {
           ? `<button class="tool-chip" onclick="navigate('${escHtml(tool.view)}')">${escHtml(tool.label)} →</button>`
           : `<span class="tool-chip inert">${escHtml(tool.label)}</span>`).join('')}
       </div>
-    </div>
+    </div>` : ''}
 
+    ${prompt ? `
     <div class="card">
       <div class="card-header">
         <span class="card-title">Prompt for an assistant</span>
@@ -5311,7 +5316,7 @@ function renderTaskView() {
       <div class="prompt-hint">Self-contained, so it works pasted anywhere. Your private context is deliberately
         left out … this one is safe to hand to a cloud tool.</div>
       <pre class="prompt-block" id="task-prompt">${escHtml(prompt)}</pre>
-    </div>`;
+    </div>` : ''}`;
 }
 
 /**
@@ -6620,17 +6625,20 @@ function workingDayLeft(now = trustedNow()) {
  */
 
 /** One palette for the day, ported verbatim from legacy (his colours, 6 Aug). */
+// One coherent HSL family rather than ten picked-by-eye hexes: work axes sit
+// vivid at ~65-90% saturation, personal/ground hours sit desaturated and
+// cooler at ~35-55% - a consistent rule instead of an ad-hoc palette.
 const BLOCK_TONE = {
-  protected:  'var(--wx-protected, #8b9cff)',
-  learning:   'var(--wx-learn, #22d3ee)',
-  flex:       'var(--wx-flex, #9aa4b2)',
-  innovator:  'var(--wx-inn, #22c55e)',
-  visionary:  'var(--wx-lead, #3b8cff)',
-  lunch:      'var(--wx-lunch, #d4a017)',
-  creator:    'var(--wx-create, #ff7a1a)',
-  connection: 'var(--wx-connect, #ff4d94)',
-  home:       'var(--wx-home, #14c8a0)',
-  rest:       'var(--wx-rest, #5566cc)',
+  protected:  'var(--wx-protected, #8b9eec)',
+  learning:   'var(--wx-learn, #3fb6d3)',
+  flex:       'var(--wx-flex, #7c828d)',
+  innovator:  'var(--wx-inn, #22b573)',
+  visionary:  'var(--wx-lead, #4a7fe8)',
+  lunch:      'var(--wx-lunch, #d9a441)',
+  creator:    'var(--wx-create, #f2792a)',
+  connection: 'var(--wx-connect, #ea5a9e)',
+  home:       'var(--wx-home, #4a9c86)',
+  rest:       'var(--wx-rest, #43458f)',
 };
 const toneOf = (b) => BLOCK_TONE[b?.axis] || 'var(--text-3)';
 
