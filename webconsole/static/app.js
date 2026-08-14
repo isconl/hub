@@ -632,14 +632,23 @@ async function checkVaultLink() {
   }
   el.textContent = bad;
 }
+// These three are proxied through to legacy and each hit a real external API
+// (GitHub, Jira, calendar) - Jira alone was measured at ~11s (it pages every
+// board, not just the first). Not awaited by init() any more: they used to
+// block first paint on all three sequentially (13-15s of blank screen before
+// anything rendered). Same fire-and-forget-then-repaint pattern as
+// fetchOrientation() above - stale/absent beats "nothing shows for 15s".
 async function fetchGhSnapshot() {
   try { const r = await fetch('/api/github/snapshot'); if (r.ok) STATE.github = await r.json(); } catch(e) {}
+  repaintView(currentView);
 }
 async function fetchJiraIssues() {
   try { const r = await fetch('/api/jira/issues'); if (r.ok) { const d = await r.json(); STATE.jiraIssues = d.issues || []; } } catch(e) {}
+  repaintView(currentView);
 }
 async function fetchCalendarEvents() {
   try { const r = await fetch('/api/calendar/events'); if (r.ok) { const d = await r.json(); STATE.calendarEvents = d.events || []; } } catch(e) {}
+  repaintView(currentView);
 }
 /**
  * Send one chat turn.
@@ -12730,9 +12739,9 @@ async function init() {
   if (!(await ensureAuthenticated())) return;
 
   await fetchState();
-  await fetchGhSnapshot();
-  await fetchJiraIssues();
-  await fetchCalendarEvents();
+  fetchGhSnapshot();          // not awaited -- see the comment above these
+  fetchJiraIssues();          // three definitions. First paint no longer
+  fetchCalendarEvents();      // waits ~13-15s on GitHub/Jira/calendar.
   await fetchRefs();          // so D-024 reads as itself from the first paint
   await syncClock();          // the agent is the clock authority, not this device
   await fetchDay();           // block definitions, so the trusted clock has a day to count against
