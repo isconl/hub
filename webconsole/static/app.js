@@ -4519,6 +4519,57 @@ function renderRisks() {
     </div>`;
 }
 
+// ── CORPORATE ENGAGEMENTS (live from career/_active.yaml via scope) ──────────
+// Same fetch/cache/repaint shape as the decision log above, on purpose - one
+// pattern for "read-only data from the career vault, shown as cards." Every
+// known engagement lists; only the active one (career.js only overlays the
+// active org's files) carries live stats. Read-only for now - status
+// toggling and per-engagement connections (Gmail/M365) are a later phase,
+// see hub/docs/corporate-engagements-plan.md.
+
+let corporateCache = null;
+
+async function fetchCorporate() {
+  try { corporateCache = await (await fetch('/api/corporate')).json(); }
+  catch { corporateCache = { error: true, engagements: [] }; }
+  if (currentView === 'corporate') repaintView('corporate');
+}
+
+function renderCorporate() {
+  if (!corporateCache) { setTimeout(fetchCorporate, 0);
+    return `<div class="card"><div class="card-header"><span class="card-title">Corporate Engagements</span></div>
+      <div class="empty-state">Reading the record…</div></div>`; }
+  const list = corporateCache.engagements || [];
+  const active = list.find(e => e.active);
+  return `
+    <div class="view-head">
+      <h1>Corporate Engagements</h1>
+      <div class="view-head-meta">${list.length} on record${active ? ` · ${escHtml(active.name)} active` : ''}</div>
+    </div>
+    ${!list.length ? `<div class="card"><div class="empty-state">Nothing on record yet. Engagements come from
+        career/_active.yaml's orgs registry and appear here the moment one is added.</div></div>` : ''}
+    ${list.map(eng => {
+      const s = eng.stats || {};
+      return `
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">${escHtml(eng.name || eng.id)}</span>
+          <span class="pill pill-${eng.status === 'active' ? 'confirmed' : eng.status === 'prospective' ? 'pending' : 'verbal'}">${escHtml((eng.status || '').toUpperCase())}</span>
+        </div>
+        ${eng.role ? `<div class="card-meta" style="margin:-6px 0 10px">${escHtml(eng.role)}</div>` : ''}
+        ${eng.active && Object.keys(s).length ? `
+          <div class="cards-grid-4">
+            <div class="stat-card"><div class="stat-number${s.overdue ? ' txt-red' : ' txt-green'}">${s.open ?? 0}</div><div class="stat-label">Open tasks</div></div>
+            <div class="stat-card"><div class="stat-number" style="color:${s.overdue ? 'var(--red)' : 'var(--text-3)'}">${s.overdue ?? 0}</div><div class="stat-label">Overdue</div></div>
+            <div class="stat-card"><div class="stat-number" style="color:var(--cyan)">${s.decisions ?? 0}</div><div class="stat-label">Decisions${s.decisionsPending ? ` (${s.decisionsPending} pending)` : ''}</div></div>
+            <div class="stat-card"><div class="stat-number" style="color:var(--violet)">${s.risks ?? 0}</div><div class="stat-label">Risks on record</div></div>
+          </div>
+          <div class="card-meta">${s.people ?? 0} people in the circle for this engagement</div>
+        ` : !eng.active ? `<div class="empty-state" style="padding:0.5rem 0">Not the active engagement - switch career/_active.yaml's active_org to load full detail.</div>` : ''}
+      </div>`;
+    }).join('')}`;
+}
+
 // ── SPACES (axial tree) ───────────────────────────────────────────────────────
 // Navigates the same shape as the folder tree on disk: three axes, then facets,
 // then domains. One level visible at a time with a breadcrumb back out, because
@@ -7857,8 +7908,8 @@ const viewFns = {
   files:renderFileManager, social:renderSocial, spaces:renderSpaces,
   task:renderTaskView, finance:renderFinance, planning:renderPlanning,
   journal:renderJournal, learning:renderLearning, circle:renderCircle, ideas:renderIdeas,
-  projects:renderProjects, notifications:renderNotifications, articles:renderArticles,
-  rhythm:renderRhythm, personal:renderRhythm,
+  projects:renderProjects, corporate:renderCorporate, notifications:renderNotifications, articles:renderArticles,
+  rhythm:renderRhythm, personal:renderRhythm, teams:renderTeams,
 };
 
 /* ── THE NOTIFICATION CENTRE ──────────────────────────────────────────────────
@@ -8166,6 +8217,10 @@ function viewUrl(viewName, params = {}) {
   if (viewName && viewName !== 'today') q.set('v', viewName);
   if (params.taskId) q.set('task', params.taskId);
   if (viewName === 'spaces' && spacesPath.length) q.set('at', spacesPath.join('.'));
+  if (viewName === 'learning' && params.course) {
+    q.set('course', params.course);
+    if (params.lesson) q.set('lesson', params.lesson);
+  }
   const s = q.toString();
   return s ? `?${s}` : location.pathname;
 }
@@ -8275,6 +8330,12 @@ document.addEventListener('keydown', (e) => {
 function restoreFromState(state) {
   const view = (state && state.view) || 'today';
   if (state && Array.isArray(state.spacesPath)) spacesPath = [...state.spacesPath];
+  if (view === 'learning' && state.course) {
+    navigate('learning', {}, { fromHistory: true });
+    learnCourseOpen = state.course;
+    if (state.lesson) learnOpenLesson(state.course, state.lesson, { fromHistory: true });
+    return;
+  }
   if (view === 'task' && state.taskId) {
     taskDetailId = state.taskId;
     taskDetail = null;
@@ -10522,6 +10583,414 @@ document.addEventListener('DOMContentLoaded', initNavGroups);
 // OneDrive's Sconl/Circle. Due-for-contact is computed server-side; the DIA
 // button opens or refreshes the person's private analysis profile.
 
+/* ══ TEAMS - the team OS ═══════════════════════════════════════════════════
+ * Ported from legacy/dashboard/app.js (~9971-10399, `feat(teams)` a81a245,
+ * 8 Aug). Every field here is computed server-side by the legacy monolith
+ * (queue depth, span limits, the org tree) - hub's job is the same one it
+ * already does for every other legacy-backed view: render the same UI,
+ * call the same JSON endpoints (now proxied, see api-compat.js).
+ *
+ * NOT ported: the Report tab (an <iframe src="/api/teams/onepage">, an
+ * HTML page) and the sheet/csv export links - both need a raw byte
+ * passthrough hub's legacy proxy doesn't have yet (it always JSON-decodes
+ * the response). Board and People are the real day-to-day surface; the
+ * one-pager is a closed follow-up, not a silent omission.
+ */
+let TEAMS = null;
+let TEAMS_STATE = 'idle';
+let teamsSel = localStorage.getItem('isconl.teamSel') || null;
+let teamsTab = localStorage.getItem('isconl.teamTab') === 'report' ? 'board' : (localStorage.getItem('isconl.teamTab') || 'board');
+let teamsShowWorkForm = false;
+let teamsShowMemberForm = false;
+let teamsEditWork = null;
+let teamsEditMember = null;
+let TEAMS_CIRCLE = null;
+
+async function fetchTeams() {
+  TEAMS_STATE = 'loading';
+  try {
+    TEAMS = await (await fetch('/api/teams')).json();
+    TEAMS_STATE = 'ok';
+  } catch (e) { TEAMS_STATE = 'failed'; TEAMS = TEAMS || { teams: [] }; }
+  if (currentView === 'teams') repaintView('teams');
+}
+
+async function teamsCircle() {
+  if (TEAMS_CIRCLE) return TEAMS_CIRCLE;
+  try { TEAMS_CIRCLE = (await (await fetch('/api/circle')).json()).people || []; }
+  catch { TEAMS_CIRCLE = []; }
+  return TEAMS_CIRCLE;
+}
+
+function teamsCurrent() {
+  const list = TEAMS?.teams || [];
+  return list.find(t => t.id === teamsSel) || list[0] || null;
+}
+
+function teamsPick(id) {
+  teamsSel = id; localStorage.setItem('isconl.teamSel', id);
+  teamsShowWorkForm = false; teamsShowMemberForm = false;
+  teamsEditWork = null; teamsEditMember = null;
+  repaintView('teams');
+}
+function teamsGo(tab) {
+  teamsTab = tab; localStorage.setItem('isconl.teamTab', tab);
+  repaintView('teams');
+}
+
+async function teamsPost(url, body, okMsg) {
+  try {
+    const d = await (await fetch(url, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    if (!d.success) throw new Error(d.error || 'refused');
+    if (d.spanWarning) showToast(d.spanWarning, 'error');
+    else if (okMsg) showToast(okMsg, 'success');
+    await fetchTeams();
+    return d;
+  } catch (e) { showToast(e.message, 'error'); return null; }
+}
+
+const teamsDepthDot = l => `<span class="tm-dot ${l}" title="queue depth"></span>`;
+
+function renderTeams() {
+  if (!TEAMS) {
+    if (TEAMS_STATE !== 'loading') fetchTeams();
+    return `<div class="card"><div class="empty-state">Opening the board…</div></div>`;
+  }
+  const teams = TEAMS.teams || [];
+  const t = teamsCurrent();
+
+  const newTeamCard = `
+    <div class="card">
+      <div class="card-header"><span class="card-title">${teams.length ? 'New team' : 'The first team'}</span>
+        <span class="card-meta">a team carries its own org, owner and report recipient - Viva is one row, your own company is another</span></div>
+      <div class="tm-form">
+        <input id="tm-new-title" class="jira-input" placeholder="Team name - e.g. Viva testing and portals">
+        <input id="tm-new-org" class="jira-input" placeholder="Organisation - e.g. Viva">
+        <input id="tm-new-owner" class="jira-input" placeholder="Owner (who runs it)" value="ARCHITECT">
+        <input id="tm-new-recipient" class="jira-input" placeholder="Report goes to - e.g. Sam">
+        <div class="tm-form-row">
+          <button class="btn btn-primary" onclick="teamsCreate()">Create team</button>
+          ${teams.length ? `<button class="btn btn-ghost" onclick="teamsShowMemberForm=false;window.__tmNew=false;repaintView('teams')">Cancel</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+
+  if (!t) {
+    return `
+      <div class="view-head"><h1>Teams</h1>
+        <div class="view-head-meta">one board · five per leader · three days deep</div></div>
+      <div class="card"><div class="empty-state" style="text-align:left">
+        <p style="margin:0 0 0.6rem">No team on the board yet.</p>
+        <p style="margin:0;color:var(--text-3);font-size:0.78rem">The system: every piece of work
+        lives here with its five fields - what, why, who, when, and what done looks like, written
+        before the work starts. Every person carries three days of ready work, and the depth is a
+        number this console computes. Nobody leads more than five.</p>
+      </div></div>
+      ${newTeamCard}`;
+  }
+
+  const h = t.health, c = t.counts;
+  const head = `
+    <div class="view-head">
+      <h1>Teams</h1>
+      <div class="view-head-meta">
+        ${teams.map(x => `<button class="tm-chip${x.id === t.id ? ' on' : ''}" onclick="teamsPick('${escAttr(x.id)}')">${escHtml(x.title)}</button>`).join('')}
+        <button class="tm-chip tm-chip-new" onclick="window.__tmNew=!window.__tmNew;repaintView('teams')">+ new</button>
+      </div>
+      <div class="view-head-meta">
+        ${escHtml(t.org || '')} · run by <b>${escHtml(t.owner)}</b> · reports to <b>${escHtml(t.recipient || 'nobody yet')}</b>
+      </div>
+      <div class="tm-tabs">
+        <button class="tm-tab${teamsTab === 'board' ? ' on' : ''}" onclick="teamsGo('board')">Board</button>
+        <button class="tm-tab${teamsTab === 'people' ? ' on' : ''}" onclick="teamsGo('people')">People</button>
+      </div>
+    </div>
+    <div class="tm-strip">
+      <div class="tm-stat"><b>${t.members.length}</b>people</div>
+      <div class="tm-stat"><b>${t.layers}</b>layer${t.layers === 1 ? '' : 's'}</div>
+      <div class="tm-stat"><b>${teamsDepthDot('green')}${h.green} ${teamsDepthDot('amber')}${h.amber} ${teamsDepthDot('red')}${h.red}</b>queue health</div>
+      <div class="tm-stat"><b>${c.signedWeek}</b>signed this week</div>
+      <div class="tm-stat"><b>${c.awaitingSign}</b>awaiting sign-off</div>
+      <div class="tm-stat${c.blocked ? ' warn' : ''}"><b>${c.blocked}</b>blocked</div>
+      <div class="tm-stat${c.slipped ? ' warn' : ''}"><b>${c.slipped}</b>slipped</div>
+    </div>`;
+
+  const body = teamsTab === 'people' ? renderTeamsPeople(t) : renderTeamsBoard(t);
+
+  return head + (window.__tmNew ? newTeamCard : '') + body;
+}
+
+/* ── BOARD - work, grouped by the person who carries it ─────────────────── */
+
+function tmWorkForm(t, w) {
+  const editing = !!w;
+  const pre = !w && window.__tmPreselect;
+  const memberOpts = t.members.map(m =>
+    `<option value="${escAttr(m.id)}" ${(w && w.memberId === m.id) || (pre === m.id) ? 'selected' : ''}>${escHtml(m.name)}</option>`).join('');
+  return `
+    <div class="card tm-workform">
+      <div class="card-header"><span class="card-title">${editing ? 'Edit the item' : 'New work item'}</span>
+        <span class="card-meta">all five fields, before the work starts - a task with no written done cannot be argued about</span></div>
+      <div class="tm-form">
+        <input id="tm-w-title" class="jira-input" placeholder="WHAT - the deliverable, as a noun" value="${w ? escAttr(w.title) : ''}">
+        <input id="tm-w-why" class="jira-input" placeholder="WHY - one sentence" value="${w ? escAttr(w.why) : ''}">
+        <div class="tm-form-row">
+          <select id="tm-w-member" class="jira-input">${editing ? memberOpts : `<option value="">WHO…</option>${memberOpts}`}</select>
+          <input id="tm-w-due" type="date" class="jira-input" value="${w ? escAttr(w.due) : ''}" title="WHEN">
+          <input id="tm-w-effort" type="number" step="0.5" min="0.5" class="jira-input" style="max-width:90px"
+                 value="${w ? w.effortDays : 1}" title="effort, in days - this is what the queue depth counts">
+        </div>
+        <input id="tm-w-done" class="jira-input" placeholder="DONE - what finished looks like, checkable" value="${w ? escAttr(w.doneMeans) : ''}">
+        <div class="tm-form-row">
+          <button class="btn btn-primary" onclick="teamsSaveWork(${editing ? `'${escAttr(w.id)}'` : 'null'})">${editing ? 'Save' : 'Add to the queue'}</button>
+          <button class="btn btn-ghost" onclick="teamsShowWorkForm=false;teamsEditWork=null;repaintView('teams')">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function tmWorkRow(t, w) {
+  if (teamsEditWork === w.id) return tmWorkForm(t, w);
+  const acts = [];
+  if (w.status === 'queued') acts.push(`<button class="btn btn-ghost tm-act" onclick="teamsMove('${escAttr(w.id)}','active')">start</button>`);
+  if (w.status === 'active') acts.push(`<button class="btn btn-ghost tm-act" onclick="teamsMove('${escAttr(w.id)}','finished')">finish</button>`);
+  if (['queued', 'active'].includes(w.status)) acts.push(`<button class="btn btn-ghost tm-act" onclick="teamsBlock('${escAttr(w.id)}')">block</button>`);
+  if (w.status === 'blocked') acts.push(`<button class="btn btn-ghost tm-act" onclick="teamsMove('${escAttr(w.id)}','queued')">unblock</button>`);
+  if (w.status === 'finished') acts.push(`<button class="btn btn-primary tm-act" onclick="teamsSign('${escAttr(w.id)}')">sign</button>`);
+  acts.push(`<button class="btn btn-ghost tm-act" onclick="teamsEditWork='${escAttr(w.id)}';repaintView('teams')">edit</button>`);
+  return `
+    <div class="tm-work${w.late ? ' late' : ''}">
+      <span class="tm-status ${escAttr(w.status)}">${escHtml(w.status)}</span>
+      <div class="tm-work-main">
+        <div class="tm-work-title">${escHtml(w.title)}</div>
+        <div class="tm-work-meta">${escHtml(w.why)}</div>
+        <div class="tm-work-meta">
+          ${w.due ? `<span class="${w.late ? 'tm-late' : ''}">due ${escHtml(w.due)}${w.late ? ' - LATE' : ''}</span> · ` : ''}${w.effortDays}d ·
+          <span title="what finished looks like">done = ${escHtml(w.doneMeans)}</span>
+          ${w.blockedNote ? `<br><span class="tm-blockednote">blocked: ${escHtml(w.blockedNote)}</span>` : ''}
+          ${w.signedBy ? ` · signed by ${escHtml(w.signedBy)}` : ''}
+        </div>
+      </div>
+      <div class="tm-work-acts">${acts.join('')}</div>
+    </div>`;
+}
+
+function renderTeamsBoard(t) {
+  const byMember = id => t.work.filter(w => w.memberId === id && ['queued', 'active', 'blocked'].includes(w.status));
+  const needsYou = t.work.filter(w => w.status === 'finished');
+  const blocked = t.work.filter(w => w.status === 'blocked');
+  const unassigned = t.work.filter(w => !w.memberId && w.status !== 'signed');
+  const order = { red: 0, amber: 1, green: 2 };
+  const members = t.members.slice().sort((a, b) => (order[a.depthLevel] - order[b.depthLevel]) || a.name.localeCompare(b.name));
+
+  return `
+    ${teamsShowWorkForm ? tmWorkForm(t, null) : `
+      <div class="tm-addrow"><button class="btn btn-primary" onclick="teamsShowWorkForm=true;repaintView('teams')">+ Work item</button>
+      <span class="tm-hint">work is pulled, not handed out - your job is keeping every queue three days deep</span></div>`}
+
+    ${needsYou.length || blocked.length ? `
+      <div class="card tm-needsyou">
+        <div class="card-header"><span class="card-title">Needs you</span>
+          <span class="card-meta">${needsYou.length} to sign · ${blocked.length} blocked</span></div>
+        ${needsYou.map(w => tmWorkRow(t, w)).join('')}
+        ${blocked.map(w => tmWorkRow(t, w)).join('')}
+      </div>` : ''}
+
+    ${members.map(m => {
+      const items = byMember(m.id);
+      return `
+      <div class="card tm-member">
+        <div class="tm-member-head">
+          <div class="tm-member-id">
+            ${teamsDepthDot(m.depthLevel)}
+            <span class="tm-member-name">${escHtml(m.name)}</span>
+            <span class="tm-member-role">${escHtml(m.role)}</span>
+            ${m.personId ? `<a href="#" class="tm-link" title="their Circle dossier" onclick="navigate('circle');return false">circle</a>` : ''}
+          </div>
+          <div class="tm-member-nums">
+            <span class="tm-depth ${m.depthLevel}" title="days of ready work in the queue - three is the floor">${m.depth}d</span>
+            ${m.directs ? `<span class="tm-directs${m.spanOver ? ' over' : ''}" title="direct reports">${m.directs} lead${m.spanOver ? ' - OVER SPAN' : ''}</span>` : ''}
+            <button class="btn btn-ghost tm-act" onclick="teamsShowWorkForm=true;window.__tmPreselect='${escAttr(m.id)}';repaintView('teams')">+ work</button>
+          </div>
+        </div>
+        ${m.depthLevel === 'red' ? `<div class="tm-redline">Queue empty. This is the board's loudest state, and it is the leader's to fix, not theirs.</div>` : ''}
+        ${items.length ? items.map(w => tmWorkRow(t, w)).join('') : `<div class="tm-empty">nothing queued</div>`}
+      </div>`;
+    }).join('')}
+
+    ${unassigned.length ? `
+      <div class="card"><div class="card-header"><span class="card-title">Unassigned</span>
+        <span class="card-meta">work returned to the board when someone left - it needs a new owner</span></div>
+        ${unassigned.map(w => tmWorkRow(t, w)).join('')}</div>` : ''}
+
+    ${!t.members.length ? `<div class="card"><div class="empty-state">No people yet - add them under People, linked to the Circle where they already exist.</div></div>` : ''}`;
+}
+
+/* ── PEOPLE - the tree, the spans, the handover ─────────────────────────── */
+
+function renderTeamsPeople(t) {
+  const kids = t.children || {};
+  const byId = Object.fromEntries(t.members.map(m => [m.id, m]));
+  const node = (id, depth) => {
+    const m = byId[id]; if (!m) return '';
+    if (teamsEditMember === id) return tmMemberForm(t, m, depth);
+    return `
+      <div class="tm-node" style="margin-left:${depth * 22}px">
+        ${teamsDepthDot(m.depthLevel)}
+        <span class="tm-member-name">${escHtml(m.name)}</span>
+        <span class="tm-member-role">${escHtml(m.role)}</span>
+        <span class="tm-depth ${m.depthLevel}">${m.depth}d</span>
+        ${m.directs ? `<span class="tm-directs${m.spanOver ? ' over' : ''}">${m.directs} direct${m.directs === 1 ? '' : 's'}${m.spanOver ? ' - OVER SPAN, promote one' : ''}</span>` : ''}
+        ${m.personId ? `<span class="tm-linkmark" title="linked to the Circle dossier ${escAttr(m.personId)}">linked</span>` : `<span class="tm-linkmark off" title="not linked to the Circle yet">unlinked</span>`}
+        <span class="tm-node-acts">
+          <button class="btn btn-ghost tm-act" onclick="teamsEditMember='${escAttr(m.id)}';repaintView('teams')">edit</button>
+          <button class="btn btn-ghost tm-act" onclick="teamsRemoveMember('${escAttr(m.id)}','${escAttr(m.name)}')">leaves</button>
+        </span>
+      </div>
+      ${(kids[id] || []).map(k => node(k, depth + 1)).join('')}`;
+  };
+
+  return `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Who reports to who</span>
+        <span class="card-meta">${escHtml(t.owner)} at the root · ${t.layers} layer${t.layers === 1 ? '' : 's'} · the sixth report means promoting someone, never a sixth line</span></div>
+      <div class="tm-node tm-root">${escHtml(t.owner)} <span class="tm-member-role">owner</span></div>
+      ${(kids['_root'] || []).map(k => node(k, 1)).join('') || '<div class="tm-empty">nobody yet</div>'}
+    </div>
+    ${teamsShowMemberForm ? tmMemberForm(t, null, 0) : `
+      <div class="tm-addrow"><button class="btn btn-primary" onclick="teamsMemberFormOpen()">+ Person</button></div>`}
+    <div class="card">
+      <div class="card-header"><span class="card-title">Team settings</span>
+        <span class="card-meta">handing the system to a successor is editing owner and recipient - nothing else moves</span></div>
+      <div class="tm-form">
+        <div class="tm-form-row">
+          <input id="tm-set-title" class="jira-input" value="${escAttr(t.title)}" placeholder="Team name">
+          <input id="tm-set-org" class="jira-input" value="${escAttr(t.org)}" placeholder="Organisation">
+        </div>
+        <div class="tm-form-row">
+          <input id="tm-set-owner" class="jira-input" value="${escAttr(t.owner)}" placeholder="Owner" title="who runs the board">
+          <input id="tm-set-recipient" class="jira-input" value="${escAttr(t.recipient)}" placeholder="Report goes to" title="who the one-pager addresses">
+          <input id="tm-set-cadence" class="jira-input" value="${escAttr(t.cadence)}" placeholder="Cadence - e.g. weekly, Friday">
+        </div>
+        <div class="tm-form-row">
+          <button class="btn btn-primary" onclick="teamsSaveSettings()">Save</button>
+          <button class="btn btn-ghost" onclick="teamsArchive()" title="Leaves the switcher; nothing is deleted">Archive team</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function teamsMemberFormOpen() {
+  await teamsCircle();
+  teamsShowMemberForm = true;
+  repaintView('teams');
+}
+
+function tmMemberForm(t, m, depth) {
+  const editing = !!m;
+  const leaders = t.members.filter(x => !m || x.id !== m.id);
+  const circle = (TEAMS_CIRCLE || []).filter(p => p.STATUS !== 'archived');
+  return `
+    <div class="card tm-workform" style="${editing ? `margin-left:${depth * 22}px` : ''}">
+      <div class="card-header"><span class="card-title">${editing ? `Edit ${escHtml(m.name)}` : 'Add a person'}</span>
+        <span class="card-meta">link them to the Circle so their dossier, cadence and history travel with them</span></div>
+      <div class="tm-form">
+        <div class="tm-form-row">
+          <input id="tm-m-name" class="jira-input" placeholder="Name" value="${m ? escAttr(m.name) : ''}" list="tm-circle-list" oninput="teamsNameLink(this)">
+          <datalist id="tm-circle-list">
+            ${circle.map(p => `<option value="${escAttr(p.NAME)}" data-id="${escAttr(p.ID)}">${escHtml(p.ROLE || p.GROUP || '')}</option>`).join('')}
+          </datalist>
+          <input id="tm-m-role" class="jira-input" placeholder="Role on this team" value="${m ? escAttr(m.role) : ''}">
+        </div>
+        <div class="tm-form-row">
+          <select id="tm-m-leader" class="jira-input" title="who they report to">
+            <option value="">reports to ${escAttr(t.owner)} (root)</option>
+            ${leaders.map(x => `<option value="${escAttr(x.id)}" ${m && m.reportsTo === x.id ? 'selected' : ''}>reports to ${escHtml(x.name)}</option>`).join('')}
+          </select>
+          <input id="tm-m-person" class="jira-input" placeholder="Circle id (auto-fills from the name)" value="${m ? escAttr(m.personId) : ''}" style="max-width:200px">
+        </div>
+        <div class="tm-form-row">
+          <button class="btn btn-primary" onclick="teamsSaveMember(${editing ? `'${escAttr(m.id)}'` : 'null'})">${editing ? 'Save' : 'Add'}</button>
+          <button class="btn btn-ghost" onclick="teamsShowMemberForm=false;teamsEditMember=null;repaintView('teams')">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+/** Typing a name that matches a Circle person auto-fills the link id. */
+function teamsNameLink(input) {
+  const p = (TEAMS_CIRCLE || []).find(x => x.NAME === input.value);
+  const idBox = document.getElementById('tm-m-person');
+  if (p && idBox && !idBox.value) idBox.value = p.ID;
+}
+
+/* ── ACTIONS ────────────────────────────────────────────────────────────── */
+
+async function teamsCreate() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  const r = await teamsPost('/api/teams/save', {
+    title: g('tm-new-title'), org: g('tm-new-org'), owner: g('tm-new-owner'), recipient: g('tm-new-recipient'),
+  }, 'Team created');
+  if (r) { window.__tmNew = false; teamsPick(r.id); }
+}
+
+async function teamsSaveSettings() {
+  const t = teamsCurrent(); if (!t) return;
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  await teamsPost('/api/teams/save', { id: t.id, title: g('tm-set-title'), org: g('tm-set-org'),
+    owner: g('tm-set-owner'), recipient: g('tm-set-recipient'), cadence: g('tm-set-cadence') }, 'Saved');
+}
+
+async function teamsArchive() {
+  const t = teamsCurrent(); if (!t) return;
+  const ok = await uiConfirm({ title: `Archive ${t.title}?`,
+    body: 'It leaves the switcher and the exports stop. Nothing is deleted - the three vault files keep every row, and support can bring it back.', danger: true });
+  if (!ok) return;
+  await teamsPost('/api/teams/save', { id: t.id, title: t.title, status: 'archived' }, 'Archived');
+  teamsSel = null; repaintView('teams');
+}
+
+async function teamsSaveMember(id) {
+  const t = teamsCurrent(); if (!t) return;
+  const g = x => (document.getElementById(x)?.value || '').trim();
+  const r = await teamsPost('/api/teams/member', { id: id || undefined, teamId: t.id,
+    name: g('tm-m-name'), role: g('tm-m-role'), reportsTo: g('tm-m-leader'), personId: g('tm-m-person') },
+    id ? 'Saved' : 'Added');
+  if (r) { teamsShowMemberForm = false; teamsEditMember = null; }
+}
+
+async function teamsRemoveMember(id, name) {
+  const ok = await uiConfirm({ title: `${name} leaves the team?`,
+    body: 'Their open work returns to the board unassigned, and anyone reporting to them moves up to their leader. The row is kept, marked left.', danger: true });
+  if (!ok) return;
+  await teamsPost('/api/teams/member/remove', { id }, `${name} marked as left - their queue is back on the board`);
+}
+
+async function teamsSaveWork(id) {
+  const t = teamsCurrent(); if (!t) return;
+  const g = x => (document.getElementById(x)?.value || '').trim();
+  const r = await teamsPost('/api/teams/work', { id: id || undefined, teamId: t.id,
+    title: g('tm-w-title'), why: g('tm-w-why'), memberId: g('tm-w-member'),
+    due: g('tm-w-due'), doneMeans: g('tm-w-done'), effortDays: g('tm-w-effort') || 1 },
+    id ? 'Saved' : 'On the board');
+  if (r) { teamsShowWorkForm = false; teamsEditWork = null; window.__tmPreselect = null; }
+}
+
+async function teamsMove(id, to) { await teamsPost('/api/teams/work/move', { id, to }); }
+
+async function teamsBlock(id) {
+  const note = await uiPrompt({ title: 'What is it blocked on?',
+    label: 'The note travels to the one-pager under "Needs deciding"', placeholder: 'waiting on…' });
+  if (note == null) return;
+  await teamsPost('/api/teams/work/move', { id, to: 'blocked', note }, 'Blocked - it will chase a decision on the one-pager');
+}
+
+async function teamsSign(id) {
+  const r = await teamsPost('/api/teams/work/move', { id, to: 'signed' });
+  if (r) showToast(`Signed by ${r.signedBy} - now it is done`, 'success');
+}
+
 let CIRCLE = null;
 let circleOpenPerson = null;
 let circleRing = 'all';   // the high-level ring tab: all / family / professional / social
@@ -11708,6 +12177,12 @@ function learnMd(src) {
   // start of a new block, so the whole sentence - citation included -
   // lands inside the one callout it belongs to.
   const CALLOUT_OPENER = /^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/i;
+  // A book callout ties an idea to a book; a research callout carries the
+  // actual number - a named study, dataset or report with its year, so a
+  // claim in the lesson traces to a source that can be checked rather than
+  // to "research shows". Same house rule as the book callouts (7 Aug 2026,
+  // extended for data on 14 Aug): never render one with no bracketed
+  // citation - it falls through to a plain paragraph instead.
   const isBlockStart = (l) => !l.trim() || isTableRow(l) || /^#{1,4} /.test(l) ||
     /^\s*(---+|\*\*\*+)\s*$/.test(l) || /^&gt;\s?/.test(l) ||
     /^\s{2,}[-*]\s/.test(l) || /^\d+\. /.test(l) || /^[-*] /.test(l) || CALLOUT_OPENER.test(l);
@@ -11764,10 +12239,17 @@ function learnMd(src) {
     // citation was dropped, not that it doesn't need one, so it falls
     // through to a plain paragraph instead of a callout implying a source
     // that isn't actually named.
-    if (/^\*\*(In a book|Book|Research):?\*\*/i.test(line)) {
+    if (/^\*\*(In a book|Book):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
-      const m = text.match(/^\*\*(In a book|Book|Research):?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
+      const m = text.match(/^\*\*(In a book|Book):?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
       if (m) out.push(`<div class="lesson-book"><span>In a book</span>${restoreMath(inline(m[2]))}<div class="lesson-cite">${restoreMath(inline(m[3]))}</div></div>`);
+      else out.push(`<p>${restoreMath(inline(text))}</p>`);
+      i = nextIdx; continue;
+    }
+    if (/^\*\*Research:?\*\*/i.test(line)) {
+      const { text, nextIdx } = gatherWrapped(i);
+      const m = text.match(/^\*\*Research:?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
+      if (m) out.push(`<div class="lesson-research"><span>Research</span>${restoreMath(inline(m[1]))}<div class="lesson-cite">${restoreMath(inline(m[2]))}</div></div>`);
       else out.push(`<p>${restoreMath(inline(text))}</p>`);
       i = nextIdx; continue;
     }
@@ -11881,7 +12363,7 @@ function learnOpenSource(vaultPath) {
   openSpaceInFiles(dir ? `${VAULT_DRIVE_ROOT}/${dir}` : VAULT_DRIVE_ROOT);
 }
 
-async function learnOpenLesson(course, file) {
+async function learnOpenLesson(course, file, opts = {}) {
   try {
     const d = await (await fetch(`/api/learning/lesson?course=${encodeURIComponent(course)}&file=${encodeURIComponent(file)}`)).json();
     if (d.content == null) { showToast(d.error || 'Lesson unavailable', 'error'); return; }
@@ -11889,6 +12371,12 @@ async function learnOpenLesson(course, file) {
     learnNote = { text: '', loadedFor: null, savedAt: null, timer: null };
     const lesson = ((LEARN.courses || []).find(c => c.ID === course)?.lessons || []).find(l => l.file === file);
     if (lesson && lesson.status === 'new') learnMark(course, file, 'learning', true);
+    // Puts the exact lesson in the URL, so the address bar is always a valid
+    // shareable link back to this page - the Share button just hands over
+    // location.href rather than building a second, parallel notion of "the link".
+    // Skipped when arriving FROM history (a back/forward or a boot-time deep
+    // link) - the entry already exists and pushing again would fork it.
+    if (!opts.fromHistory) pushHistory('learning', { course, lesson: file });
     repaintView('learning');
     // Restore the exact reading position when arriving via resume; otherwise
     // start at the top like any freshly opened document.
@@ -13064,6 +13552,8 @@ async function init() {
   const q = new URLSearchParams(location.search);
   const wanted = q.get('v') || 'today';
   const wantedTask = q.get('task');
+  const wantedCourse = q.get('course');
+  const wantedLesson = q.get('lesson');
   const at = q.get('at');
   if (at) spacesPath = at.split('.').filter(Boolean);
 
@@ -13071,6 +13561,12 @@ async function init() {
     // replaceState first so the very first back press has somewhere to land.
     pushHistory('tasks', {}, true);
     openTask(wantedTask);
+  } else if (wanted === 'learning' && wantedCourse) {
+    pushHistory('learning', { course: wantedCourse, lesson: wantedLesson || undefined }, true);
+    learnCourseOpen = wantedCourse;
+    await fetchLearning();
+    navigate('learning', {}, { fromHistory: true });
+    if (wantedLesson) await learnOpenLesson(wantedCourse, wantedLesson, { fromHistory: true });
   } else if (viewFns[wanted]) {
     navigate(wanted, {}, { fromHistory: true });
     pushHistory(wanted, {}, true);
