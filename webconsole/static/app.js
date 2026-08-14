@@ -2905,6 +2905,8 @@ function renderSettings() {
         <div id="apk-card"><div class="settings-hint">Checking for the current build...</div></div>
       </div>
 
+      ${renderLearnThemeSection()}
+
       <!-- Jira -->
       <div class="settings-section">
         <div class="settings-section-title">Jira Cloud
@@ -4528,12 +4530,29 @@ function renderRisks() {
 // see hub/docs/corporate-engagements-plan.md.
 
 let corporateCache = null;
+let corpDetailId = null;
+let corpDetail = null;
 
 async function fetchCorporate() {
   try { corporateCache = await (await fetch('/api/corporate')).json(); }
   catch { corporateCache = { error: true, engagements: [] }; }
   if (currentView === 'corporate') repaintView('corporate');
 }
+
+/** Land on the card grid, click a card, land in its dashboard - same
+ *  open-then-fetch-then-repaint shape as openTask(). */
+async function openCorporate(id) {
+  corpDetailId = id;
+  corpDetail = null;
+  navigate('corporate-detail', { id });
+  try {
+    const r = await fetch(`/api/corporate/detail?id=${encodeURIComponent(id)}`);
+    corpDetail = r.ok ? await r.json() : { error: true };
+  } catch { corpDetail = { error: true }; }
+  if (currentView === 'corporate-detail') repaintView('corporate-detail');
+}
+
+const STATUS_PILL = { active: 'confirmed', prospective: 'execution', past: 'verbal' };
 
 function renderCorporate() {
   if (!corporateCache) { setTimeout(fetchCorporate, 0);
@@ -4547,27 +4566,129 @@ function renderCorporate() {
       <div class="view-head-meta">${list.length} on record${active ? ` · ${escHtml(active.name)} active` : ''}</div>
     </div>
     ${!list.length ? `<div class="card"><div class="empty-state">Nothing on record yet. Engagements come from
-        career/_active.yaml's orgs registry and appear here the moment one is added.</div></div>` : ''}
-    ${list.map(eng => {
-      const s = eng.stats || {};
-      return `
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">${escHtml(eng.name || eng.id)}</span>
-          <span class="pill pill-${eng.status === 'active' ? 'confirmed' : eng.status === 'prospective' ? 'pending' : 'verbal'}">${escHtml((eng.status || '').toUpperCase())}</span>
-        </div>
-        ${eng.role ? `<div class="card-meta" style="margin:-6px 0 10px">${escHtml(eng.role)}</div>` : ''}
-        ${eng.active && Object.keys(s).length ? `
-          <div class="cards-grid-4">
-            <div class="stat-card"><div class="stat-number${s.overdue ? ' txt-red' : ' txt-green'}">${s.open ?? 0}</div><div class="stat-label">Open tasks</div></div>
-            <div class="stat-card"><div class="stat-number" style="color:${s.overdue ? 'var(--red)' : 'var(--text-3)'}">${s.overdue ?? 0}</div><div class="stat-label">Overdue</div></div>
-            <div class="stat-card"><div class="stat-number" style="color:var(--cyan)">${s.decisions ?? 0}</div><div class="stat-label">Decisions${s.decisionsPending ? ` (${s.decisionsPending} pending)` : ''}</div></div>
-            <div class="stat-card"><div class="stat-number" style="color:var(--violet)">${s.risks ?? 0}</div><div class="stat-label">Risks on record</div></div>
+        career/_active.yaml's orgs registry and appear here the moment one is added.</div></div>` : `
+    <div class="corp-grid">
+      ${list.map((eng, i) => {
+        const s = eng.stats || {};
+        return `
+        <div class="corp-card" role="button" tabindex="0" style="animation-delay:${i * 0.05}s"
+             onclick="openCorporate('${escAttr(eng.id)}')"
+             onkeydown="if(event.key==='Enter')openCorporate('${escAttr(eng.id)}')">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div class="corp-card-name">${escHtml(eng.name || eng.id)}</div>
+            <span class="pill pill-${STATUS_PILL[eng.status] || 'verbal'}">${escHtml((eng.status || '').toUpperCase())}</span>
           </div>
-          <div class="card-meta">${s.people ?? 0} people in the circle for this engagement</div>
-        ` : !eng.active ? `<div class="empty-state" style="padding:0.5rem 0">Not the active engagement - switch career/_active.yaml's active_org to load full detail.</div>` : ''}
-      </div>`;
-    }).join('')}`;
+          ${eng.role ? `<div class="corp-card-role">${escHtml(eng.role)}</div>` : ''}
+          ${eng.active && Object.keys(s).length ? `
+            <div class="corp-card-mini">
+              <div><div class="corp-card-mini-num${s.overdue ? ' warn' : ''}">${s.open ?? 0}</div><div class="corp-card-mini-label">Open</div></div>
+              <div><div class="corp-card-mini-num" style="color:var(--cyan)">${s.decisions ?? 0}</div><div class="corp-card-mini-label">Decisions</div></div>
+              <div><div class="corp-card-mini-num" style="color:var(--violet)">${s.risks ?? 0}</div><div class="corp-card-mini-label">Risks</div></div>
+              <div><div class="corp-card-mini-num" style="color:var(--text-2)">${s.people ?? 0}</div><div class="corp-card-mini-label">People</div></div>
+            </div>` : `<div class="corp-card-role" style="margin-top:0.6rem">Not the active engagement - open for identity only.</div>`}
+        </div>`;
+      }).join('')}
+    </div>`}`;
+}
+
+function renderCorporateDetail() {
+  if (!corpDetailId) return `<div class="card"><div class="empty-state">No engagement selected.</div></div>`;
+  if (!corpDetail) return `<div class="card"><div class="empty-state">Loading engagement…</div></div>`;
+  if (corpDetail.error) return `<div class="card"><div class="empty-state">Could not load this engagement.</div></div>`;
+  const eng = corpDetail;
+  const s = eng.stats || {};
+  const openPct = s.tagged ? Math.round((s.open / s.tagged) * 100) : 0;
+
+  if (!eng.active) {
+    return `
+      <button class="corp-hero-back" onclick="navigate('corporate')">&larr; Corporate</button>
+      <div class="corp-hero">
+        <div class="corp-hero-name">${escHtml(eng.name || eng.id)}</div>
+        <div class="corp-hero-role">${escHtml(eng.role || '')}</div>
+      </div>
+      <div class="card"><div class="empty-state">${escHtml(eng.note || 'Not the active engagement - switch career/_active.yaml\'s active_org to load full detail.')}</div></div>`;
+  }
+
+  const initials = (name) => (name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+  return `
+    <button class="corp-hero-back" onclick="navigate('corporate')">&larr; Corporate</button>
+    <div class="corp-hero">
+      <div class="corp-hero-name">${escHtml(eng.name || eng.id)}</div>
+      <div class="corp-hero-role">${escHtml(eng.role || '')}</div>
+      <div class="corp-hero-meta">
+        <span class="pill pill-${STATUS_PILL[eng.status] || 'verbal'}">${escHtml((eng.status || '').toUpperCase())}</span>
+      </div>
+    </div>
+
+    <div class="corp-stat-grid">
+      <div class="corp-stat" style="animation-delay:0.02s">
+        <div class="corp-stat-num${s.overdue ? ' txt-red' : ' txt-green'}">${s.open ?? 0}</div>
+        <div class="corp-stat-label">Open tasks</div>
+        <div class="corp-stat-bar"><div style="width:${openPct}%;background:${s.overdue ? 'var(--red)' : 'var(--green)'}"></div></div>
+      </div>
+      <div class="corp-stat" style="animation-delay:0.06s">
+        <div class="corp-stat-num" style="color:${s.overdue ? 'var(--red)' : 'var(--text-3)'}">${s.overdue ?? 0}</div>
+        <div class="corp-stat-label">Overdue</div>
+      </div>
+      <div class="corp-stat" style="animation-delay:0.1s">
+        <div class="corp-stat-num" style="color:var(--cyan)">${s.decisions ?? 0}</div>
+        <div class="corp-stat-label">Decisions${s.decisionsPending ? ` &middot; ${s.decisionsPending} pending` : ''}</div>
+      </div>
+      <div class="corp-stat" style="animation-delay:0.14s">
+        <div class="corp-stat-num" style="color:var(--violet)">${s.risks ?? 0}</div>
+        <div class="corp-stat-label">Risks on record</div>
+      </div>
+      <div class="corp-stat" style="animation-delay:0.18s">
+        <div class="corp-stat-num" style="color:var(--text)">${s.people ?? 0}</div>
+        <div class="corp-stat-label">People in circle</div>
+      </div>
+    </div>
+
+    <div class="corp-section-grid">
+      <div class="card" style="animation:fadeSlideIn 0.4s ease both">
+        <div class="card-header"><span class="card-title">People</span><span class="card-meta">${(eng.people || []).length}</span></div>
+        ${!(eng.people || []).length ? `<div class="empty-state">No one on record yet.</div>` :
+          eng.people.map(p => `
+          <div class="corp-person">
+            <div class="corp-person-avatar">${escHtml(initials(p.name))}</div>
+            <div>
+              <div class="corp-person-name">${escHtml(p.name)}</div>
+              <div class="corp-person-role">${escHtml(p.role || '')}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+
+      <div class="card" style="animation:fadeSlideIn 0.45s ease both">
+        <div class="card-header"><span class="card-title">Decisions &amp; Risks</span>
+          <span class="card-meta">${(eng.decisions || []).length} / ${(eng.risks || []).length}</span></div>
+        ${!(eng.decisions || []).length && !(eng.risks || []).length ? `<div class="empty-state">Nothing on record yet.</div>` : `
+          ${(eng.decisions || []).slice(0, 6).map(d => {
+            const pending = /PENDING|OPEN|DRAFT/i.test(d.status || '');
+            return `<div class="decision-item">
+              <div class="decision-id">${escHtml(d.id)}</div>
+              <div style="flex:1"><div class="decision-text">${escHtml(d.title || '')}</div>
+              <span class="pill pill-${pending ? 'pending' : 'confirmed'}" style="margin-top:4px">${escHtml((d.status || '').split(/[-–]/)[0].trim().toUpperCase() || 'ON RECORD')}</span></div>
+            </div>`;
+          }).join('')}
+          ${(eng.risks || []).slice(0, 4).map(r => `<div class="risk-item">
+              <div class="risk-id">${escHtml(r.id)}</div>
+              <div>${escHtml(r.title)}</div>
+            </div>`).join('')}
+        `}
+      </div>
+    </div>
+
+    ${(eng.doctrine?.never?.length || eng.doctrine?.always?.length) ? `
+    <div class="card" style="animation:fadeSlideIn 0.5s ease both">
+      <div class="card-header"><span class="card-title">Doctrine</span></div>
+      <div class="corp-section-grid">
+        ${eng.doctrine.always?.length ? `<div><div class="corp-card-mini-label" style="color:var(--green);margin-bottom:6px">ALWAYS</div>
+          ${eng.doctrine.always.map(x => `<div class="decision-text" style="padding:3px 0">${escHtml(x)}</div>`).join('')}</div>` : ''}
+        ${eng.doctrine.never?.length ? `<div><div class="corp-card-mini-label" style="color:var(--red);margin-bottom:6px">NEVER</div>
+          ${eng.doctrine.never.map(x => `<div class="decision-text" style="padding:3px 0">${escHtml(x)}</div>`).join('')}</div>` : ''}
+      </div>
+    </div>` : ''}`;
 }
 
 // ── SPACES (axial tree) ───────────────────────────────────────────────────────
@@ -7908,7 +8029,7 @@ const viewFns = {
   files:renderFileManager, social:renderSocial, spaces:renderSpaces,
   task:renderTaskView, finance:renderFinance, planning:renderPlanning,
   journal:renderJournal, learning:renderLearning, circle:renderCircle, ideas:renderIdeas,
-  projects:renderProjects, corporate:renderCorporate, notifications:renderNotifications, articles:renderArticles,
+  projects:renderProjects, corporate:renderCorporate, 'corporate-detail':renderCorporateDetail, notifications:renderNotifications, articles:renderArticles,
   rhythm:renderRhythm, personal:renderRhythm, teams:renderTeams,
 };
 
@@ -11928,7 +12049,7 @@ function renderLearning() {
               ${prev ? `<button class="btn btn-ghost" onclick="learnOpenLesson('${escHtml(course.ID)}','${escHtml(prev.file)}')">← ${escHtml(prev.title.slice(0, 32))}</button>` : '<span></span>'}
               <button class="btn ${lesson.status === 'done' ? 'btn-ghost' : 'btn-primary'}"
                       onclick="learnMark('${escHtml(course.ID)}','${escHtml(lesson.file)}','${lesson.status === 'done' ? 'learning' : 'done'}')">
-                ${lesson.status === 'done' ? 'Mark as still learning' : 'Mark lesson done'}</button>
+                ${lesson.status === 'done' ? '↺ Mark as still learning' : '✓ Mark lesson done'}</button>
               ${next ? `<button class="btn btn-ghost" onclick="learnMark('${escHtml(course.ID)}','${escHtml(lesson.file)}','done',true);learnOpenLesson('${escHtml(course.ID)}','${escHtml(next.file)}')"
                 title="Marks this one done and moves on">${escHtml(next.title.slice(0, 32))} →</button>` : ''}`;
           })()}
@@ -12470,6 +12591,50 @@ function runFinancialCalc() {
 // The vault's home on OneDrive. A lesson is a real markdown file, so "source"
 // opens the folder it actually lives in rather than describing where it is.
 const VAULT_DRIVE_ROOT = 'Sconl/Core/Apex/Vault/vault-documents/isconl-vault';
+
+// ── LEARNING CALLOUT COLOUR THEME ───────────────────────────────────────────
+// A pure client-side preference (no server round-trip, nothing to sync) - it
+// only ever changes how the six callout types are coloured, never what they
+// say, so localStorage is the right amount of persistence for it.
+const LEARN_THEME_KEY = 'isconl.learnCalloutTheme';
+const LEARN_THEMES = [
+  { id: 'default', label: 'Default', hint: 'Six callouts, each its own hue - the house standard, tuned so none of them reads as "success green"' },
+  { id: 'vivid', label: 'Vivid', hint: 'Higher saturation - easier to tell apart on a dim screen or at a glance' },
+  { id: 'muted', label: 'Muted', hint: 'Colour pulled toward the text tone - a callout stands out by its border and label, not by hue' },
+];
+function learnGetTheme() { try { return localStorage.getItem(LEARN_THEME_KEY) || 'default'; } catch { return 'default'; } }
+function learnApplyTheme(theme) {
+  const t = theme || learnGetTheme();
+  if (t === 'default') document.body?.removeAttribute('data-callout-theme');
+  else document.body?.setAttribute('data-callout-theme', t);
+}
+function learnSetTheme(theme) {
+  try { localStorage.setItem(LEARN_THEME_KEY, theme); } catch {}
+  learnApplyTheme(theme);
+  if (currentView === 'settings') repaintView('settings');
+}
+function renderLearnThemeSection() {
+  const current = learnGetTheme();
+  const swatches = {
+    default: ['#6fc0af', '#d9a259', '#8aa9d9', '#a892d9', '#d98a4f', '#6ea6d9'],
+    vivid:   ['#3ddbb8', '#f0a83e', '#6f9ee6', '#b48ef2', '#f2884a', '#4fb8e0'],
+    muted:   ['#8a9a95', '#a99a83', '#8b93a3', '#9a8fa8', '#a68d78', '#82949e'],
+  };
+  return `
+    <div class="settings-section">
+      <div class="settings-section-title">Learning · Callout colours</div>
+      <p class="settings-hint">Objective, watch-for, jargon, in-a-book, book quote and research each keep their
+        own colour across every course. Pick the palette here; it applies immediately, everywhere, with no reload.</p>
+      <div class="learn-theme-row">
+        ${LEARN_THEMES.map(t => `
+          <button class="learn-theme-swatch${current === t.id ? ' on' : ''}" onclick="learnSetTheme('${t.id}')" title="${escAttr(t.hint)}">
+            <span class="learn-theme-dots">${swatches[t.id].map(c => `<i style="background:${c}"></i>`).join('')}</span>
+            <span class="learn-theme-label">${t.label}</span>
+          </button>`).join('')}
+      </div>
+    </div>`;
+}
+learnApplyTheme();
 
 // ── LESSON TOOLBAR (PDF · Listen · Share · View as artifact) ──────────────────
 // Small line icons, currentColor throughout so the theme (including the
