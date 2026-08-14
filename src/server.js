@@ -56,7 +56,7 @@ function bearerToken(req) {
 async function checkAuth(req, authProxy) {
   const token = bearerToken(req);
   if (!token) return false;
-  const staticToken = process.env.HUB_TOKEN || process.env.ISCONL_TOKEN || '';
+  const staticToken = process.env.HUB_TOKEN || process.env.ISCONL_TOKEN || secretStore.get('HUB_TOKEN') || '';
   if (staticToken && token.length === staticToken.length && token === staticToken) return true;
   const v = await authProxy.verify(token);
   return !!v.valid;
@@ -112,7 +112,7 @@ async function main() {
     auditLog,
   });
 
-  const tokenConfigured = !!(process.env.HUB_TOKEN || process.env.ISCONL_TOKEN);
+  const tokenConfigured = !!(process.env.HUB_TOKEN || process.env.ISCONL_TOKEN || secretStore.get('HUB_TOKEN'));
   const isLoopback = ['127.0.0.1', '::1', 'localhost'].includes(BIND);
   if (!isLoopback && !tokenConfigured) {
     console.error('  REFUSING TO BIND: no HUB_TOKEN/ISCONL_TOKEN configured and BIND is not loopback.');
