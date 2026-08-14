@@ -804,6 +804,8 @@ function renderToday() {
     <div class="command-hero-grid">
       <!-- Brief + Stats -->
       <div class="command-left">
+        <div id="day-card-slot">${renderDayBlocks()}</div>
+
         <div class="morning-brief">
           <div class="morning-brief-title">${greeting}</div>
           <div class="morning-brief-bullets">
@@ -842,8 +844,6 @@ function renderToday() {
         </div>
 
         <div id="data-health-slot"></div>
-
-        <div id="day-card-slot">${renderDayBlocks()}</div>
 
         <div class="cards-grid">
           <div class="card">
