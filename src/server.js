@@ -277,6 +277,67 @@ async function main() {
         return sendJson(res, 200, { onedrive: true, status: 'ok', lastSyncedAt: lr.finishedAt, collectionsSynced: lr.ok.length });
       }
 
+      // File manager delete/move: reshape vault's {ok, error} into the
+      // {success, error} shape the frontend's fmDeleteItem/fmRenameItem/
+      // fmMoveItem already check (webconsole/static/app.js) -- inherited
+      // from the legacy monolith's own contract, kept rather than editing
+      // three already-built frontend functions.
+      if (pathname === '/api/onedrive/delete' && req.method === 'POST') {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const r = await router.route('onedrive.browse.delete', { body: { itemId: body.itemId } });
+        return sendJson(res, r.status || (r.ok ? 200 : 502), { success: !!(r.ok && r.data && r.data.ok), error: r.ok ? (r.data && r.data.error) : r.error });
+      }
+      if (pathname === '/api/onedrive/move' && req.method === 'POST') {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const r = await router.route('onedrive.browse.move', { body });
+        return sendJson(res, r.status || (r.ok ? 200 : 502), { success: !!(r.ok && r.data && r.data.ok), error: r.ok ? (r.data && r.data.error) : r.error });
+      }
+
+      // Download/raw: not JSON -- a 302 to Graph's own pre-signed
+      // downloadUrl (item.@microsoft.graph.downloadUrl, promoted by
+      // onedrive-browse.js to plain `downloadUrl`). Sidesteps needing a
+      // raw-byte-passthrough path through hub (engine-client.js's raw()
+      // always calls res.json() -- the same gap that left Teams'
+      // onepage/export routes unbuilt, per api-compat.js's own comment).
+      // The signed URL is time-limited (~1hr) and needs no Authorization
+      // header of ours, so a redirect is both simpler and correct here.
+      if ((pathname === '/api/onedrive/download' || pathname === '/api/onedrive/raw') && req.method === 'GET') {
+        const id = url.searchParams.get('id');
+        if (!id) return sendJson(res, 400, { error: 'id query param required' });
+        const r = await router.route('onedrive.browse.item', { query: { id } });
+        if (!r.ok || !r.data || !r.data.ok || !r.data.item || !r.data.item.downloadUrl) {
+          return sendJson(res, 502, { error: (r.data && r.data.error) || r.error || 'no download URL available for this item' });
+        }
+        res.writeHead(302, { Location: r.data.item.downloadUrl });
+        return res.end();
+      }
+
+      // Reshapes vault's onThisDay ({date, entries, world, card}) into the
+      // {insights:{calendar:{title,category,text,tone}}} shape
+      // webconsole/static/app.js's SPACE_INSIGHTS/fetchInsights() already
+      // expects -- replaces pulse's hardcoded 1971 placeholder with the
+      // real thing (personal record first, world history fallback).
+      // title maps to c.event (the bold headline, "what actually happened")
+      // and text to c.explain (the description below it) -- vault's card
+      // deliberately carries these as two separate fields for exactly this
+      // reason ("the bold line is the event itself, the line under it is a
+      // brief explanation" -- legacy's own onThisDay comment); the static
+      // c.title ("On this day") belongs in neither slot.
+      if (pathname === '/api/insights' && req.method === 'GET') {
+        const r = await router.route('onthisday', {});
+        if (!r.ok || !r.data || !r.data.card) return sendJson(res, 200, { insights: {} });
+        const c = r.data.card;
+        // The bold headline is a title, not the whole sentence -- a
+        // Wikipedia-length EVENT read as a run-on. Capped to 10 words; the
+        // full event text isn't lost, just moved into the description
+        // alongside the explanation, so nothing the corpus said disappears.
+        const eventFull = String(c.event || '').trim();
+        const words = eventFull.split(/\s+/);
+        const title = words.length > 10 ? words.slice(0, 10).join(' ') + '…' : eventFull;
+        const text = words.length > 10 ? [eventFull, c.explain].filter(Boolean).join(' ') : c.explain;
+        return sendJson(res, 200, { insights: { calendar: { title, category: c.category, text, tone: c.tone } } });
+      }
+
       if (pathname === '/api/state' && req.method === 'GET') {
         const [timeR, tasksR, inboxR, ideasR, spacesR, secretsR] = await Promise.all([
           router.route('time.now', {}),

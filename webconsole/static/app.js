@@ -467,21 +467,23 @@ function getEquicycleContext() {
 }
 
 /**
- * One witty sentence for the top band, always unique.
+ * One funny line for the top band, changing several times a day.
  *
- * Seeded by the calendar date: the same day reads the same everywhere he opens
- * the console, and no two days read alike - the numbers move daily and the
- * template rotation is keyed to the date on top of that. Days that ARE
- * something (a sprint's last day, a cycle's first, a year milestone, a Friday)
- * get their own sharper lines, because wit that ignores the calendar is just
- * decoration. Dry, one sentence, no em-dashes - the agent is allowed a sense
- * of humour on its own chrome; it stays deadpan only in his outgoing mail.
+ * Seeded by a 30-minute slot, not the calendar date -- same slot reads the
+ * same everywhere he opens the console within that half hour, but the line
+ * actually moves during a session instead of being frozen from first paint
+ * until the next reload (see initSidebarCycleTicker() below, which is what
+ * actually re-renders it on an interval -- wittyCycleLine() alone was never
+ * enough, since nothing was calling it again after init()). Days that ARE
+ * something (a sprint's last day, a cycle's first, a year milestone, a
+ * Friday) still get their own sharper lines. Actually funny, not just
+ * dry -- his ask, 16 Aug: "lighten up my day." One sentence, no em-dashes.
  */
 function wittyCycleLine(ctx) {
   const today = new Date();
-  const dateKey = today.toISOString().slice(0, 10);
+  const slotKey = today.toISOString().slice(0, 13) + '-' + Math.floor(today.getMinutes() / 30);
   let h = 0;
-  for (let i = 0; i < dateKey.length; i++) h = ((h * 31) + dateKey.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < slotKey.length; i++) h = ((h * 31) + slotKey.charCodeAt(i)) >>> 0;
   const pick = (arr, salt) => arr[(h + salt * 97) % arr.length];
 
   const cd = ctx.dayInCycle,  cLeft = 28 - cd;
@@ -491,55 +493,59 @@ function wittyCycleLine(ctx) {
   const dow = today.getDay();
 
   if (sd === 14 && cd === 28) return pick([
-    `Cycle ${cn} & Sprint ${sn} close.\nLand the plane tonight\nor name the next runway.`,
-    `Final day of cycle & sprint:\nhistory calls it deadline,\ncalendars call it Day ${dy}.`,
+    `Cycle ${cn} AND Sprint ${sn} end today.\nThe universe has impeccable\ncomedic timing.`,
+    `Double deadline day, Day ${dy}.\nSomewhere a calendar app\nis very pleased with itself.`,
   ], 2);
   if (sd === 14) return pick([
-    `Last day of Sprint ${sn}.\nShip something real today\nfor the retro to applaud.`,
-    `Sprint ${sn} closes tonight;\nwhatever is 90% done\nis still 0% delivered.`,
-    `Day 14 of 14:\nthe sprint stops\nnegotiating at midnight.`,
+    `Sprint ${sn} closes tonight.\n"90% done" and "done"\nare not on speaking terms.`,
+    `Last day of Sprint ${sn}.\nShip it now, or explain it\nheroically at the retro.`,
+    `Day 14 of 14: the sprint\nstops taking your calls\nat midnight.`,
   ], 3);
   if (sd === 13) return pick([
-    `Day 13 of 14.\nOne day of runway remains;\nfinish lines do not move.`,
-    `Sprint ${sn}, day 13:\nthe polite final notice\narrived this morning.`,
+    `Day 13 of 14.\nThis is the "are we there yet"\nday of the sprint.`,
+    `Sprint ${sn}, day 13:\ntomorrow's you just got\na strongly worded memo.`,
   ], 4);
   if (sd === 1) return pick([
-    `Sprint ${sn}, day one:\nfourteen blank days,\nzero excuses on file.`,
-    `A fresh sprint opens;\nday 1 of 14 in Cycle ${cn}\n(${th}).`,
+    `Sprint ${sn}, day one:\nfourteen blank days and\nzero legitimate excuses yet.`,
+    `A fresh sprint opens,\nday 1 of 14 in Cycle ${cn}\n(${th}). Try to enjoy it.`,
   ], 5);
   if (cd === 28) return pick([
-    `${th} ends tonight;\nCycle ${cn} hands over keys\nat midnight.`,
-    `Day 28 of 28:\nthe cycle files its\nfinal report today.`,
+    `${th} ends tonight.\nCycle ${cn} clocks out and\nleaves the keys under the mat.`,
+    `Day 28 of 28: the cycle\nfiles its paperwork and\nquietly lets itself out.`,
   ], 6);
   if (cd === 1) return pick([
-    `Cycle ${cn} begins:\n28 days with ${th}\nwritten on the tin.`,
-    `Day 1 of ${th}:\nthe whole cycle is still\nundefeated today.`,
+    `Cycle ${cn} begins: 28 days\nof ${th}, undefeated so far\n(day 1 usually is).`,
+    `Day 1 of ${th}. The cycle's\nrecord is spotless. Give it\nabout a week.`,
   ], 7);
-  if (dy === 183) return `Day 183:\nyear's exact halftime;\neverything is second half.`;
-  if (dy % 100 === 0) return `Day ${dy} of the year:\na round milestone number\nchecking if you noticed.`;
+  if (dy === 183) return `Day 183:\nthe year's exact halftime.\nNo marching band, sadly.`;
+  if (dy % 100 === 0) return `Day ${dy} of the year:\na suspiciously round number\nshowing off.`;
 
   const generic = [
-    `${yLeft} days left in the year, and every one of them takes attendance.`,
-    `Day ${dy} of 365; the year is watching, but it grades on delivery.`,
-    `${th}, day ${cd} of 28 - cycles do not care about moods, only mornings.`,
-    `Sprint ${sn}, day ${sd}: fourteen-day fuses burn quietly until they do not.`,
-    `The calendar says Day ${dy}; the task board will say what kind.`,
-    `${cLeft} days left in ${th} - enough to finish something, not enough to start everything.`,
-    `Day ${sd} of the sprint: momentum is just discipline photographed at speed.`,
-    `${th} has ${cLeft} days of patience left; use ${sd === 1 ? 'today' : 'day ' + sd} well.`,
-    `Day ${dy}: the year keeps a ledger, and today is one line of it.`,
-    `Sprint ${sn} is ${sd} days old and already forming opinions.`,
-    `${yLeft} days of the year remain - a fortune, if spent one sprint at a time.`,
-    `Day ${cd} of 28 in ${th}: the compound interest of ordinary days.`,
-    `Nothing special about Day ${dy}, which is exactly why it decides things.`,
+    `${yLeft} days left in the year, all fully booked, none of them refundable.`,
+    `Day ${dy} of 365. The year is less a countdown, more a very long receipt.`,
+    `${th}, day ${cd} of 28 - the cycle doesn't care how you slept.`,
+    `Sprint ${sn}, day ${sd}: momentum is just procrastination that got its act together.`,
+    `The calendar says Day ${dy}. The task board will have a stronger opinion.`,
+    `${cLeft} days left in ${th} - technically enough time, ask again at day 27.`,
+    `Day ${sd} of the sprint: coffee first, heroics optional, deadlines non-negotiable.`,
+    `${th} gives you ${cLeft} more days before it starts leaving passive-aggressive notes.`,
+    `Day ${dy}: the year keeps receipts, and today is going straight on the tab.`,
+    `Sprint ${sn} is ${sd} days old and already has opinions about your calendar.`,
+    `${yLeft} days of the year remain - spend a few of them on lunch, honestly.`,
+    `Day ${cd} of 28 in ${th}: small boring wins, compounding when nobody's watching.`,
+    `Nothing special about Day ${dy}, which is exactly the kind of day that sneaks up on you.`,
+    `Sprint ${sn}, day ${sd}: the sprint is timing you and pretending not to.`,
+    `${cLeft} days left in ${th} - plenty, unless you were planning to start today.`,
   ];
   const friday = [
-    `Friday, day ${sd} of Sprint ${sn} - land it before the weekend forgets it.`,
-    `Friday audits the week: ${sLeft} sprint days left after the whistle.`,
+    `Friday, day ${sd} of Sprint ${sn} - ship it now, the weekend has selective memory.`,
+    `Friday audits the week: ${sLeft} sprint days left, and it's not impressed yet.`,
+    `It's Friday. The sprint clock is still running, but so is your patience.`,
   ];
   const monday = [
-    `Monday, day ${sd} of the sprint: the week is unwritten and the pen is yours.`,
-    `Monday reporting for Cycle ${cn} duty - ${th}, day ${cd} of 28.`,
+    `Monday, day ${sd} of the sprint: the week is a blank page and the coffee is mandatory.`,
+    `Monday reporting for Cycle ${cn} duty - ${th}, day ${cd} of 28, no snooze button.`,
+    `Monday again. The sprint remembers you fondly from last Friday.`,
   ];
   if (dow === 5 && (h % 3 === 0)) return pick(friday, 8);
   if (dow === 1 && (h % 3 === 0)) return pick(monday, 9);
@@ -551,6 +557,53 @@ function wittyCycleLine(ctx) {
  * exists for - how many days are LEFT in the cycle, the sprint, the year - with
  * progress underneath as texture, not the headline.
  */
+/**
+ * The computed fallback for the theme-day phrase ("CLIMB: pace before you
+ * push") -- shows until a curated row exists in scope/theme_days.tsv for
+ * today's date (see fetchThemeDay() below). 3-5 words, tied to both the
+ * theme (what this 28-day window is FOR) and the phase within it (opening/
+ * building/pushing/closing), so it orients rather than just decorates.
+ * Rotates within a phase via the day-of-cycle, so four weeks of the same
+ * theme don't read the same phrase four times.
+ */
+const THEME_PHRASES = {
+  Plant:  ['seed today, judge later', 'small starts, real roots', 'plant before the ground hardens', 'first steps count double'],
+  Push:   ['pace before you push', 'steady pressure wins', 'push the boring parts first', 'small forces, applied daily'],
+  Climb:  ['one honest step up', 'climb, don\'t sprint', 'altitude comes from routine', 'the ledge is closer than it looks'],
+  Reap:   ['collect what you planted', 'harvest, don\'t hoard', 'take the win, then move', 'gather before it spoils'],
+  Dig:    ['go one layer deeper', 'dig past the obvious answer', 'the real issue is under this one', 'keep digging, it opens up'],
+  Weave:  ['tie the loose threads', 'weave, don\'t patch', 'connect what already exists', 'the pattern is nearly visible'],
+  Mend:   ['fix the quiet cracks', 'mend before it tears', 'small repairs, compounding', 'patch it properly this time'],
+  Scout:  ['look before you commit', 'scout the terrain first', 'map it, then move', 'reconnaissance beats guessing'],
+  Scale:  ['grow what already works', 'scale the proven part', 'more of the same, on purpose', 'repeat what already won'],
+  Make:   ['build the actual thing', 'make it, don\'t plan it', 'ship something real today', 'hands on the work now'],
+  Run:    ['keep the pace honest', 'run the process, not the panic', 'momentum over motivation', 'steady legs, long race'],
+  Stock:  ['bank it for later', 'stock the shelves now', 'reserves beat regret', 'save some for the lean days'],
+  Audit:  ['check the actual numbers', 'audit before you assume', 'verify, then trust', 'the truth is in the ledger'],
+};
+function themePhrase(ctx) {
+  const bank = THEME_PHRASES[ctx.theme] || ['steady work, real progress'];
+  const dateKey = new Date().toISOString().slice(0, 10);
+  let h = 0;
+  for (let i = 0; i < dateKey.length; i++) h = ((h * 31) + dateKey.charCodeAt(i)) >>> 0;
+  const phrase = bank[h % bank.length];
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
+let THEME_DAY_OVERRIDE = null;
+async function fetchThemeDay() {
+  try {
+    const d = await (await fetch('/api/theme-day')).json();
+    THEME_DAY_OVERRIDE = d && d.phrase ? d.phrase : null;
+  } catch { THEME_DAY_OVERRIDE = null; }
+  const cycleEl = document.getElementById('eq-cycle');
+  if (cycleEl && THEME_DAY_OVERRIDE) {
+    const themeSpan = cycleEl.querySelector('.eq-theme-word');
+    const phraseSpan = cycleEl.querySelector('.eq-theme-phrase');
+    if (phraseSpan) phraseSpan.textContent = THEME_DAY_OVERRIDE;
+  }
+}
+
 function renderEqHeader() {
   // Computed locally, always: the server's snapshot carries a subset of these
   // fields, and a missing dayOfYear renders as NaN in a meter.
@@ -563,7 +616,8 @@ function renderEqHeader() {
   if (cycleEl) {
     const counts = `Cycle ${ctx.cycleNum} · Day ${ctx.dayInCycle} of 28 · Sprint ${ctx.sprintNum} · Day ${ctx.sprintDay} of 14 · Day ${ctx.dayOfYear} of the year`;
     cycleEl.title = counts;
-    cycleEl.innerHTML = `<span class="eq-theme">${escHtml(ctx.theme)}</span>`;
+    const phrase = THEME_DAY_OVERRIDE || themePhrase(ctx);
+    cycleEl.innerHTML = `<span class="eq-theme"><span class="eq-theme-word">${escHtml(ctx.theme)}</span>: <span class="eq-theme-phrase">${escHtml(phrase)}</span></span>`;
   }
   if (sidebarCopyEl) {
     sidebarCopyEl.innerHTML = escHtml(wittyCycleLine(ctx)).replace(/\n/g, '<br/>');
@@ -648,7 +702,7 @@ async function checkVaultLink() {
   let bad = null;
   try {
     const s = await (await fetch('/api/vault/sync/status')).json();
-    if (!s.onedrive) bad = 'OneDrive is not connected - nothing is syncing. Your data is only on this work machine until you reconnect (Settings → Microsoft 365).';
+    if (!s.onedrive) bad = 'OneDrive is not connected - nothing is syncing. Your data is only on this work machine until you reconnect.';
     else if (s.status === 'offline') bad = `OneDrive sync is failing (${s.error || 'unreachable'}) - changes are staying on this work machine until it recovers.`;
   } catch { /* server unreachable - the UI has bigger problems than the banner */ }
 
@@ -658,9 +712,11 @@ async function checkVaultLink() {
     el = document.createElement('div');
     el.id = 'vault-link-banner';
     el.className = 'vault-banner';
-    document.body.prepend(el);
+    document.body.appendChild(el);
   }
-  el.textContent = bad;
+  el.innerHTML = `
+    <span class="vault-banner-icon">⚠</span>
+    <span class="vault-banner-body">${escHtml(bad)} <a href="#" class="vault-banner-link" onclick="navigate('settings');return false">Settings →</a></span>`;
 }
 // These three are proxied through to legacy and each hit a real external API
 // (GitHub, Jira, calendar) - Jira alone was measured at ~11s (it pages every
@@ -810,6 +866,49 @@ async function fetchDataHealth() {
   } catch { /* the card simply does not render; the endpoint retries next paint */ }
 }
 
+/**
+ * Which three stat tiles to show on the command view, and in what order.
+ * Not a fixed four (nor a fixed three) - a wider candidate pool, each
+ * scored by what's actually true right now, so an unconfigured Jira/GitHub
+ * or a quiet day doesn't waste a tile on a permanent zero while something
+ * genuinely urgent (overdue work, unread inbox, an event today) goes
+ * unshown. Deterministic and re-computed on every paint, not cached -
+ * "adaptive" here means "reflects the current STATE," not a learned model.
+ */
+function pickDashboardMetrics({ tasks, jc, upcomingEvents, today }) {
+  const todayCount = tasks.filter(t => t.STATUS === 'today').length;
+  const overdueCount = tasks.filter(t => t.DUE_DATE && t.DUE_DATE !== '-' && t.STATUS !== 'done' && t.DUE_DATE < today).length;
+  const unreadCount = (STATE.feed || []).filter(m => m.STATUS === 'new').length;
+  const jiraCount = (STATE.jiraIssues || []).length;
+  const reposCount = (STATE.github.repos || []).length;
+  const eventsToday = upcomingEvents.filter(e => e.date === today).length;
+
+  const candidates = [
+    // Urgency-scored: something actively wrong or waiting outranks a
+    // steady-state count. Baselines (Today Tasks) are never 0 so the tile
+    // row is never awkwardly empty on a quiet day.
+    { key: 'overdue', label: 'Overdue Tasks', value: overdueCount, color: 'var(--red)', view: 'tasks',
+      score: overdueCount > 0 ? 60 + Math.min(overdueCount, 30) : 0 },
+    { key: 'unread', label: 'Unread Inbox', value: unreadCount, color: 'var(--cyan)', view: 'inbox',
+      score: unreadCount > 0 ? 45 + Math.min(unreadCount, 20) : 0 },
+    // Today's Events and Upcoming Events answer the same question at two
+    // zoom levels - only one of the two is ever a candidate, so they never
+    // compete for the same tile.
+    eventsToday > 0
+      ? { key: 'events', label: "Today's Events", value: eventsToday, color: 'var(--amber)', view: 'calendar', score: 38 }
+      : { key: 'events', label: 'Upcoming Events', value: upcomingEvents.length, color: 'var(--amber)', view: 'calendar',
+          score: upcomingEvents.length > 0 ? 15 : 2 },
+    { key: 'jira', label: 'Jira Issues', value: jiraCount, color: 'var(--cyan)', view: jc.host ? 'jira' : 'settings',
+      score: jc.host ? (jiraCount > 0 ? 25 : 5) : 0 },
+    { key: 'repos', label: 'Repositories', value: reposCount, color: 'var(--violet)', view: 'github',
+      score: STATE.services.github === 'connected' ? (reposCount > 0 ? 12 : 3) : 0 },
+    { key: 'today', label: 'Today Tasks', value: todayCount, color: 'var(--green)', view: 'tasks',
+      score: 30 + (todayCount > 0 ? 10 : 0) },
+  ];
+
+  return candidates.sort((a, b) => b.score - a.score).slice(0, 3);
+}
+
 function renderToday() {
   setTimeout(fetchDataHealth, 0);
   const ctx = STATE.time || getEquicycleContext();
@@ -850,27 +949,13 @@ function renderToday() {
         </div>
 
         <!-- Every tile drills through to the view the number is computed from. -->
-        <div class="cards-grid-4">
-          <div class="stat-card clickable" role="button" tabindex="0" title="Open Tasks"
-               onclick="navigate('tasks')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigate('tasks')}">
-            <div class="stat-number txt-green">${tasks.filter(t=>t.STATUS==='today').length}</div>
-            <div class="stat-label">Today Tasks</div>
-          </div>
-          <div class="stat-card clickable" role="button" tabindex="0" title="Open Jira board"
-               onclick="navigate('jira')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigate('jira')}">
-            <div class="stat-number" style="color:var(--cyan)">${STATE.jiraIssues.length}</div>
-            <div class="stat-label">Jira Issues</div>
-          </div>
-          <div class="stat-card clickable" role="button" tabindex="0" title="Open Calendar"
-               onclick="navigate('calendar')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigate('calendar')}">
-            <div class="stat-number" style="color:var(--amber)">${upcomingEvents.length}</div>
-            <div class="stat-label">Upcoming Events</div>
-          </div>
-          <div class="stat-card clickable" role="button" tabindex="0" title="Open GitHub"
-               onclick="navigate('github')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigate('github')}">
-            <div class="stat-number" style="color:var(--violet)">${STATE.github.repos.length}</div>
-            <div class="stat-label">Repositories</div>
-          </div>
+        <div class="cards-grid-3">
+          ${pickDashboardMetrics({ tasks, jc, upcomingEvents, today }).map(m => `
+            <div class="stat-card clickable" role="button" tabindex="0" title="Open ${escHtml(m.label)}"
+                 onclick="navigate('${m.view}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigate('${m.view}')}">
+              <div class="stat-number" style="color:${m.color}">${m.value}</div>
+              <div class="stat-label">${escHtml(m.label)}</div>
+            </div>`).join('')}
         </div>
 
         <div id="data-health-slot"></div>
@@ -881,7 +966,17 @@ function renderToday() {
               <span class="card-title">Tasks</span>
               <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('tasks')">${tasks.length} open · Edit all →</button>
             </div>
-            ${tasks.length ? tasks.filter(t => !t.PARENT_ID || t.PARENT_ID === '-').map(t => taskRow(t)).join('') : '<div class="empty-state">Nothing open. The archive keeps the finished ones.</div>'}
+            <!-- Minimal, like the Inbox card beside it: top 5 only, so the
+                 command view's other cards are reachable without scrolling
+                 past a full task list. The dedicated Tasks screen (Edit
+                 all →) is where the whole board actually lives. -->
+            ${(() => {
+              const topLevel = tasks.filter(t => !t.PARENT_ID || t.PARENT_ID === '-');
+              if (!topLevel.length) return '<div class="empty-state">Nothing open. The archive keeps the finished ones.</div>';
+              const shown = topLevel.slice(0, 5).map(t => taskRowMini(t)).join('');
+              const rest = topLevel.length - 5;
+              return shown + (rest > 0 ? `<div class="empty-state linked" onclick="navigate('tasks')">+${rest} more →</div>` : '');
+            })()}
             <div class="inline-form">
               <input id="quick-task-input" type="text" placeholder="Quick add task (auto-syncs to Jira)..."/>
               <button class="btn btn-primary" onclick="quickAddTask()">+ Add</button>
@@ -2915,11 +3010,6 @@ function renderSettings() {
       <div class="view-head-meta">all credentials persist to .env - changes apply immediately</div>
     </div>
     <div class="settings-page">
-      <div class="settings-header-row">
-        <h2 class="settings-title">Centralized Settings</h2>
-        <span class="settings-sub">All credentials persist to <code>.env</code> - changes apply immediately.</span>
-      </div>
-
       <!-- The app itself. It is in no store, so the agent is the store: this
            card serves the actual signed binary, proxied from the private
            release so the phone never needs a GitHub token of its own. -->
@@ -3426,15 +3516,39 @@ async function injectContext() {
  * GitHub contribution activity map, in the familiar calendar-grid form.
  * Columns are weeks, rows are days of the week, intensity is contribution count.
  */
-function renderContributionMap(contrib) {
-  const days = (contrib && contrib.days) || [];
-  if (!days.length) {
-    return `<div class="card">
-      <div class="card-header"><span class="card-title">Activity</span></div>
-      <div class="empty-state">No contribution data yet.
-        <button class="btn btn-ghost" onclick="refreshContributions()">Load activity map</button>
-      </div></div>`;
+/** Converts a plain list of ISO-date strings (a person's touch dates, a
+ *  journal's entry dates) into renderContributionMap()'s {days} shape --
+ *  one real year, sequential, so Circle and Journal render the exact same
+ *  GitHub-style grid Rhythm already used, instead of each screen carrying
+ *  its own separate implementation (circleEngagement(), now unused) with
+ *  its own separate horizontal-scroll bug. His ask, 16 Aug: "applied with
+ *  the style currently used here in the rhythm ... across the whole agent." */
+function datesToContribDays(dates, weeksBack = 52) {
+  const counts = {};
+  (dates || []).forEach(d => { if (/^\d{4}-\d{2}-\d{2}/.test(d)) counts[d.slice(0, 10)] = (counts[d.slice(0, 10)] || 0) + 1; });
+  const DAY = 86400000;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = new Date(today.getTime() - (weeksBack * 7 - 1) * DAY);
+  const days = [];
+  for (let t = start.getTime(); t <= today.getTime(); t += DAY) {
+    const key = new Date(t).toISOString().slice(0, 10);
+    days.push({ date: key, count: counts[key] || 0 });
   }
+  return days;
+}
+
+/**
+ * Just the grid+months+legend, no card/header -- for embedding inside a
+ * caller's OWN card (Journal's "Writing activity", Circle's "Engagement"),
+ * which each have their own title/meta line already. renderContributionMap()
+ * below wraps this in its own card for its original standalone caller
+ * (Rhythm). Splitting these out is what fixed the double-card-header /
+ * wrong-Refresh-button nesting bug from unifying all three onto one
+ * contribution-map implementation (16 Aug).
+ */
+function contribGridHtml(contrib) {
+  const days = (contrib && contrib.days) || [];
+  if (!days.length) return `<div class="empty-state">No activity recorded yet.</div>`;
 
   // Bucket into 5 intensity levels off the max, GitHub style.
   const max = days.reduce((m, d) => Math.max(m, d.count), 0) || 1;
@@ -3470,17 +3584,15 @@ function renderContributionMap(contrib) {
     `<span class="ct-month" style="grid-column:${m.wi + 1}">${m.name}</span>`).join('');
 
   const active = days.filter(d => d.count > 0).length;
-  return `
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Activity</span>
-        <span class="card-meta"><strong>${contrib.totalContributions}</strong> contributions ·
-          <strong>${active}</strong> active days
-          <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px;margin-left:.5rem"
-                  onclick="refreshContributions()">Refresh</button></span>
-      </div>
+  // Falls back to a real sum instead of showing literally "undefined
+  // contributions" -- callers that only pass {days} (Rhythm, and now
+  // Journal/Circle via datesToContribDays()) never set this field.
+  const total = contrib.totalContributions != null ? contrib.totalContributions : days.reduce((a, d) => a + (d.count || 0), 0);
+  return {
+    active, total,
+    html: `
       <div class="ct-wrap">
-        <div class="ct-months" style="grid-template-columns:repeat(${weeks.length},11px)">${monthRow}</div>
+        <div class="ct-months" style="grid-template-columns:repeat(${weeks.length},1fr)">${monthRow}</div>
         <div class="ct-grid">${grid}</div>
         <div class="ct-legend">
           <span>Less</span>
@@ -3488,7 +3600,27 @@ function renderContributionMap(contrib) {
           <div class="ct-day ct-l2"></div><div class="ct-day ct-l3"></div><div class="ct-day ct-l4"></div>
           <span>More</span>
         </div>
+      </div>`,
+  };
+}
+
+/** The standalone, full-card version -- Rhythm's own caller. Embedders
+ *  (Journal, Circle) call contribGridHtml() directly instead and put the
+ *  result inside their own card/header. */
+function renderContributionMap(contrib) {
+  const g = contribGridHtml(contrib);
+  const body = typeof g === 'string' ? g : g.html;
+  const meta = typeof g === 'string' ? '' :
+    `<strong>${g.total}</strong> contributions · <strong>${g.active}</strong> active days
+     <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px;margin-left:.5rem"
+             onclick="refreshContributions()">Refresh</button>`;
+  return `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Activity</span>
+        <span class="card-meta">${meta}</span>
       </div>
+      ${body}
     </div>`;
 }
 
@@ -4228,6 +4360,29 @@ function tagLabel(tagId) {
  * dropdown, the meta line is plain text, and every action lives behind one menu
  * that holds MORE than before. The title opens the full task.
  */
+/**
+ * A task, as one line - same visual language as the Inbox card beside it
+ * (.inbox-* classes: dot, sender-slot, title-slot, date-slot), for the
+ * command view's Tasks preview. The full multi-line taskRow() below is for
+ * the dedicated Tasks screen, where the space to show priority/status/tags
+ * properly exists; the dashboard only has room for "what, and by when."
+ */
+function taskRowMini(t) {
+  const due = (t.DUE_DATE && t.DUE_DATE !== '-') ? t.DUE_DATE : '';
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = due && t.STATUS !== 'done' && due < today;
+  const dateLabel = due ? (overdue ? `overdue ${due}` : due) : '';
+  return `
+    <div class="inbox-item" style="cursor:pointer" title="Open this task" onclick="openTask('${escHtml(t.ID)}')">
+      <div class="inbox-head" style="pointer-events:none">
+        <span class="inbox-chan-dot" style="background:${overdue ? 'var(--red)' : 'var(--border-mid)'}"></span>
+        ${t.TAG && t.TAG !== '-' ? `<span class="inbox-sender">${escHtml(tagLabel(t.TAG))}</span>` : ''}
+        <span class="inbox-title">${escHtml(t.TITLE)}</span>
+        ${dateLabel ? `<span class="inbox-date"${overdue ? ' style="color:var(--red)"' : ''}>${escHtml(dateLabel)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
 function taskRow(t, opts = {}) {
   // readTSV keys rows by the TSV header, so the column is JIRA_KEY (not jiraKey),
   // and unset cells hold the '-' sentinel written by appendTSV.
@@ -5484,7 +5639,7 @@ function renderTaskView() {
     <div class="card task-hero">
       <div class="task-hero-title" id="task-detail-title" title="Click to edit"
            onclick="beginEditDetailTitle()">${escHtml(t.TITLE)}</div>
-      <div class="task-hero-controls" style="display:flex;align-items:flex-end;gap:0.45rem;flex-wrap:nowrap;overflow-x:auto;width:100%;padding-bottom:2px">
+      <div class="task-hero-controls" style="display:flex;align-items:flex-end;gap:0.45rem 0.7rem;flex-wrap:wrap;width:100%;padding-bottom:2px">
         <label style="flex-shrink:0"><span style="font-size:0.62rem;text-transform:uppercase;color:var(--text-3);letter-spacing:0.06em">Urgency</span>
           <select class="task-select prio-${escHtml(t.PRIORITY)}" style="font-size:0.72rem;padding:2px 18px 2px 6px"
                   onchange="detailUpdate({priority:this.value},this)">
@@ -6959,13 +7114,11 @@ function workingDayLeftLine(d) {
  */
 function renderDayBlocks() {
   if (!DAY) { fetchDay(); return `
-    <div class="view-head"><h1>The day</h1></div>
     <div class="card"><div class="empty-state">Reading your blocks…</div></div>`; }
   if (!DAY.ok) return `
-    <div class="view-head" style="display:flex;align-items:baseline;justify-content:space-between">
-      <h1>The day</h1>
-      <button class="btn btn-ghost rail-btn" onclick="fetchDay(true)">Try again</button></div>
-    <div class="card"><div class="empty-state" style="text-align:left">${escHtml(DAY.error || 'the day model could not be read')}</div></div>`;
+    <div class="card"><div class="empty-state" style="text-align:left;display:flex;align-items:baseline;justify-content:space-between">
+      ${escHtml(DAY.error || 'the day model could not be read')}
+      <button class="btn btn-ghost rail-btn" onclick="fetchDay(true)">Try again</button></div></div>`;
 
   const n = DAY.now || {};
   const bs = DAY.blocks || (n.blocks) || [];
@@ -7004,11 +7157,11 @@ function renderDayBlocks() {
   const days = slots ? (open / slots) : null;
 
   return `
-    <div class="view-head">
-      <h1>The day</h1>
-      <div class="view-head-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</div>
-    </div>
     <div class="card day-card">
+      <div class="card-header">
+        <span class="card-title">The day</span>
+        <span class="card-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</span>
+      </div>
       <div class="day-rail day-rail-24" id="day-rail">
         <div class="day-rail-strip">
           ${railPieces.join('')}
@@ -7530,6 +7683,17 @@ function ctxTick() {
       if (slot) slot.innerHTML = renderDayBlocks();
     }
   }
+}
+
+/**
+ * Re-renders the top band (and with it, the sidebar's witty cycle line)
+ * every 5 minutes -- wittyCycleLine()'s 30-minute slot seed is pointless if
+ * nothing ever calls it again after init(). Fixes "I want them rotated
+ * often, even within the same day" (16 Aug): previously the line was frozen
+ * from first paint until the next full reload, no matter what the seed did.
+ */
+function initSidebarCycleTicker() {
+  setInterval(renderEqHeader, 5 * 60 * 1000);
 }
 
 function startCtxClock() {
@@ -11588,7 +11752,7 @@ function renderCirclePerson() {
     <div class="card">
       <div class="card-header"><span class="card-title">Engagement</span>
         <span class="card-meta">${p.touchCount} touch${p.touchCount === 1 ? '' : 'es'} · last 26 weeks</span></div>
-      ${circleEngagement(p.touchDates || [], ringCol)}
+      ${contribGridHtml({ days: datesToContribDays(p.touchDates || []) }).html}
     </div>
 
     <div class="card reachout-card" id="reachout-card">
@@ -11881,8 +12045,13 @@ let learnNote = { text: '', loadedFor: null, savedAt: null, timer: null };
 let learnRestorePct = null;   // scroll depth to restore once the lesson paints
 
 async function fetchLearning() {
-  try { LEARN = await (await fetch('/api/learning')).json(); }
-  catch { LEARN = null; }
+  try {
+    const [courseData, campusData] = await Promise.all([
+      fetch('/api/learning').then(r => r.json()),
+      fetch('/api/learning/campus').then(r => r.json()).catch(() => null),
+    ]);
+    LEARN = { ...courseData, campus: campusData };
+  } catch { LEARN = null; }
   if (currentView === 'learning') {
     document.getElementById('view-container').innerHTML = renderLearning();
   }
@@ -11939,8 +12108,119 @@ async function fetchInsights() {
   repaintView(currentView);
 }
 
+/**
+ * Real, data-driven replacement for SPACE_INSIGHTS.planning's hardcoded
+ * "Strategic Execution & Runway" placeholder (same class of bug as the
+ * "On this day" 1971 placeholder, 16 Aug) -- title under 10 words, like
+ * the on-this-day card, computed from the ACTUAL plans board (PLANS) and
+ * cycle position rather than a canned sentence. Rotates on the same
+ * 30-minute slot + 5-minute ticker as wittyCycleLine()/themePhrase(), so
+ * it changes across a session, not just daily.
+ *
+ * NOT yet the fuller version he asked for (16 Aug): "a database... that
+ * adjusts with my trajectory." This is the honest computed layer; a
+ * curated vault-backed override (same shape as scope/theme_days.tsv) is
+ * real follow-up work, not built tonight -- see _handoff/migration-log.md.
+ */
+function planningInsight() {
+  const plans = (PLANS || []).filter(p => p.STATUS === 'active');
+  const ctx = getEquicycleContext();
+  const cLeft = 28 - ctx.dayInCycle;
+  const today = new Date().toISOString().slice(0, 10);
+  const now = plans.filter(p => p.HORIZON === 'cycle' || p.HORIZON === 'sprint');
+  const overdueish = now.length === 0;
+
+  const dateKey = today.slice(0, 13) + '-' + Math.floor(new Date().getMinutes() / 30);
+  let h = 0;
+  for (let i = 0; i < dateKey.length; i++) h = ((h * 31) + dateKey.charCodeAt(i)) >>> 0;
+
+  if (!plans.length) {
+    return { title: 'No active goal is set', category: 'Planning gap',
+      text: `${cLeft} days left in ${ctx.theme}, and nothing on the board claims them. State one goal and ladder it to a task.`, tone: 'violet' };
+  }
+  if (overdueish) {
+    const pick = plans[h % plans.length];
+    return { title: truncateWords(pick.TITLE, 10), category: 'No sprint-level goal',
+      text: `This goal has no cycle or sprint rung under it yet. ${cLeft} days remain in ${ctx.theme} to ladder it down.`, tone: 'violet' };
+  }
+  const pick = now[h % now.length];
+  return { title: truncateWords(pick.TITLE, 10), category: `${pick.HORIZON === 'sprint' ? 'This sprint' : 'This cycle'} · ${cLeft} days left`,
+    text: pick.NOTE && pick.NOTE !== '-' ? pick.NOTE : `Active in ${ctx.theme}. Distill it to a task before the window closes.`, tone: 'violet' };
+}
+function truncateWords(s, n) {
+  const words = String(s || '').trim().split(/\s+/);
+  return words.length > n ? words.slice(0, n).join(' ') + '…' : words.join(' ');
+}
+
+/**
+ * Real replacement for SPACE_INSIGHTS.finance's hardcoded "Asset
+ * Preservation & 50/30/20 Rule" placeholder (16 Aug, same fix as
+ * planningInsight()). The 50/30/20 framing was doubly wrong: not just
+ * unpersonalized copy, but describing a fixed rule the user's own
+ * allocation model (pulse/lib/finance.js's parseAllocationModel) doesn't
+ * even use -- his buckets are custom-named/shared, not Needs/Wants/Savings.
+ * Uses FIN (fetched by fetchFinance(), same global the Finance view
+ * itself reads) -- real net worth, this month's savings rate, runway.
+ */
+function financeInsight() {
+  if (!FIN) return { title: 'Reading the ledger', category: 'Financial strategy',
+    text: 'Open Finance once this session to load real numbers here.', tone: 'green' };
+  const nw = FIN.netWorth || {};
+  const mo = FIN.month || {};
+  const rate = mo.savingsRate;
+  const runway = FIN.runwayMonths;
+
+  if (rate != null && rate < 0) {
+    return { title: 'This month is running a loss', category: 'Financial strategy',
+      text: `Spending exceeded income by ${Math.abs(rate)}% this month${runway != null ? ` - about ${runway} months of runway at this burn` : ''}. Find the one cut that matters before the next one.`, tone: 'green' };
+  }
+  if (runway != null && runway < 3) {
+    return { title: `${runway} months of runway left`, category: 'Financial strategy',
+      text: `That is the real constraint right now, not the savings rate. Net worth stands at ${nw.net != null ? nw.net.toLocaleString() : '—'} ${FIN.currency || ''}.`, tone: 'green' };
+  }
+  if (rate != null) {
+    return { title: `Saving ${rate}% of income this month`, category: 'Financial strategy',
+      text: `Net worth: ${nw.net != null ? nw.net.toLocaleString() : '—'} ${FIN.currency || ''}${runway != null ? ` · ${runway} months runway` : ''}. Consistency compounds faster than any single good month.`, tone: 'green' };
+  }
+  return { title: 'No income logged yet this month', category: 'Financial strategy',
+    text: `Net worth: ${nw.net != null ? nw.net.toLocaleString() : '—'} ${FIN.currency || ''}. Log this month's income to see a real savings rate here.`, tone: 'green' };
+}
+
+/**
+ * Real replacement for SPACE_INSIGHTS.ideas's hardcoded "Spark & Innovation
+ * Discipline" placeholder -- same fix class as planning/finance (16 Aug).
+ * The old text's "4.2x more likely to ship" was a fabricated-precision
+ * stat with no source, exactly the kind of claim the learning space's own
+ * standards doc explicitly forbids for course content; the dashboard held
+ * itself to a lower bar than the courses did. Uses the real IDEAS global
+ * (same data the Ideas view itself renders) -- surfaces an actual highest-
+ * leverage open idea by title, or an honest stage-count read when nothing
+ * is open yet. Rotates on the same session ticker as the other insights.
+ */
+function ideasInsight() {
+  if (!IDEAS) return { title: 'Reading the ideas board', category: 'Executive foresight',
+    text: 'Open Ideas once this session to load real ones here.', tone: 'cyan' };
+  const s = IDEAS.stats || {};
+  const open = (IDEAS.ideas || []).filter(i => i.STATUS !== 'dropped' && i.STAGE !== 'shipped' && i.STAGE !== 'parked');
+  if (!open.length) {
+    return { title: 'Nothing captured yet', category: 'Executive foresight',
+      text: `${s.shipped || 0} idea${s.shipped === 1 ? '' : 's'} shipped all-time. Capture the next one the moment it occurs, before it's gone.`, tone: 'cyan' };
+  }
+  const ranked = [...open].sort((a, b) => ideaLeverage(b) - ideaLeverage(a));
+  const dateKey = new Date().toISOString().slice(0, 13) + '-' + Math.floor(new Date().getMinutes() / 30);
+  let h = 0;
+  for (let i = 0; i < dateKey.length; i++) h = ((h * 31) + dateKey.charCodeAt(i)) >>> 0;
+  const pick = ranked[h % Math.min(3, ranked.length)];  // rotate among the top 3 by leverage, not always the single #1
+  const lev = ideaLeverage(pick);
+  return { title: truncateWords(pick.TITLE, 10),
+    category: `${IDEA_STAGE_LABEL[pick.STAGE] || 'Captured'} · ${s.open || open.length} open`,
+    text: lev > 0 ? `Highest leverage in the queue right now (impact ${pick.IMPACT || '?'} / effort ${pick.EFFORT || '?'}). Move it or park it - it shouldn't just sit.` : `Not yet scored for impact/effort. Score it so it can compete fairly with the rest of the queue.`,
+    tone: 'cyan' };
+}
+
 function renderSpaceInsight(space) {
-  const ins = SPACE_INSIGHTS[space];
+  const ins = space === 'planning' ? planningInsight() : space === 'finance' ? financeInsight()
+    : space === 'ideas' ? ideasInsight() : SPACE_INSIGHTS[space];
   if (!ins) return '';
   const accentColor = ins.tone === 'gold' ? 'var(--amber)' : ins.tone === 'cyan' ? 'var(--cyan)' : ins.tone === 'violet' ? 'var(--violet)' : 'var(--green)';
   return `
@@ -12117,6 +12397,74 @@ function renderRhythm() {
     </div>`;
 }
 
+// The advisory board above the catalogue, ported from the legacy monolith
+// (2026-08-16). Answers one question - which modules to read right now, and
+// why - and is the first thing the eye lands on when the classroom opens.
+// Resume is folded in as a secondary option rather than a rival banner:
+// picking up where you left off is one of the things you might do, and it
+// is rarely the wisest one, so it sits under the advice instead of above it.
+let campusOpen = true;
+function campusToggle() { campusOpen = !campusOpen; repaintView('learning'); }
+
+function renderCampus(resumeBanner) {
+  const c = (LEARN && LEARN.campus) || null;
+  if (!c || !c.bands || !c.bands.length) return resumeBanner || '';
+
+  const pill = (i) => {
+    const target = i.lesson
+      ? `learnOpenLesson('${escAttr(i.courseId)}','${escAttr(i.lesson)}')`
+      : `learnCourseOpen='${escAttr(i.courseId)}';repaintView('learning')`;
+    return `
+      <div class="campus-item" onclick="${target}" title="Open this module">
+        <div class="campus-item-main">
+          <div class="campus-item-title">${escHtml(i.title)}${
+            i.status === 'done' ? `<span class="campus-read" title="You have marked this one done">read</span>` : ''}</div>
+          <div class="campus-item-course">${escHtml(i.courseTitle)}${
+            i.minutes ? ` · ${i.minutes} min` : ''}</div>
+          ${i.headline ? `<div class="campus-item-headline">${escHtml(i.headline)}</div>` : ''}
+          ${i.why ? `<div class="campus-item-why">${escHtml(i.why)}</div>` : ''}
+        </div>
+        <div class="campus-item-go" aria-hidden="true">→</div>
+      </div>`;
+  };
+
+  const bands = c.bands.map(b => `
+    <div class="campus-band campus-tone-${escAttr(b.tone)}">
+      <div class="campus-band-head">
+        <span class="campus-band-label">${escHtml(b.label)}</span>
+        <span class="campus-band-count">${b.items.length}</span>
+      </div>
+      ${b.items.map(pill).join('')}
+    </div>`).join('');
+
+  return `
+    <div class="campus${campusOpen ? '' : ' campus-collapsed'}">
+      <div class="campus-head" onclick="campusToggle()" title="${campusOpen ? 'Collapse' : 'Expand'} the campus">
+        <div>
+          <div class="campus-title">Campus</div>
+          <div class="campus-sub">What to read right now, and why${
+            c.minutes ? ` · about ${c.minutes} min for the urgent ones` : ''}</div>
+        </div>
+        <div class="campus-head-right">
+          ${c.computed
+            ? `<span class="campus-stale" title="No standing advice is set - this is the computed next step">computed</span>`
+            : (c.updatedAt ? `<span class="campus-when">advice set ${escHtml(fmtWhen(c.updatedAt, { rel: true }))}</span>` : '')}
+          <span class="campus-chev">${campusOpen ? '▾' : '▸'}</span>
+        </div>
+      </div>
+      ${campusOpen ? `
+        <div class="campus-body">
+          ${bands}
+          ${resumeBanner ? `<div class="campus-alt">
+            <div class="campus-alt-label">Or simply carry on</div>
+            ${resumeBanner}
+          </div>` : ''}
+          <div class="campus-foot">Advice retires itself - each entry carries its own trigger and expiry.
+            Ask the agent to re-set the reading order whenever the week changes shape.</div>
+        </div>` : ''}
+    </div>`;
+}
+
 function renderLearning() {
   if (!LEARN) { fetchLearning(); return `<div class="card"><div class="empty-state">Opening the classroom…</div></div>`; }
   const courses = LEARN.courses || [];
@@ -12289,7 +12637,7 @@ function renderLearning() {
       <h1>Learning</h1>
       <div class="view-head-meta">private classroom … every course starts from the beginning and goes to expertise, in plain language</div>
     </div>
-    ${resumeBanner}
+    ${renderCampus(resumeBanner)}
     ${courses.length ? Object.entries(byRoom).map(([room, list]) => `
       <div class="learn-section-head">${escHtml(room)}</div>
       <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
@@ -13391,7 +13739,7 @@ function renderJournal() {
     <div class="card">
       <div class="card-header"><span class="card-title">Writing activity</span>
         <span class="card-meta">last 26 weeks</span></div>
-      ${circleEngagement(entries.map(e => e.DATE), 'var(--green)')}
+      ${contribGridHtml({ days: datesToContribDays(entries.map(e => e.DATE)) }).html}
     </div>
 
     <div class="card">
@@ -13414,9 +13762,10 @@ function renderJournal() {
     </div>
 
     ${entries.length ? entries.map(e => `
-      <div class="card jr-entry">
+      <div class="card jr-entry" id="jr-entry-${escHtml(e.ID)}">
         <div class="jr-entry-head">
           <span class="jr-date">${escHtml(e.DATE)}</span>
+          ${e.EDITED_AT && e.EDITED_AT !== '-' ? `<span class="jr-edited" title="Last changed ${escAttr(e.EDITED_AT)}">edited ${escHtml(fmtWhen(e.EDITED_AT, { rel: true }))}</span>` : ''}
           <span class="jr-chips">
             ${chip(e.MOOD !== '-' ? e.MOOD : '', 'mood')}
             ${chip(e.ENERGY !== '-' ? e.ENERGY : '', 'energy')}
@@ -13424,13 +13773,20 @@ function renderJournal() {
           </span>
           <span class="jr-entry-actions">
             <button class="btn btn-ghost" style="font-size:0.68rem;padding:2px 9px"
+                    onclick="journalEditStart('${escHtml(e.ID)}')" title="Edit this entry">Edit</button>
+            <button class="btn btn-ghost" style="font-size:0.68rem;padding:2px 9px"
                     onclick="journalReflect('${escHtml(e.ID)}',this)">${e.AI_NOTE ? 'Reflect again' : 'Reflect'}</button>
             <button class="btn btn-ghost" style="font-size:0.68rem;padding:2px 9px"
                     onclick="journalDelete('${escHtml(e.ID)}')" title="Delete this entry">✕</button>
           </span>
         </div>
-        <div class="jr-body">${escHtml(e.BODY)}</div>
-        ${e.AI_NOTE ? `<div id="jr-note-${escHtml(e.ID)}">${insightMd(e.AI_NOTE)}</div>` : `<div id="jr-note-${escHtml(e.ID)}"></div>`}
+        <div class="jr-body-view" id="jr-body-view-${escHtml(e.ID)}">
+          <div class="jr-body">${escHtml(e.BODY)}</div>
+        </div>
+        ${e.AI_NOTE ? `<div class="jr-ai-note">
+          <div class="jr-ai-note-label">AI reflection</div>
+          <div id="jr-note-${escHtml(e.ID)}">${insightMd(e.AI_NOTE)}</div>
+        </div>` : `<div id="jr-note-${escHtml(e.ID)}"></div>`}
       </div>`).join('')
     : `<div class="card"><div class="empty-state">Nothing written yet. The first entry is the hardest;
         the second is a habit forming. Start with today.</div></div>`}`;
@@ -13523,6 +13879,39 @@ async function journalReview(btn) {
     } else showToast(d.error || 'Not enough material yet', 'error');
   } catch (e) { showToast(e.message, 'error'); }
   btn.disabled = false; btn.textContent = 'Review';
+}
+
+/** Swaps an entry's read-only body for an inline textarea, in place --
+ *  matches the file manager's/lesson reader's own edit-affordance pattern
+ *  rather than a modal, since a journal entry is exactly the kind of thing
+ *  you want to see in its normal reading context while touching it up. */
+function journalEditStart(id) {
+  const entry = (JOURNAL?.entries || []).find(e => e.ID === id);
+  if (!entry) return;
+  const view = document.getElementById(`jr-body-view-${id}`);
+  if (!view) return;
+  view.innerHTML = `
+    <textarea id="jr-edit-body-${id}" class="jira-input" rows="5" style="width:100%;resize:vertical">${escHtml(entry.BODY)}</textarea>
+    <div class="jr-compose-row" style="margin-top:0.4rem">
+      <button class="btn btn-ghost" onclick="journalEditCancel('${id}')">Cancel</button>
+      <button class="btn btn-primary" onclick="journalEditSave('${id}',this)">Save changes</button>
+    </div>`;
+  document.getElementById(`jr-edit-body-${id}`)?.focus();
+}
+
+function journalEditCancel(id) { repaintView('journal'); }
+
+async function journalEditSave(id, btn) {
+  const ta = document.getElementById(`jr-edit-body-${id}`);
+  const body = ta ? ta.value.trim() : '';
+  if (!body) { showToast('An empty entry is not an entry', 'error'); return; }
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const d = await (await fetch('/api/journal/update', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, body }) })).json();
+    if (d.success) { showToast('Entry updated', 'success'); await fetchJournal(); }
+    else { showToast(d.error || 'Could not save', 'error'); btn.disabled = false; btn.textContent = 'Save changes'; }
+  } catch (e) { showToast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Save changes'; }
 }
 
 async function journalDelete(id) {
@@ -14022,12 +14411,14 @@ async function init() {
   // above) -- SPACE_INSIGHTS' hardcoded placeholders, including "Today in
   // History" stuck on 1 August, had nothing that would ever overwrite them.
   fetchInsights();
+  fetchThemeDay();            // curated theme-day phrase override, if today has one written
   await fetchRefs();          // so D-024 reads as itself from the first paint
   await syncClock();          // the agent is the clock authority, not this device
   await fetchDay();           // block definitions, so the trusted clock has a day to count against
   startCtxClock();            // ticks every second, monotonic, correct offline
 
   renderEqHeader();
+  initSidebarCycleTicker();
   refreshNotifBadge();
 
   // data-axis lets the three Spaces buttons share one view while each entering
