@@ -12874,7 +12874,7 @@ function learnMd(src) {
   // This joins every continuation line up to the next blank line or the
   // start of a new block, so the whole sentence - citation included -
   // lands inside the one callout it belongs to.
-  const CALLOUT_OPENER = /^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/i;
+  const CALLOUT_OPENER = /^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|Fun fact|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/i;
   // A book callout ties an idea to a book; a research callout carries the
   // actual number - a named study, dataset or report with its year, so a
   // claim in the lesson traces to a source that can be checked rather than
@@ -12949,6 +12949,11 @@ function learnMd(src) {
       const m = text.match(/^\*\*Research:?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
       if (m) out.push(`<div class="lesson-research"><span>Research</span>${restoreMath(inline(m[1]))}<div class="lesson-cite">${restoreMath(inline(m[2]))}</div></div>`);
       else out.push(`<p>${restoreMath(inline(text))}</p>`);
+      i = nextIdx; continue;
+    }
+    if (/^\*\*Fun fact:?\*\*/i.test(line)) {
+      const { text, nextIdx } = gatherWrapped(i);
+      out.push(`<div class="lesson-fun-fact">${restoreMath(inline(text.replace(/^\*\*Fun fact:?\*\*\s*/i, '<span>Fun fact</span>')))}</div>`);
       i = nextIdx; continue;
     }
     if (/^\*\*Book quote:?\*\*/i.test(line)) {
@@ -13129,7 +13134,7 @@ function learnPlainText(md) {
   return String(md || '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/\$\$[\s\S]*?\$\$/g, '')
-    .replace(/^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/gim, '')
+    .replace(/^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|Fun fact|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/gim, '')
     .replace(/^#{1,4}\s*/gm, '')
     .replace(/^##\s*Check yourself.*$/gim, '')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
