@@ -81,11 +81,12 @@ async function showTokenGate(isRetry = false) {
     if (r.ok) methods = await r.json();
   } catch (e) {}
 
-  // The PIN is the quick way in from a device with no Ente Auth app on it. It is
-  // hidden rather than absent: not shown next to the default method, but reachable
-  // from a cold browser without needing anything installed - either by URL
-  // (/?pin or /#pin) or by tapping the iSconl wordmark three times.
-  const pinAsked = /(^|[?&])pin(=|&|$)/.test(location.search) || location.hash === '#pin';
+  // PIN is the default sign-in method: no separate app needed, works on any
+  // device. Ente Auth TOTP is available as the stronger alternative via the
+  // switch link (or /?totp, #totp), and the raw access token is the deepest
+  // fallback, reachable by tapping the iSconl wordmark three times.
+  const totpAsked = /(^|[?&])totp(=|&|$)/.test(location.search) || location.hash === '#totp';
+  const pinDefault = Boolean(methods.pin) && !totpAsked;
 
   const el = document.createElement('div');
   el.id = 'isconl-token-gate';
@@ -103,10 +104,6 @@ async function showTokenGate(isRetry = false) {
              background:#238636;color:#fff;font-weight:600;font-size:.9rem;cursor:pointer"
       onmouseover="this.style.background='#2ea043'" onmouseout="this.style.background='#238636'">${label}</button>`;
 
-  // The PIN box starts open only when it was explicitly asked for; otherwise the
-  // default method keeps the focus and the PIN stays out of sight.
-  const pinOpen = Boolean(methods.pin && pinAsked);
-
   el.innerHTML = `
     <div style="max-width:380px;width:100%;padding:2rem">
       <div id="gate-wordmark" style="font-size:1.25rem;font-weight:600;margin-bottom:.35rem;cursor:default;user-select:none">iSconl</div>
@@ -114,7 +111,7 @@ async function showTokenGate(isRetry = false) {
         ${isRetry ? 'That did not work. Try again.' : 'This console is private.'}
       </div>
 
-      <div id="gate-totp" style="display:${methods.totp && !pinOpen ? 'block' : 'none'}">
+      <div id="gate-totp" style="display:${methods.totp && !pinDefault ? 'block' : 'none'}">
         <div style="opacity:.75;font-size:.8rem;margin-bottom:.5rem">Code from Ente Auth</div>
         ${field('isconl-totp-input', '000000', 'text',
                 'inputmode="numeric" maxlength="6" pattern="[0-9]*" style-extra')}
@@ -122,33 +119,34 @@ async function showTokenGate(isRetry = false) {
         <div id="gate-countdown" style="opacity:.4;font-size:.72rem;margin-top:.6rem;text-align:center"></div>
       </div>
 
-      <div id="gate-token" style="display:${methods.totp || pinOpen ? 'none' : 'block'}">
-        ${methods.totp ? '<div style="opacity:.75;font-size:.8rem;margin-bottom:.5rem">Access token</div>' : ''}
+      <div id="gate-token" style="display:${(methods.totp || methods.pin) ? 'none' : 'block'}">
+        ${(methods.totp || methods.pin) ? '<div style="opacity:.75;font-size:.8rem;margin-bottom:.5rem">Access token</div>' : ''}
         ${field('isconl-token-input', 'Access token', 'password')}
         ${button('isconl-token-go', 'Unlock')}
       </div>
 
-      <div id="gate-pin" style="display:${pinOpen ? 'block' : 'none'}">
-        <div style="opacity:.75;font-size:.8rem;margin-bottom:.5rem">Quick PIN</div>
+      <div id="gate-pin" style="display:${pinDefault ? 'block' : 'none'}">
+        <div style="opacity:.75;font-size:.8rem;margin-bottom:.5rem">PIN</div>
         ${field('isconl-pin-input', '••••', 'password',
                 'inputmode="numeric" maxlength="12" pattern="[0-9]*"')}
         ${button('isconl-pin-go', 'Sign in')}
         <div style="opacity:.4;font-size:.72rem;margin-top:.6rem;line-height:1.5">
-          Temporary, for devices without Ente Auth. Five tries, then it freezes -
-          the Ente Auth code is never affected.
+          Five tries, then it freezes for a while. Reset it any time from Settings.
         </div>
       </div>
 
-      ${methods.totp && methods.token ? `
+      ${methods.pin && methods.totp ? `
         <div style="text-align:center;margin-top:1rem">
           <a href="#" id="gate-switch" style="color:#7d8590;font-size:.75rem;text-decoration:none">
-            Use access token instead</a>
+            Use an Ente Auth code instead</a>
         </div>` : ''}
 
       <div style="opacity:.4;font-size:.75rem;margin-top:1rem;line-height:1.5">
-        ${methods.totp
-          ? 'The code rotates every 30 seconds. A session is kept in this browser only.'
-          : 'Set <code>ISCONL_TOKEN</code> in the agent\'s environment, or run <code>npm run totp:setup</code> to sign in with Ente Auth instead.'}
+        ${pinDefault
+          ? 'A session is kept in this browser only.'
+          : methods.totp
+            ? 'The code rotates every 30 seconds. A session is kept in this browser only.'
+            : 'Set <code>ISCONL_TOKEN</code> in the agent\'s environment, or configure a PIN in Settings to sign in that way instead.'}
       </div>
     </div>`;
   document.body.appendChild(el);
@@ -207,7 +205,7 @@ async function showTokenGate(isRetry = false) {
       totpInput.value = totpInput.value.replace(/\D/g, '').slice(0, 6);
       if (totpInput.value.length === 6) submitTotp();
     });
-    if (!pinOpen) totpInput.focus();
+    if (!pinDefault) totpInput.focus();
   }
 
   // ── Static token path ──
@@ -221,9 +219,9 @@ async function showTokenGate(isRetry = false) {
   };
   el.querySelector('#isconl-token-go').onclick = submitToken;
   tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitToken(); });
-  if (!methods.totp && !pinOpen) tokenInput.focus();
+  if (!methods.totp && !pinDefault) tokenInput.focus();
 
-  // ── PIN path (hidden alternative) ──
+  // ── PIN path (default method) ──
   // Unlike the TOTP box this does not auto-submit on length: the PIN has no fixed
   // length, and a wrong guess costs a fifth of the whole budget.
   const pinBox   = el.querySelector('#gate-pin');
@@ -264,13 +262,15 @@ async function showTokenGate(isRetry = false) {
     pinInput.addEventListener('input', () => {
       pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 12);
     });
-    if (pinOpen) pinInput.focus();
+    if (pinDefault) pinInput.focus();
   }
 
   // Reveal gesture: three taps on the wordmark. Works on a phone, leaves no
-  // visible affordance, and is only wired up when the server actually has a PIN.
+  // visible affordance. Reaches the raw access token -- the deepest fallback,
+  // for when neither PIN nor Ente Auth is usable (e.g. both forgotten/lost).
   const wordmark = el.querySelector('#gate-wordmark');
-  if (wordmark && methods.pin && pinBox) {
+  const tokBox = el.querySelector('#gate-token');
+  if (wordmark && tokBox && (methods.pin || methods.totp)) {
     let taps = 0, tapTimer = null;
     wordmark.addEventListener('click', () => {
       taps += 1;
@@ -278,17 +278,17 @@ async function showTokenGate(isRetry = false) {
       tapTimer = setTimeout(() => { taps = 0; }, 900);
       if (taps < 3) return;
       taps = 0;
-      const showing = pinBox.style.display !== 'none';
-      pinBox.style.display = showing ? 'none' : 'block';
+      const showing = tokBox.style.display !== 'none';
       const totpBox = el.querySelector('#gate-totp');
-      const tokBox  = el.querySelector('#gate-token');
       if (!showing) {
+        tokBox.style.display = 'block';
+        if (pinBox) pinBox.style.display = 'none';
         if (totpBox) totpBox.style.display = 'none';
-        if (tokBox) tokBox.style.display = 'none';
-        pinInput.focus();
+        tokenInput.focus();
       } else {
-        if (methods.totp && totpBox) { totpBox.style.display = 'block'; totpInput.focus(); }
-        else if (tokBox) { tokBox.style.display = 'block'; tokenInput.focus(); }
+        tokBox.style.display = 'none';
+        if (pinDefault && pinBox) { pinBox.style.display = 'block'; pinInput.focus(); }
+        else if (totpBox) { totpBox.style.display = 'block'; totpInput.focus(); }
       }
     });
   }
@@ -297,22 +297,38 @@ async function showTokenGate(isRetry = false) {
   if (sw) sw.onclick = (e) => {
     e.preventDefault();
     const totpBox = el.querySelector('#gate-totp');
-    const tokBox  = el.querySelector('#gate-token');
-    const toToken = totpBox.style.display !== 'none';
-    totpBox.style.display = toToken ? 'none' : 'block';
-    tokBox.style.display  = toToken ? 'block' : 'none';
-    sw.textContent = toToken ? 'Use an Ente Auth code instead' : 'Use access token instead';
-    (toToken ? tokenInput : totpInput).focus();
+    const toTotp = pinBox.style.display !== 'none';
+    pinBox.style.display  = toTotp ? 'none' : 'block';
+    totpBox.style.display = toTotp ? 'block' : 'none';
+    sw.textContent = toTotp ? 'Use PIN instead' : 'Use an Ente Auth code instead';
+    (toTotp ? totpInput : pinInput).focus();
   };
 }
 
 /** Verify the stored token before booting the app. */
 async function ensureAuthenticated() {
   if (!getToken()) { showTokenGate(false); return false; }
+  // This USED to check /api/state, which clears the token and re-shows the
+  // gate on a single 404 -- but /api/state is a legacy-proxied route (see
+  // lib/api-compat.js), so its 404 means "the legacy monolith backend had a
+  // problem," not "this session is invalid." A CORRECT TOTP/PIN kept
+  // "bouncing" straight back to the gate because of this: sign-in succeeds,
+  // location.reload() fires, and the very next request happens to be this
+  // one, whose failure mode was wrongly treated as a rejected credential.
+  // A short retry papered over transient cases but not a genuinely
+  // unreachable/unconfigured legacy backend (LEGACY_API_URL pointing at a
+  // dead or wrong target), which 404s every time, retry or not -- reproduced
+  // and confirmed 2026-08-15. /api/auth/verify asks the ONE thing this
+  // function actually needs to know -- is this token a real session -- from
+  // vault via hub's auth proxy, with no legacy dependency anywhere in the
+  // path. Loading the app's actual data (which legitimately may depend on
+  // the legacy backend) is a separate concern, handled by fetchState()'s own
+  // 404-streak tolerance below, not by this boot-time gate.
   try {
-    const r = await fetch('/api/state');
-    if (r.status === 404) { clearToken(); showTokenGate(true); return false; }
-    return r.ok;
+    const r = await fetch('/api/auth/verify', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (!d.valid) { clearToken(); showTokenGate(true); return false; }
+    return true;
   } catch { return false; }
 }
 
@@ -2919,6 +2935,29 @@ function renderSettings() {
         <div id="apk-card"><div class="settings-hint">Checking for the current build...</div></div>
       </div>
 
+      <!-- Console Access: PIN is the default sign-in method (see app.js's
+           login gate). Setting/resetting it here requires an already-valid
+           session -- the same trust boundary the gate itself enforces -- and
+           writes straight to Bitwarden (vault's POST /auth/set-pin), not
+           just this process, so it survives a restart and reaches every
+           deploy target sharing the same PIN_HASH secret. -->
+      <div class="settings-section" id="pin-section">
+        <div class="settings-section-title">Console Access · PIN
+          <span class="badge badge-medium" id="pin-status-badge" style="margin-left:auto">Checking</span>
+        </div>
+        <p class="settings-hint">
+          The quick PIN is the default way into this console. Set a new one any time --
+          the old PIN is not needed, being signed in already is the authorization.
+          4-12 digits.
+        </p>
+        <div class="settings-grid">
+          <div class="settings-field"><label>New PIN</label><input id="s-pin-new" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="4-12 digits"/></div>
+          <div class="settings-field"><label>Confirm PIN</label><input id="s-pin-confirm" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="repeat"/></div>
+        </div>
+        <div class="settings-actions"><button class="btn btn-primary" onclick="updatePin()">Set / Reset PIN</button></div>
+        <div id="pin-update-result" class="settings-result hidden"></div>
+      </div>
+
       ${renderLearnThemeSection()}
 
       <!-- Jira -->
@@ -3083,6 +3122,68 @@ function renderSettings() {
         ${renderIntegrationsBody()}
       </div>
     </div>`;
+}
+
+/**
+ * Console Access · PIN badge. /api/auth/methods is the same public,
+ * unauthenticated endpoint the login gate itself asks -- it reveals only
+ * which methods are configured, never a secret or session state, so no
+ * token is needed here either.
+ */
+async function loadPinStatus() {
+  const badge = document.getElementById('pin-status-badge');
+  if (!badge) return;
+  try {
+    const r = await fetch('/api/auth/methods');
+    const d = await r.json();
+    if (d && d.pin) { badge.textContent = '● PIN set'; badge.className = 'badge badge-jira'; }
+    else { badge.textContent = '○ No PIN'; badge.className = 'badge badge-medium'; }
+  } catch (e) {
+    badge.textContent = 'Unreachable';
+    badge.className = 'badge badge-medium';
+  }
+}
+
+/**
+ * Set/reset the PIN. Requires an already-valid session (the token this page
+ * is already running with) -- there is no separate "old PIN" step-up because
+ * getting past the console's own login gate already proved you're the owner.
+ * Writes straight to Bitwarden via vault's POST /auth/set-pin, so it survives
+ * a restart and reaches every deploy target reading the same PIN_HASH secret.
+ */
+async function updatePin() {
+  const el = document.getElementById('pin-update-result');
+  const newInput = document.getElementById('s-pin-new');
+  const confirmInput = document.getElementById('s-pin-confirm');
+  const btn = event?.target;
+  const show = (text, ok) => {
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.className = 'settings-result' + (ok ? ' success' : '');
+    el.textContent = text;
+  };
+  const pin = (newInput?.value || '').trim();
+  const confirm = (confirmInput?.value || '').trim();
+  if (!/^\d{4,12}$/.test(pin)) { show('PIN must be 4-12 digits.', false); return; }
+  if (pin !== confirm) { show('PINs do not match.', false); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await fetch('/api/auth/set-pin', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) { show(d.error || 'Could not set the PIN.', false); return; }
+    show('PIN updated.', true);
+    showToast('PIN updated', 'success');
+    if (newInput) newInput.value = '';
+    if (confirmInput) confirmInput.value = '';
+    loadPinStatus();
+  } catch (e) {
+    show('Could not reach the agent.', false);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Set / Reset PIN'; }
+  }
 }
 
 /* ── THE APK DOWNLOAD CARD ─────────────────────────────────────────────────
@@ -9751,7 +9852,7 @@ function navigate(viewName, params = {}, opts = {}) {
   if (typeof mShellClose === 'function') { mShellClose(); }
   if (viewName==='github')   Promise.all([fetchGhSnapshot(), STATE.contributions?Promise.resolve():fetchContributions()]).then(()=>{ if(currentView==='github') container.innerHTML=renderGitHub(); });
   if (viewName==='jira')     fetchJiraIssues().then(()=>{ if(currentView==='jira') container.innerHTML=renderJira(); });
-  if (viewName==='settings') fetchState().then(()=>{ if(currentView==='settings') { container.innerHTML=renderSettings(); loadApkCard(); } });
+  if (viewName==='settings') fetchState().then(()=>{ if(currentView==='settings') { container.innerHTML=renderSettings(); loadApkCard(); loadPinStatus(); } });
   if (viewName==='audit')    loadAuditLog();
   if (viewName==='notifications') fetchNotifs();
   if (viewName==='finance')  fetchFinance();

@@ -8,7 +8,6 @@
  */
 
 const http = require('http');
-const { Readable } = require('stream');
 const secretStore = require('../lib/secrets');
 const { createAuditLog } = require('../lib/audit');
 const { createEngineClient } = require('../lib/engine-client');
@@ -53,6 +52,41 @@ function bearerToken(req) {
   return auth.startsWith('Bearer ') ? auth.slice(7) : '';
 }
 
+/**
+ * Presence-based service connectivity for the dashboard/Settings badges --
+ * built from vault's secrets.status KEY NAMES only (never values, matching
+ * the standing rule: secret values are never read into hub's own output).
+ * A key existing in Bitwarden means "configured", not "verified reachable"
+ * -- the legacy monolith's getServiceStatus() made real API calls to some
+ * of these; this doesn't (yet). host/email/tenantId/model/chatId are left
+ * blank rather than fetched, since that needs a NEW vault capability that
+ * distinguishes non-sensitive config fields from actual secrets -- real
+ * follow-up work, not done here.
+ */
+function shapeServices(keys) {
+  const has = (...names) => names.every(n => keys.includes(n));
+  const one = (name) => keys.includes(name);
+  const flag = (ok) => (ok ? 'connected' : 'not_connected');
+  return {
+    anthropic: flag(one('ANTHROPIC_API_KEY')),
+    groq: flag(one('ISCONL_GROQ_API_KEY')),
+    elevenlabs: flag(one('ELEVENLABS_API_KEY')),
+    github: flag(one('ISCONL_GITHUB_TOKEN')),
+    jira: flag(has('JIRA_HOST', 'JIRA_EMAIL', 'JIRA_API_TOKEN')),
+    whatsapp: flag(one('WA_VERIFY_TOKEN')),
+    msgraph: flag(has('MSGRAPH_CLIENT_ID', 'MSGRAPH_REFRESH_TOKEN')),
+    buffer: flag(one('BUFFER_API_KEY_SCONL')),
+    telegram: flag(has('ISCONL_TELEGRAM_BOT_TOKEN', 'ISCONL_TELEGRAM_CHAT_ID')),
+    signal: 'not_connected',
+    jiraConfig: { hasToken: one('JIRA_API_TOKEN'), host: '', projectKey: '', email: '' },
+    groqConfig: {},
+    msConfig: { hasCreds: has('MSGRAPH_CLIENT_ID', 'MSGRAPH_REFRESH_TOKEN'), tenantId: '' },
+    bufferConfig: { hasToken: one('BUFFER_API_KEY_SCONL') },
+    anthropicConfig: { model: '' },
+    telegramConfig: { chatId: '' },
+  };
+}
+
 /** Every non-public route needs EITHER the static HUB_TOKEN (service-to-service/admin) OR a real vault session (an end user, via authProxy.verify). */
 async function checkAuth(req, authProxy) {
   const token = bearerToken(req);
@@ -93,15 +127,13 @@ async function main() {
   const router = createRouter({ registry, engines, auditLog });
   const authProxy = createAuthProxy({ vault: engines.vault });
 
-  // The legacy monolith (Sconl/isconl-agent, currently isconl-agent.onrender.com)
-  // -- the /api/* compat layer proxies here for anything a new engine doesn't
-  // serve yet, so the already-installed Flutter app can point at hub with
-  // zero rebuild and nothing breaks mid-migration. Optional: if unset, those
-  // routes report a clear 502 instead of silently 404ing.
-  const legacy = process.env.LEGACY_API_URL
-    ? createEngineClient({ name: 'legacy', baseUrl: process.env.LEGACY_API_URL,
-        getToken: () => process.env.LEGACY_TOKEN || secretStore.get('LEGACY_TOKEN') || '' })
-    : null;
+  // The legacy monolith (Sconl/isconl-agent) is retired -- deleted locally
+  // 2026-08-15, no longer deployed anywhere. hub is self-contained now:
+  // everything routes to its own engines (vault/pulse/scope/circle/spark)
+  // or nothing at all. Routes still marked `legacy: true` in api-compat.js
+  // (the already-installed Flutter app's compat surface) fail cleanly below
+  // instead of proxying anywhere -- migrate each one to a real engine to
+  // bring it back, don't reintroduce a legacy client to paper over the gap.
 
   const render = createRenderClient({ getApiKey: () => process.env.RENDER_API_KEY || secretStore.get('RENDER_API_KEY') || '', auditLog });
   // Render service name per engine defaults to the engine name itself
@@ -189,13 +221,83 @@ async function main() {
       const r = await authProxy.pin(JSON.parse(await readBody(req) || '{}'));
       return sendJson(res, r.status, r.data);
     }
-    if (pathname === '/auth/verify' && req.method === 'POST') {
+    // Aliased under /api/ too so the console's fetch wrapper (which only
+    // auto-attaches the bearer token to /api/* and /health) can call this
+    // directly for "is my session valid" without depending on any
+    // legacy-proxied, backend-specific route like /api/state -- see
+    // ensureAuthenticated() in app.js for why that distinction matters.
+    if ((pathname === '/auth/verify' || pathname === '/api/auth/verify') && req.method === 'POST') {
       return sendJson(res, 200, await authProxy.verify(bearerToken(req)));
     }
 
     if (!(await checkAuth(req, authProxy))) return sendJson(res, 404, { error: 'Not Found' });
 
     try {
+      // Settings: reset/update the quick-PIN. Forwards the CALLER's own
+      // bearer token (not hub's own, if it even has one) -- vault's
+      // /auth/set-pin re-checks it independently, same trust boundary as
+      // /auth/verify above. checkAuth just gated entry to this whole block,
+      // so the token is already known-valid, but authorization for THIS
+      // specific write still comes from vault, not from hub asserting it.
+      if ((pathname === '/auth/set-pin' || pathname === '/api/auth/set-pin') && req.method === 'POST') {
+        let newPin = '';
+        try { newPin = JSON.parse(await readBody(req) || '{}').pin || ''; } catch {}
+        const r = await authProxy.setPin(bearerToken(req), newPin);
+        return sendJson(res, r.status, r.data);
+      }
+
+      // The main dashboard payload. Used to be a single legacy-monolith
+      // route; rebuilt natively by composing capabilities that already
+      // exist on today's engines -- inbox has no owning engine yet
+      // (circle only exposes add/update/delete, no list), so it's read
+      // straight off vault's generic vault.read rather than waiting on a
+      // new circle capability. spaces is the same story: no owning engine,
+      // read straight from vault's space/spaces.tsv collection. Both are
+      // real engine-owned data today, just not wrapped in a dedicated
+      // capability yet -- reading them via vault.read is not a workaround,
+      // it's the same access path circle itself uses internally.
+      // Reshapes vault's real onedrive.sync.status ({running, lastResult:
+      // {ok:[...], failed:[...], startedAt, finishedAt}}) into the shape
+      // webconsole/static/app.js's checkVaultLink() already expects
+      // ({onedrive, status, error}) -- that shape predates this route
+      // existing (it was written against the legacy monolith's own
+      // /api/vault/sync/status), so the choice is reshape-at-the-edge here
+      // vs. rewrite the frontend; reshaping is one function, matches
+      // /api/state's own precedent just below, and keeps app.js's contract
+      // stable for the real Flutter app which calls this same path.
+      if (pathname === '/api/vault/sync/status' && req.method === 'GET') {
+        const r = await router.route('onedrive.sync.status', {});
+        if (!r.ok) return sendJson(res, 200, { onedrive: false, status: 'offline', error: r.error || 'vault unreachable' });
+        const lr = r.data && r.data.lastResult;
+        if (!lr) return sendJson(res, 200, { onedrive: true, status: r.data.running ? 'syncing' : 'idle' });
+        const failed = lr.failed || [];
+        if (failed.length > 0) {
+          return sendJson(res, 200, { onedrive: true, status: 'offline', error: `${failed.length} collection(s) failed: ${failed[0].collection} (${failed[0].error || 'unknown error'})` });
+        }
+        return sendJson(res, 200, { onedrive: true, status: 'ok', lastSyncedAt: lr.finishedAt, collectionsSynced: lr.ok.length });
+      }
+
+      if (pathname === '/api/state' && req.method === 'GET') {
+        const [timeR, tasksR, inboxR, ideasR, spacesR, secretsR] = await Promise.all([
+          router.route('time.now', {}),
+          router.route('tasks.list', {}),
+          router.route('vault.read', { params: { collection: 'scope/inbox.tsv' } }),
+          router.route('ideas.list', {}),
+          router.route('vault.read', { params: { collection: 'space/spaces.tsv' } }),
+          router.route('secrets.status', {}),
+        ]);
+        const inboxRows = inboxR.ok ? (inboxR.data.rows || []) : [];
+        return sendJson(res, 200, {
+          time: timeR.ok ? timeR.data : null,
+          tasks: tasksR.ok ? (tasksR.data.tasks || []) : [],
+          inbox_count: inboxRows.filter(i => i.STATUS === 'new').length,
+          ideas_count: ideasR.ok ? (ideasR.data.ideas || []).length : 0,
+          spaces: spacesR.ok ? (spacesR.data.rows || []) : [],
+          services: shapeServices(secretsR.ok ? (secretsR.data.keys || []) : []),
+          feed: inboxRows.slice().reverse(),
+        });
+      }
+
       if (pathname === '/engines' && req.method === 'GET') {
         return sendJson(res, 200, { engines: await registry.healthAll() });
       }
@@ -239,41 +341,19 @@ async function main() {
         const route = findRoute(req.method, pathname);
         if (!route) return sendJson(res, 404, { error: 'Not Found' });
 
-        if (route.gap) {
-          return sendJson(res, 501, { error: 'Not implemented -- this route has no working backend today, on the legacy monolith or any new engine (pre-existing gap, not a migration regression).' });
-        }
-
-        // Raw byte passthrough -- for a body that must not be JSON-encoded/
-        // decoded (a file upload, a downloaded artefact). Branches BEFORE
-        // readBody() below, which would otherwise consume the request
-        // stream as text and make it unavailable to stream onward.
-        if (route.rawProxy) {
-          if (!legacy) return sendJson(res, 502, { error: 'Legacy backend not configured on this hub (LEGACY_API_URL unset)' });
-          const qsRaw = url.search; // already includes the leading '?', or ''
-          const upstream = await legacy.rawStream(req.method, pathname + qsRaw, {
-            reqStream: (req.method === 'POST' || req.method === 'PUT') ? req : undefined,
-            headers: req.headers['content-type'] ? { 'content-type': req.headers['content-type'] } : {},
-          });
-          const outHeaders = {};
-          for (const [k, v] of upstream.headers) {
-            if (!['content-encoding', 'transfer-encoding', 'connection'].includes(k.toLowerCase())) outHeaders[k] = v;
-          }
-          res.writeHead(upstream.status, outHeaders);
-          if (upstream.body) Readable.fromWeb(upstream.body).pipe(res);
-          else res.end();
-          return;
+        // route.gap: pre-existing, never had a backend anywhere.
+        // route.rawProxy / route.legacy: USED to proxy to the retired legacy
+        // monolith (deleted 2026-08-15) -- hub is self-contained now, so
+        // these fail the same clean way rather than reaching for a client
+        // that no longer exists. Migrate the route to a real engine to
+        // bring the feature back; don't reintroduce a legacy proxy here.
+        if (route.gap || route.rawProxy || route.legacy) {
+          return sendJson(res, 501, { error: 'Not implemented -- no engine serves this route yet (legacy monolith retired 2026-08-15).' });
         }
 
         const bodyText = await readBody(req);
         const body = bodyText ? JSON.parse(bodyText) : undefined;
         const query = Object.fromEntries(url.searchParams);
-
-        if (route.legacy) {
-          if (!legacy) return sendJson(res, 502, { error: 'Legacy backend not configured on this hub (LEGACY_API_URL unset)' });
-          const qs = new URLSearchParams(query).toString();
-          const r = await legacy.raw(req.method, pathname + (qs ? `?${qs}` : ''), body);
-          return sendJson(res, r.status, r.data);
-        }
 
         // route.capability: reshape query -> params per paramFromQuery, then route deterministically.
         let params;

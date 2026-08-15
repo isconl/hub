@@ -8,6 +8,8 @@
 # Secrets: BWS_ACCESS_TOKEN/BWS_ORGANIZATION_ID/BWS_API_URL/BWS_IDENTITY_URL
 # must already be in the environment -- each engine pulls its own tokens
 # from Bitwarden Secrets Manager at boot (lib/secrets.js), same as compose.
+# BWS_PROJECT_ID too if you want write-back to work (vault's PIN reset,
+# OAuth token rotation) -- read-only secret pulls work without it.
 #
 # Usage: ./scripts/dev-local.sh [start|stop|status]
 
@@ -44,20 +46,12 @@ start_one() {
     export SCOPE_URL="http://127.0.0.1:8083"
     export CIRCLE_URL="http://127.0.0.1:8084"
     export SPARK_URL="http://127.0.0.1:8085"
-    # legacy monolith swapped onto :8080 (hub now on :8888) -- see BUILDLOG
-    export LEGACY_API_URL="${LEGACY_API_URL:-http://127.0.0.1:8080}"
-    # career/** (org.yaml, doctrine, power map, decision log, risk
-    # register) and the DIA profiles under circle/dia/ only exist in the
-    # legacy monolith's memory/ tree today -- the fleet checkout's own
-    # circle/memory/ was never seeded. Point circle's LOCAL_DIR at the
-    # real data rather than a directory that doesn't exist, so
-    # career.js's load() (and the /career route, /dia, /analysis) return
-    # real content instead of silently empty ones. Move career/circle
-    # data into the fleet checkout properly is future work -- this is the
-    # correct pointer until then, not a permanent arrangement.
-    if [ "$name" = "circle" ]; then
-      export CIRCLE_LOCAL_DIR="${CIRCLE_LOCAL_DIR:-$ROOT/../legacy/memory}"
-    fi
+    # The legacy monolith (Sconl/isconl-agent) is retired -- deleted locally
+    # 2026-08-15, no longer deployed anywhere. hub is self-contained: no
+    # LEGACY_API_URL, no fallback to its memory/ tree. career/** and
+    # circle/dia/ content that used to come from there is empty until
+    # circle/memory/ is seeded natively -- a real gap, not silently papered
+    # over with a pointer to a directory that no longer exists.
     # OneDrive sync loop (vault only) -- off by default in server.js itself
     # (the test suite calls main() with no real Graph credentials), so the
     # real running instance needs this set explicitly. 15 min: frequent
