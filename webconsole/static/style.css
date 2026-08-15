@@ -4709,6 +4709,9 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 }
 
 .day-card { padding-bottom:0.9rem; }
+.day-card .card-sub {
+  font-size:0.78rem; color:var(--text-2); margin:-0.1rem 0 0.7rem; line-height:1.4;
+}
 .day-rail {
   position:relative; height:18px; margin:0.3rem 0 0.85rem;
   overflow:visible;                 /* the marker + tooltip float clear of the strip */

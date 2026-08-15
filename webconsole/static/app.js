@@ -590,6 +590,49 @@ function themePhrase(ctx) {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
+/**
+ * Funny, rotating subheader under the day-card's "My Day" title -- distinct
+ * pool from wittyCycleLine() (that one's about the cycle/sprint/year; this
+ * one's about the DAY itself: blocks, the clock, capacity). Same 30-minute
+ * slot seed as the others so it moves several times a day, not just on
+ * reload (16 Aug: "rotates, or updates with every session even multiple
+ * times a day"). Different salt so it never lines up with the sidebar copy.
+ */
+function dayCardWittyLine(ctx) {
+  const now = new Date();
+  const slotKey = now.toISOString().slice(0, 13) + '-' + Math.floor(now.getMinutes() / 30);
+  let h = 0;
+  for (let i = 0; i < slotKey.length; i++) h = ((h * 31) + slotKey.charCodeAt(i)) >>> 0;
+  h = (h + 4271) >>> 0; // salt, keeps this out of sync with wittyCycleLine()'s picks
+  const hour = now.getHours();
+
+  const early = [
+    'The day is still mostly theoretical at this hour.',
+    'Technically today. Practically still last night with better lighting.',
+    'Early enough that the blocks below are still just suggestions.',
+  ];
+  const late = [
+    'Whatever this is, it counts against tomorrow\'s energy budget.',
+    'The day is basically over; it just hasn\'t told the clock yet.',
+    'Rest block or not, this hour votes for the couch.',
+  ];
+  const generic = [
+    'The blocks below are a plan. The day has other ideas, mostly.',
+    'Every slot here looked very reasonable at 8am.',
+    'Today\'s schedule: optimistic. Today\'s outcome: pending.',
+    'One block at a time - the day does not do bulk discounts.',
+    'The rail below is honest about the clock in a way you rarely are.',
+    'A day is just 48 half-hours wearing a trench coat.',
+    'The now-marker moves whether or not you do.',
+    'This block, then the next one - the day has no other plans for you.',
+    'Somewhere in these blocks is a version of today that goes well.',
+  ];
+  const pick = (arr) => arr[h % arr.length];
+  if (hour < 6) return pick(early);
+  if (hour >= 22) return pick(late);
+  return pick(generic);
+}
+
 let THEME_DAY_OVERRIDE = null;
 async function fetchThemeDay() {
   try {
@@ -622,6 +665,8 @@ function renderEqHeader() {
   if (sidebarCopyEl) {
     sidebarCopyEl.innerHTML = escHtml(wittyCycleLine(ctx)).replace(/\n/g, '<br/>');
   }
+  const daySubEl = document.getElementById('day-card-sub');
+  if (daySubEl) daySubEl.textContent = dayCardWittyLine(ctx);
 
   const meters = document.getElementById('eq-meters');
   if (!meters) return;
@@ -7159,9 +7204,10 @@ function renderDayBlocks() {
   return `
     <div class="card day-card">
       <div class="card-header">
-        <span class="card-title">The day</span>
+        <span class="card-title">My Day</span>
         <span class="card-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</span>
       </div>
+      <div class="card-sub" id="day-card-sub">${escHtml(dayCardWittyLine(getEquicycleContext()))}</div>
       <div class="day-rail day-rail-24" id="day-rail">
         <div class="day-rail-strip">
           ${railPieces.join('')}
