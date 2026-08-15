@@ -8,6 +8,7 @@
  */
 
 const http = require('http');
+const { Readable } = require('stream');
 const secretStore = require('../lib/secrets');
 const { createAuditLog } = require('../lib/audit');
 const { createEngineClient } = require('../lib/engine-client');
@@ -240,6 +241,27 @@ async function main() {
 
         if (route.gap) {
           return sendJson(res, 501, { error: 'Not implemented -- this route has no working backend today, on the legacy monolith or any new engine (pre-existing gap, not a migration regression).' });
+        }
+
+        // Raw byte passthrough -- for a body that must not be JSON-encoded/
+        // decoded (a file upload, a downloaded artefact). Branches BEFORE
+        // readBody() below, which would otherwise consume the request
+        // stream as text and make it unavailable to stream onward.
+        if (route.rawProxy) {
+          if (!legacy) return sendJson(res, 502, { error: 'Legacy backend not configured on this hub (LEGACY_API_URL unset)' });
+          const qsRaw = url.search; // already includes the leading '?', or ''
+          const upstream = await legacy.rawStream(req.method, pathname + qsRaw, {
+            reqStream: (req.method === 'POST' || req.method === 'PUT') ? req : undefined,
+            headers: req.headers['content-type'] ? { 'content-type': req.headers['content-type'] } : {},
+          });
+          const outHeaders = {};
+          for (const [k, v] of upstream.headers) {
+            if (!['content-encoding', 'transfer-encoding', 'connection'].includes(k.toLowerCase())) outHeaders[k] = v;
+          }
+          res.writeHead(upstream.status, outHeaders);
+          if (upstream.body) Readable.fromWeb(upstream.body).pipe(res);
+          else res.end();
+          return;
         }
 
         const bodyText = await readBody(req);

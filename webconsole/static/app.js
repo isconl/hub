@@ -33,6 +33,14 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 const _rawFetch = window.fetch.bind(window);
+// A single /api/state 404 used to re-show the login gate immediately - but
+// hub/legacy restart often during active development (and this machine runs
+// several backend processes that get bounced independently), so a request
+// landing in that brief window looks IDENTICAL to "the token is wrong" from
+// here. Requiring two 404s in a row before re-gating absorbs that noise
+// without weakening the real case (an actually-revoked token keeps 404ing
+// every time, so it still re-gates within one polling cycle).
+let _state404Streak = 0;
 window.fetch = function (input, init = {}) {
   const url = typeof input === 'string' ? input : (input && input.url) || '';
   const isApi = url.startsWith('/api') || url.startsWith('/health');
@@ -43,8 +51,14 @@ window.fetch = function (input, init = {}) {
   if (token && !headers.has('Authorization')) headers.set('Authorization', 'Bearer ' + token);
 
   return _rawFetch(input, { ...init, headers }).then(r => {
-    // A 404 on an API route we know exists means the token is missing or wrong.
-    if (r.status === 404 && token && url.startsWith('/api/state')) showTokenGate(true);
+    if (url.startsWith('/api/state')) {
+      if (r.status === 404 && token) {
+        _state404Streak++;
+        if (_state404Streak >= 2) showTokenGate(true);
+      } else {
+        _state404Streak = 0;
+      }
+    }
     return r;
   });
 };
@@ -11821,6 +11835,7 @@ async function fetchInsights() {
       if (data.insights) SPACE_INSIGHTS = { ...SPACE_INSIGHTS, ...data.insights };
     }
   } catch {}
+  repaintView(currentView);
 }
 
 function renderSpaceInsight(space) {
@@ -13902,6 +13917,10 @@ async function init() {
   fetchGhSnapshot();          // not awaited -- see the comment above these
   fetchJiraIssues();          // three definitions. First paint no longer
   fetchCalendarEvents();      // waits ~13-15s on GitHub/Jira/calendar.
+  // Was NEVER called at all (not a first-paint-speed omission like the three
+  // above) -- SPACE_INSIGHTS' hardcoded placeholders, including "Today in
+  // History" stuck on 1 August, had nothing that would ever overwrite them.
+  fetchInsights();
   await fetchRefs();          // so D-024 reads as itself from the first paint
   await syncClock();          // the agent is the clock authority, not this device
   await fetchDay();           // block definitions, so the trusted clock has a day to count against
