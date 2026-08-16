@@ -6,6 +6,57 @@
  */
 'use strict';
 
+// ── MONOCHROME ICON SYSTEM ──────────────────────────────────────────────────
+// Unified SVG icon library ensuring crisp, consistent monochrome styling across
+// all cards, buttons, badges, and modals. Stroke 1.75, 24x24 viewBox.
+const SVG_ICONS = {
+  search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  import: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  export: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  refresh: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  mail: '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+  message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  file: '<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>',
+  tag: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  briefcase: '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+  chevronDown: '<polyline points="6 9 12 15 18 9"/>',
+  chevronRight: '<polyline points="9 18 15 12 9 6"/>',
+  chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
+  arrowRight: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+  arrowLeft: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  alert: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+  layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+  grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
+  list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  audio: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>'
+};
+
+function svgIcon(name, size=15, cls='', extra='') {
+  const content = SVG_ICONS[name] || SVG_ICONS.info;
+  const c = cls ? ` ${cls}` : '';
+  const e = extra ? ` ${extra}` : '';
+  return `<svg class="svg-ic${c}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"${e}>${content}</svg>`;
+}
+
 // ── AUTHENTICATION ───────────────────────────────────────────────────────────
 // Single-user agent. The API returns 404 (never 401) to anyone without the token,
 // so the client cannot distinguish "wrong token" from "no such service" - that is
@@ -10295,13 +10346,13 @@ function showToast(msg, type='info') {
   if (!c) {
     c = document.createElement('div');
     c.id='toast-container';
-    Object.assign(c.style,{position:'fixed',bottom:'1.5rem',right:'380px',zIndex:'9999',display:'flex',flexDirection:'column',gap:'0.5rem'});
+    Object.assign(c.style,{position:'fixed',bottom:'2rem',right:'1rem',zIndex:'99999',display:'flex',flexDirection:'column-reverse',gap:'0.5rem',pointerEvents:'none'});
     document.body.appendChild(c);
   }
   const colors={success:'var(--green)',error:'var(--red)',info:'var(--cyan)',warn:'var(--amber)'};
   const t = document.createElement('div');
   const isError = type === 'error';
-  Object.assign(t.style,{background:'var(--panel)',border:`1px solid ${colors[type]||colors.info}`,color:'var(--text)',padding:'0.6rem 1rem',borderRadius:'var(--r-md)',fontSize:'0.83rem',boxShadow:'var(--shadow-modal)',maxWidth:'340px',transition:'opacity 0.3s'});
+  Object.assign(t.style,{background:'var(--panel)',border:`1px solid ${colors[type]||colors.info}`,color:'var(--text)',padding:'0.6rem 1rem',borderRadius:'var(--r-md)',fontSize:'0.83rem',boxShadow:'var(--shadow-modal)',maxWidth:'340px',transition:'opacity 0.3s',pointerEvents:'auto'});
 
   if (isError) {
     // Errors don't auto-vanish (a 3.5s timer is not enough time to read,
@@ -12230,10 +12281,10 @@ function renderContacts() {
           <div class="view-head-meta">personal CRM … unified roster with ring classification, touch cadence, and multi-source import</div>
         </div>
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
-          <button class="btn btn-primary" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('add')">+ Add Contact</button>
-          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('import')">⬇ Import</button>
-          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsExportCSV()">⬆ Export CSV</button>
-          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="fetchCircle();repaintView('contacts')">↻ Refresh</button>
+          <button class="btn btn-primary" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('add')">${svgIcon('plus', 13)} Add Contact</button>
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('import')">${svgIcon('import', 13)} Import</button>
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsExportCSV()">${svgIcon('export', 13)} Export CSV</button>
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="fetchCircle();repaintView('contacts')">${svgIcon('refresh', 13)} Refresh</button>
         </div>
       </div>
     </div>
@@ -12253,7 +12304,7 @@ function renderContacts() {
           <button class="contacts-filter-btn${contactsFilter === 'family' ? ' active' : ''}" onclick="contactsSetFilter('family')">Family (${people.filter(p => p.CIRCLE === 'family').length})</button>
           <button class="contacts-filter-btn${contactsFilter === 'social' ? ' active' : ''}" onclick="contactsSetFilter('social')">Social (${people.filter(p => p.CIRCLE === 'social').length})</button>
           <button class="contacts-filter-btn${contactsFilter === 'due' ? ' active' : ''}" onclick="contactsSetFilter('due')">Due Now (${dueCount})</button>
-          <button class="contacts-filter-btn${contactsFilter === 'dia' ? ' active' : ''}" onclick="contactsSetFilter('dia')">DIA Dossier (${people.filter(p => p.hasDia).length})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'dia' ? ' active' : ''}" onclick="contactsSetFilter('dia')">${svgIcon('zap', 12)} DIA Dossier (${people.filter(p => p.hasDia).length})</button>
         </div>
 
         <div style="margin-left:auto;display:flex;align-items:center;gap:0.4rem">
@@ -12295,9 +12346,13 @@ function renderContactsListItems() {
     const dueClass = p.dueIn != null ? (p.dueIn <= 0 ? 'overdue' : (p.dueIn <= 7 ? 'soon' : 'ok')) : '';
     const dueLabel = p.dueIn != null ? (p.dueIn <= 0 ? 'Due now' : `${p.dueIn}d`) : '';
 
+    const avatarHtml = p.AVATAR_URL
+      ? `<div class="contact-avatar ring-${escAttr(ringKey)}" style="padding:0;overflow:hidden"><img src="${escAttr(p.AVATAR_URL)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" alt="${escAttr(p.NAME)}"></div>`
+      : `<div class="contact-avatar ring-${escAttr(ringKey)}">${escHtml(initials)}</div>`;
+
     return `
       <div class="contact-list-item${isSel ? ' selected' : ''}" data-id="${escAttr(p.ID)}" onclick="contactsSelect('${escAttr(p.ID)}')">
-        <div class="contact-avatar ring-${escAttr(ringKey)}">${escHtml(initials)}</div>
+        ${avatarHtml}
         <div class="contact-list-info">
           <div class="contact-list-name">${escHtml(p.NAME)}</div>
           <div class="contact-list-role">${escHtml(p.ROLE !== '-' ? p.ROLE : (p.GROUP !== '-' ? p.GROUP : ringKey))}</div>
@@ -12322,26 +12377,39 @@ function renderContactDetail() {
   const RING_COLOR = { family: '#3fb950', professional: '#58a6ff', social: '#bc8cff' };
   const col = RING_COLOR[ringKey] || '#888';
 
+  const ringCap = (p.CIRCLE || 'social').charAt(0).toUpperCase() + (p.CIRCLE || 'social').slice(1);
+  const folderPath = p.FOLDER_PATH || `Sconl/Circle/${ringCap}/${p.NAME}`;
+
+  const heroAvatarHtml = p.AVATAR_URL
+    ? `<div class="contact-detail-avatar ring-${escAttr(ringKey)}" style="padding:0;overflow:hidden;border-color:${col};position:relative">
+        <img src="${escAttr(p.AVATAR_URL)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" alt="${escAttr(p.NAME)}">
+        <button class="btn btn-ghost" style="position:absolute;bottom:-4px;right:-4px;padding:2px 5px;border-radius:50%;background:var(--panel);font-size:0.65rem" onclick="contactsOpenModal('photo','${escAttr(p.ID)}')" title="Change Photo">${svgIcon('edit', 10)}</button>
+       </div>`
+    : `<div class="contact-detail-avatar ring-${escAttr(ringKey)}" style="background:rgba(255,255,255,0.04);border-color:${col};color:${col};position:relative">
+        ${escHtml(initials)}
+        <button class="btn btn-ghost" style="position:absolute;bottom:-4px;right:-4px;padding:2px 5px;border-radius:50%;background:var(--panel);font-size:0.65rem" onclick="contactsOpenModal('photo','${escAttr(p.ID)}')" title="Set Photo">${svgIcon('plus', 10)}</button>
+       </div>`;
+
   return `
     <div class="contact-detail-hero">
-      <div class="contact-detail-avatar ring-${escAttr(ringKey)}" style="background:rgba(255,255,255,0.04);border-color:${col};color:${col}">
-        ${escHtml(initials)}
-      </div>
+      ${heroAvatarHtml}
       <div class="contact-detail-hero-info">
         <div class="contact-detail-name">
           <span class="ring-dot" style="background:${col};display:inline-block;margin-right:6px"></span>
           ${escHtml(p.NAME)}
         </div>
         <div class="contact-detail-role">${escHtml(p.ROLE !== '-' ? p.ROLE : 'No formal role specified')}</div>
-        <div style="display:flex;gap:0.35rem;margin-top:0.4rem;align-items:center">
+        <div style="display:flex;gap:0.35rem;margin-top:0.4rem;align-items:center;flex-wrap:wrap">
           <span class="contact-tag" style="text-transform:capitalize;border-color:${col};color:${col}">${escHtml(p.CIRCLE || 'social')}</span>
           ${p.GROUP && p.GROUP !== '-' ? `<span class="contact-tag">${escHtml(p.GROUP)}</span>` : ''}
-          ${p.hasDia ? `<span class="contact-tag" style="border-color:var(--cyan);color:var(--cyan)">⚡ DIA Dossier</span>` : ''}
+          ${p.hasDia ? `<span class="contact-tag" style="border-color:var(--cyan);color:var(--cyan)">${svgIcon('zap', 12)} DIA Dossier</span>` : ''}
         </div>
-        <div class="contact-detail-actions">
-          <button class="btn btn-primary" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('touch','${escAttr(p.ID)}')">💬 Log Touch</button>
-          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="circleOpen('${escAttr(p.ID)}')">📄 Full DIA Profile</button>
-          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('edit','${escAttr(p.ID)}')">✏ Edit</button>
+        <div class="contact-detail-actions" style="margin-top:0.6rem;display:flex;gap:0.4rem;flex-wrap:wrap">
+          <button class="btn btn-primary" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('touch','${escAttr(p.ID)}')">${svgIcon('message', 13)} Log Touch</button>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')">${svgIcon('folder', 13)} Open Folder</button>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('photo','${escAttr(p.ID)}')">${svgIcon('eye', 13)} Photo</button>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="circleOpen('${escAttr(p.ID)}')">${svgIcon('file', 13)} DIA Profile</button>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('edit','${escAttr(p.ID)}')">${svgIcon('edit', 13)} Edit</button>
         </div>
       </div>
     </div>
@@ -12375,6 +12443,15 @@ function renderContactDetail() {
             <span class="contact-field-label">Next Due</span>
             <span class="contact-field-value">${p.dueIn != null ? (p.dueIn <= 0 ? '<strong style="color:var(--red)">Due now</strong>' : `In ${p.dueIn} days`) : '<span class="empty">No schedule</span>'}</span>
           </div>
+          <div class="contact-field" style="grid-column:1/-1">
+            <span class="contact-field-label">OneDrive Dossier Folder</span>
+            <span class="contact-field-value" style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
+              <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--cyan);word-break:break-all">${escHtml(folderPath)}</span>
+              <button class="btn btn-ghost" style="padding:2px 8px;font-size:0.7rem;flex-shrink:0" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')">
+                ${svgIcon('external', 11)} Open in Files
+              </button>
+            </span>
+          </div>
         </div>
       </div>
 
@@ -12384,7 +12461,7 @@ function renderContactDetail() {
         <div style="display:flex;flex-direction:column;gap:0.4rem">
           <textarea id="contacts-remember-box" class="jira-input" rows="3" style="width:100%;font-size:0.8rem;line-height:1.45"
                     placeholder="Standing context, preferences, conversational boundaries, or things to remember...">${escHtml(p.REMEMBER || p.NOTES || '')}</textarea>
-          <button class="btn btn-ghost" style="align-self:flex-start;font-size:0.72rem;padding:3px 9px" onclick="contactsSaveRemember('${escAttr(p.ID)}')">Save Notes</button>
+          <button class="btn btn-ghost" style="align-self:flex-start;font-size:0.72rem;padding:3px 9px" onclick="contactsSaveRemember('${escAttr(p.ID)}')">${svgIcon('check', 12)} Save Notes</button>
         </div>
       </div>
 
@@ -12406,6 +12483,20 @@ function renderContactDetail() {
         </div>
       </div>
     </div>`;
+}
+
+function contactsOpenPersonFolder(folderPath) {
+  navigate('files');
+  setTimeout(async () => {
+    try {
+      if (typeof fmNavigate === 'function') {
+        await fmNavigate(folderPath, folderPath.split('/').pop());
+        showToast(`Navigated to ${folderPath}`, 'info');
+      }
+    } catch (e) {
+      showToast(`Could not open folder: ${e.message}`, 'error');
+    }
+  }, 120);
 }
 
 function contactsOpenModal(type, id = null) {
@@ -12433,7 +12524,7 @@ function renderContactsModal() {
         <div class="modal-box" style="max-width:520px">
           <div class="modal-header">
             <span class="modal-title">${isAdd ? 'Add New Contact' : 'Edit Contact'}</span>
-            <button class="btn btn-ghost" onclick="contactsCloseModal()">✕</button>
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">${svgIcon('x', 14)}</button>
           </div>
           <div class="modal-body" style="display:flex;flex-direction:column;gap:0.8rem">
             <div>
@@ -12487,7 +12578,7 @@ function renderContactsModal() {
         <div class="modal-box" style="max-width:480px">
           <div class="modal-header">
             <span class="modal-title">Log Interaction · ${escHtml(p?.NAME || '')}</span>
-            <button class="btn btn-ghost" onclick="contactsCloseModal()">✕</button>
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">${svgIcon('x', 14)}</button>
           </div>
           <div class="modal-body" style="display:flex;flex-direction:column;gap:0.8rem">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
@@ -12524,28 +12615,67 @@ function renderContactsModal() {
       </div>`;
   }
 
+  if (type === 'photo') {
+    const ringCap = (p?.CIRCLE || 'social').charAt(0).toUpperCase() + (p?.CIRCLE || 'social').slice(1);
+    const folderPath = p?.FOLDER_PATH || `Sconl/Circle/${ringCap}/${p?.NAME}`;
+    return `
+      <div class="modal-overlay" onclick="if(event.target===this)contactsCloseModal()">
+        <div class="modal-box" style="max-width:480px">
+          <div class="modal-header">
+            <span class="modal-title">Profile Photo · ${escHtml(p?.NAME || '')}</span>
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">${svgIcon('x', 14)}</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:0.9rem">
+            <div style="display:flex;align-items:center;gap:1rem">
+              <div id="photo-preview-avatar" class="contact-detail-avatar" style="width:72px;height:72px;border-radius:50%;overflow:hidden;background:var(--bg-raised);display:flex;align-items:center;justify-content:center;border:2px solid var(--border)">
+                ${p?.AVATAR_URL ? `<img src="${escAttr(p.AVATAR_URL)}" style="width:100%;height:100%;object-fit:cover" alt="Preview">` : `<span style="font-size:1.5rem;color:var(--text-3)">${escHtml((p?.NAME || '??').slice(0, 2).toUpperCase())}</span>`}
+              </div>
+              <div style="flex:1">
+                <div style="font-size:0.8rem;font-weight:600;color:var(--text)">Dossier Folder:</div>
+                <div style="font-size:0.72rem;font-family:var(--font-mono);color:var(--cyan);word-break:break-all">${escHtml(folderPath)}</div>
+              </div>
+            </div>
+
+            <div>
+              <label class="contact-field-label">Option 1: Upload from local device (saved to OneDrive)</label>
+              <input type="file" id="contact-photo-file" accept="image/*" class="jira-input" style="width:100%;padding:0.35rem" onchange="contactsPreviewPhotoFile(this)">
+            </div>
+
+            <div>
+              <label class="contact-field-label">Option 2: Image URL or OneDrive Path</label>
+              <input id="contact-photo-url" class="jira-input" style="width:100%" placeholder="https://... or Sconl/Circle/.../photo.jpg" value="${escAttr(p?.AVATAR_URL || '')}" oninput="contactsPreviewPhotoUrl(this.value)">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="contactsSavePhoto('${escAttr(p?.ID || '')}')">${svgIcon('check', 13)} Save Profile Photo</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
   if (type === 'import') {
     return `
       <div class="modal-overlay" onclick="if(event.target===this)contactsCloseModal()">
         <div class="modal-box" style="max-width:680px">
           <div class="modal-header">
             <span class="modal-title">Import Contacts (Google Contacts / CRM / CSV)</span>
-            <button class="btn btn-ghost" onclick="contactsCloseModal()">✕</button>
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">${svgIcon('x', 14)}</button>
           </div>
           <div class="modal-body" style="display:flex;flex-direction:column;gap:0.9rem">
             <div class="contact-import-methods">
               <div class="contact-import-method" onclick="document.getElementById('import-file-input').click()">
-                <div class="contact-import-method-icon">📁</div>
+                <div class="contact-import-method-icon">${svgIcon('file', 24)}</div>
                 <div class="contact-import-method-name">Google Contacts CSV / vCard</div>
                 <div class="contact-import-method-desc">Upload exported .csv or .vcf file from Google Contacts</div>
               </div>
               <div class="contact-import-method" onclick="document.getElementById('import-file-input').click()">
-                <div class="contact-import-method-icon">💼</div>
+                <div class="contact-import-method-icon">${svgIcon('briefcase', 24)}</div>
                 <div class="contact-import-method-name">Standard CRM Export</div>
                 <div class="contact-import-method-desc">HubSpot, Salesforce, Notion, or generic CSV</div>
               </div>
               <div class="contact-import-method" onclick="document.getElementById('import-paste-area').focus()">
-                <div class="contact-import-method-icon">📋</div>
+                <div class="contact-import-method-icon">${svgIcon('copy', 24)}</div>
                 <div class="contact-import-method-name">Paste Raw CSV / JSON</div>
                 <div class="contact-import-method-desc">Paste comma or tab-separated text directly</div>
               </div>
@@ -12832,6 +12962,55 @@ function contactsExportCSV() {
   a.click();
   document.body.removeChild(a);
   showToast('Contacts exported to CSV', 'success');
+}
+
+let contactPendingAvatarData = null;
+
+function contactsPreviewPhotoFile(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    contactPendingAvatarData = e.target?.result;
+    const previewEl = document.getElementById('photo-preview-avatar');
+    if (previewEl && contactPendingAvatarData) {
+      previewEl.innerHTML = `<img src="${contactPendingAvatarData}" style="width:100%;height:100%;object-fit:cover" alt="Preview">`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function contactsPreviewPhotoUrl(url) {
+  contactPendingAvatarData = url ? url.trim() : null;
+  const previewEl = document.getElementById('photo-preview-avatar');
+  if (previewEl && contactPendingAvatarData) {
+    previewEl.innerHTML = `<img src="${contactPendingAvatarData}" style="width:100%;height:100%;object-fit:cover" alt="Preview">`;
+  }
+}
+
+async function contactsSavePhoto(personId) {
+  const photoUrl = contactPendingAvatarData || document.getElementById('contact-photo-url')?.value.trim();
+  if (!photoUrl) { showToast('Please select or enter a photo', 'error'); return; }
+
+  try {
+    const res = await (await fetch('/api/circle/person', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: personId, avatarUrl: photoUrl })
+    })).json();
+
+    if (res.success || res.ok) {
+      showToast('Profile photo updated', 'success');
+      contactPendingAvatarData = null;
+      contactsCloseModal();
+      await fetchCircle();
+      repaintView('contacts');
+    } else {
+      showToast(res.error || 'Failed to save photo', 'error');
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
 }
 
 // ── LEARNING ─────────────────────────────────────────────────────────────────
@@ -13229,7 +13408,7 @@ function renderCampus(resumeBanner) {
           ${i.headline ? `<div class="campus-item-headline">${escHtml(i.headline)}</div>` : ''}
           ${i.why ? `<div class="campus-item-why">${escHtml(i.why)}</div>` : ''}
         </div>
-        <div class="campus-item-go" aria-hidden="true">→</div>
+        <div class="campus-item-go" aria-hidden="true">${svgIcon('arrowRight', 12)}</div>
       </div>`;
   };
 
@@ -13254,7 +13433,7 @@ function renderCampus(resumeBanner) {
           ${c.computed
             ? `<span class="campus-stale" title="No standing advice is set - this is the computed next step">computed</span>`
             : (c.updatedAt ? `<span class="campus-when">advice set ${escHtml(fmtWhen(c.updatedAt, { rel: true }))}</span>` : '')}
-          <span class="campus-chev">${campusOpen ? '▾' : '▸'}</span>
+          <span class="campus-chev">${svgIcon(campusOpen ? 'chevronDown' : 'chevronRight', 14)}</span>
         </div>
       </div>
       ${campusOpen ? `
@@ -13277,25 +13456,30 @@ function learnRelBadge(rel, note = '') {
               : r === 'evergreen' ? 'Evergreen'
               : r === 'archived' ? 'Archived'
               : 'Relevant';
-  const icon = r === 'period-specific' ? '⏳'
-             : r === 'outdated' ? '⚠️'
-             : r === 'evergreen' ? '🌲'
-             : r === 'archived' ? '🗄️'
-             : '✓';
-  return `<span class="learn-rel-pill rel-${escAttr(r)}" title="${escAttr(note || label)}">${icon} ${escHtml(label)}</span>`;
+  const ic = r === 'period-specific' ? svgIcon('clock', 11)
+           : r === 'outdated' ? svgIcon('alert', 11)
+           : r === 'evergreen' ? svgIcon('shield', 11)
+           : r === 'archived' ? svgIcon('folder', 11)
+           : svgIcon('check', 11);
+  return `<span class="learn-rel-pill rel-${escAttr(r)}" title="${escAttr(note || label)}">${ic} ${escHtml(label)}</span>`;
 }
 
 function renderLearnGroupCard(g) {
   const isArchived = g.status === 'archived';
+  const groupIcon = g.id === 'inside-the-engagement' ? svgIcon('briefcase', 18)
+                  : g.id === 'platform-and-systems' ? svgIcon('layers', 18)
+                  : g.id === 'business-and-market' ? svgIcon('shield', 18)
+                  : g.id === 'money-that-compounds' ? svgIcon('zap', 18)
+                  : svgIcon('users', 18);
   return `
     <div class="learn-group-card${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
       <div class="learn-group-top">
-        <div class="learn-group-icon">${escHtml(g.icon || '📚')}</div>
+        <div class="learn-group-icon">${groupIcon}</div>
         <div style="flex:1;min-width:0">
           <div class="learn-group-title">${escHtml(g.label)}</div>
           ${isArchived ? `<span class="learn-rel-pill rel-archived" style="margin-top:2px">Archived</span>` : ''}
         </div>
-        <button class="lesson-gear-btn" onclick="event.stopPropagation();learnShowGroupModal('${escAttr(g.id)}')" title="Manage this classification">⚙</button>
+        <button class="lesson-gear-btn" onclick="event.stopPropagation();learnShowGroupModal('${escAttr(g.id)}')" title="Manage this classification">${svgIcon('settings', 13)}</button>
       </div>
       <div class="learn-group-desc">${escHtml(g.description || '')}</div>
       <div class="fin-goal-bar"><div style="width:${g.progressPct || 0}%;background:${escAttr(g.color || '#3b82f6')}"></div></div>
@@ -13305,7 +13489,7 @@ function renderLearnGroupCard(g) {
       </div>
       <div class="learn-group-footer">
         <span class="card-meta">Track ${escHtml(g.sortOrder || '')}</span>
-        <span class="explore-link">Explore Track →</span>
+        <span class="explore-link">Explore Track ${svgIcon('arrowRight', 12)}</span>
       </div>
     </div>`;
 }
@@ -13320,7 +13504,7 @@ function renderLearnCourseCard(c) {
     <div class="circle-card${isArchived ? ' is-archived' : ''}" onclick="learnCourseOpen='${escHtml(c.ID)}';repaintView('learning')">
       <div class="circle-name" style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem">
         <span>${escHtml(c.TITLE)}</span>
-        <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.6rem" onclick="event.stopPropagation();learnShowCourseModal('${escAttr(c.ID)}')" title="Course settings">⚙</button>
+        <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.6rem" onclick="event.stopPropagation();learnShowCourseModal('${escAttr(c.ID)}')" title="Course settings">${svgIcon('settings', 12)}</button>
       </div>
       ${c.LEVEL && c.LEVEL !== '-' ? `<span class="learn-level" title="Course progression level">${escHtml(c.LEVEL.replace(/-/g, ' '))}</span>` : ''}
       ${c.SUBTITLE && c.SUBTITLE !== '-' ? `<div class="circle-role">${escHtml(c.SUBTITLE)}</div>` : ''}

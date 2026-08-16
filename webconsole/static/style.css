@@ -61,6 +61,33 @@ body {
 button { font-family:inherit; cursor:pointer; }
 input,textarea { font-family:inherit; }
 
+/* ── UNIVERSAL MINIMAL ELEGANT SCROLLBARS ──
+   Thin, unobtrusive translucent scrollbars across the whole UI.
+   Track is invisible; thumb is subtle translucent border tint that gently
+   deepens on hover. Prevents jarring OS scrollbars everywhere. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 133, 144, 0.28) transparent;
+}
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(125, 133, 144, 0.25);
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(125, 133, 144, 0.48);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Every dropdown in the console, dressed once at the element level: no OS gray
    widget survives anywhere. Classed selects (task-select, jira-input, settings,
    modals) refine size and weight on top of this; unclassed ones still belong. */
@@ -171,6 +198,13 @@ select option { background:var(--panel); color:var(--text); }
   transition:opacity 0.15s, transform 0.15s, color 0.15s;
   stroke-linecap:round; stroke-linejoin:round;
 }
+.svg-ic {
+  display:inline-block; vertical-align:-0.15em;
+  stroke:currentColor; stroke-width:1.75;
+  stroke-linecap:round; stroke-linejoin:round;
+  flex-shrink:0;
+}
+.btn .svg-ic { margin-right:0.35rem; }
 .nav-item {
   display:flex; align-items:center; gap:0.55rem;
   background:transparent; border:none; border-left:2px solid transparent; border-radius:0 var(--r-md) var(--r-md) 0;
@@ -1925,9 +1959,9 @@ button.task-cb { padding:0; margin-top:4px; background:transparent; }
    clear of the toast stack (bottom-right) and the sidebar's own controls
    (which stop well above this height). */
 .vault-banner {
-  position:fixed; right:1.1rem; bottom:4.8rem; z-index:9998;
+  position:fixed; right:1rem; bottom:2rem; z-index:99998;
   display:flex; align-items:flex-start; gap:0.55rem;
-  max-width:310px;
+  max-width:320px;
   background:var(--panel); border:1px solid var(--red-dim, var(--red));
   border-radius:var(--r-md); box-shadow:var(--shadow-modal, 0 8px 24px rgba(0,0,0,0.45));
   color:var(--text); font-size:0.76rem; line-height:1.5;

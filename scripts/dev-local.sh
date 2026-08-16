@@ -36,8 +36,9 @@ SERVICES=(
   "pulse:8082:pulse"
   "scope:8083:scope"
   "circle:8084:circle"
-  "spark:8085:spark"
-  "hub:8888:hub"
+  "spark:8085:spark",
+  "hub:8888:hub",
+  "tts:5001:vault/scripts/tts_service.py"
 )
 
 start_one() {
@@ -48,29 +49,25 @@ start_one() {
     return
   fi
   (
-    cd "$ROOT/$dir"
-    export "$(echo "${name^^}")_BIND"=127.0.0.1
-    export "$(echo "${name^^}")_PORT"="$port"
-    export VAULT_URL="http://127.0.0.1:8081"
-    export PULSE_URL="http://127.0.0.1:8082"
-    export SCOPE_URL="http://127.0.0.1:8083"
-    export CIRCLE_URL="http://127.0.0.1:8084"
-    export SPARK_URL="http://127.0.0.1:8085"
-    # The legacy monolith (Sconl/isconl-agent) is retired -- deleted locally
-    # 2026-08-15, no longer deployed anywhere. hub is self-contained: no
-    # LEGACY_API_URL, no fallback to its memory/ tree. career/** and
-    # circle/dia/ content that used to come from there is empty until
-    # circle/memory/ is seeded natively -- a real gap, not silently papered
-    # over with a pointer to a directory that no longer exists.
-    # OneDrive sync loop (vault only) -- off by default in server.js itself
-    # (the test suite calls main() with no real Graph credentials), so the
-    # real running instance needs this set explicitly. 15 min: frequent
-    # enough that an OneDrive edit shows up same-session, gentle enough not
-    # to hammer Graph's throttling across ~35 collections every pass.
-    if [ "$name" = "vault" ]; then
-      export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
+    if [ "$name" = "tts" ]; then
+      cd "$ROOT/vault"
+      export TTS_BIND=127.0.0.1
+      export TTS_PORT="$port"
+      nohup python3 "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+    else
+      cd "$ROOT/$dir"
+      export "$(echo "${name^^}")_BIND"=127.0.0.1
+      export "$(echo "${name^^}")_PORT"="$port"
+      export VAULT_URL="http://127.0.0.1:8081"
+      export PULSE_URL="http://127.0.0.1:8082"
+      export SCOPE_URL="http://127.0.0.1:8083"
+      export CIRCLE_URL="http://127.0.0.1:8084"
+      export SPARK_URL="http://127.0.0.1:8085"
+      if [ "$name" = "vault" ]; then
+        export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
+      fi
+      nohup node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
     fi
-    nohup node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
     local p=$!
     disown "$p" 2>/dev/null || true
     echo "$p" > "$pidfile"
