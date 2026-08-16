@@ -222,12 +222,13 @@ select option { background:var(--panel); color:var(--text); }
 .eq-cycle { font-size:0.76rem; color:var(--text-3); margin-top:3px; }
 /* Text-transform lives on the word span, not the shared .eq-theme rule --
    "CLIMB: pace before you push" needs CLIMB uppercase and the phrase in
-   its own natural case (already Sentence-case from themePhrase()'s JS),
-   and a shared uppercase would force both. Both spans stay bold + green
-   (his ask, 16 Aug: "maintain the green, preferably all of it bold"). */
+   its own natural case (already Sentence-case from themePhrase()'s JS).
+   The word stays green (brand accent); the phrase after the colon uses the
+   brand grey (#7d8590 = --text-3, the ring colour in the iSconl brandmark) --
+   a two-tone read: theme keyword punchy, elaboration quiet. */
 .eq-theme { color:var(--green); font-weight:600; letter-spacing:0.04em; font-size:0.68rem; }
 .eq-theme-word { text-transform:uppercase; letter-spacing:0.08em; }
-.eq-theme-phrase { font-weight:600; }
+.eq-theme-phrase { font-weight:600; color:var(--text-3); }
 
 .eq-meters { display:flex; gap:2.25rem; align-items:flex-start; flex-shrink:1; min-width:0; }
 .eq-meter { width:11.5rem; flex-shrink:1; min-width:5.5rem; cursor:default; }
