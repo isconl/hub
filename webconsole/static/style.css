@@ -1900,20 +1900,28 @@ button.task-cb { padding:0; margin-top:4px; background:transparent; }
    clear of the toast stack (bottom-right) and the sidebar's own controls
    (which stop well above this height). */
 .vault-banner {
-  position:fixed; left:1.1rem; bottom:1.1rem; z-index:9998;
+  position:fixed; right:380px; bottom:1.1rem; z-index:9998;
   display:flex; align-items:flex-start; gap:0.55rem;
-  max-width:22rem;
+  max-width:24rem;
   background:var(--panel); border:1px solid var(--red-dim, var(--red));
   border-radius:var(--r-md); box-shadow:var(--shadow-modal, 0 8px 24px rgba(0,0,0,0.45));
   color:var(--text); font-size:0.76rem; line-height:1.5;
   padding:0.6rem 0.75rem;
   animation:vault-banner-in .25s ease;
+  transition:opacity 0.3s ease;
 }
 @keyframes vault-banner-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 .vault-banner-icon { flex-shrink:0; color:var(--red); font-size:0.95rem; line-height:1; margin-top:1px; }
-.vault-banner-body { min-width:0; }
+.vault-banner-body { flex:1; min-width:0; }
 .vault-banner-link { color:var(--cyan); text-decoration:none; font-weight:600; }
 .vault-banner-link:hover { text-decoration:underline; }
+.vault-banner-actions { display:flex; flex-direction:column; gap:0.25rem; flex-shrink:0; margin-left:0.25rem; }
+.vault-banner-btn {
+  background:transparent; border:1px solid var(--border); color:var(--text-2);
+  border-radius:4px; font-size:0.7rem; padding:0.1rem 0.35rem; cursor:pointer;
+  line-height:1.2;
+}
+.vault-banner-btn:hover { color:var(--text); border-color:var(--border-strong, var(--border)); }
 @media (max-width: 820px) {
   .vault-banner { left:0.7rem; right:0.7rem; max-width:none; bottom:calc(4.6rem + env(safe-area-inset-bottom)); }
 }
@@ -2382,6 +2390,14 @@ button.orient-chip:focus-visible { outline:2px solid var(--green); outline-offse
   --lb-fact-bg: rgba(217,193,92,0.10);
   font-family: var(--lb-serif); font-size:1.04rem; line-height:1.78; color:var(--text);
   max-width:720px; margin:0 auto;
+  /* A long unbroken token (a URL, a Confluence path, an id) inside inline
+     code has no natural wrap point - on a wide screen the 720px column
+     absorbs it, but on a narrower column (a smaller laptop, or this same
+     screen with the chat rail open) it was pushing the whole reading
+     column into a horizontal scrollbar. break-word here is the container-
+     wide backstop; `code`'s own rule below is the one that actually needs
+     it most often. */
+  overflow-wrap: break-word;
 }
 
 /* Callout colour themes, chosen in Settings and applied as a data attribute
@@ -4299,7 +4315,8 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
 .lesson-body h5 { font-family:system-ui,sans-serif; font-size:0.78rem; margin:0.7rem 0 0.2rem; color:var(--text-2);
   text-transform:uppercase; letter-spacing:0.05em; }
 .lesson-body code { background:var(--surface); border:1px solid var(--border);
-  border-radius:3px; padding:0.05em 0.35em; font-family:var(--font-mono); font-size:0.85em; }
+  border-radius:3px; padding:0.05em 0.35em; font-family:var(--font-mono); font-size:0.85em;
+  overflow-wrap:anywhere; word-break:break-word; }
 .lesson-body em { color:var(--text-2); font-style:italic; }
 .lesson-quote { border-left:3px solid var(--border-mid); margin:0.75rem 0;
   padding:0.35rem 0 0.35rem 0.9rem; color:var(--text-2); font-style:italic; }
@@ -4326,8 +4343,15 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
   border:1px solid var(--cyan-dim); border-radius:999px; padding:0px 7px; margin-left:0.35rem; }
 .learn-artifact:hover { background:var(--cyan-bg); }
 
-@media (max-width: 820px) {
-  .lesson-body { font-size:0.97rem; }
+/* @container, not @media - the real constraint on a lesson's reading column
+   is .main-content's own width, not the browser viewport. A wide viewport
+   with the chat rail open narrows the column exactly the same way a
+   physically smaller laptop screen does (same bug class as
+   .day-blocks-window, fixed earlier this session), so viewport-only media
+   queries under-fire on a wide-but-cramped layout and never fire at all in
+   a narrow single-column view where .main-content itself is the viewport. */
+@container (max-width: 820px) {
+  .lesson-body { font-size:0.97rem; max-width:100%; }
   .lesson-table { font-size:0.76rem; }
   .lesson-table th, .lesson-table td { padding:0.4rem 0.5rem; }
   .lesson-table-wrap { border-radius:var(--r-sm); }
@@ -4335,6 +4359,12 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
      itself never does. */
   .learn-lesson-meta { display:none; }
   .learn-lesson.is-open .learn-lesson-meta { display:inline; }
+}
+@container (max-width: 560px) {
+  .lesson-body { font-size:0.91rem; line-height:1.68; }
+  .lesson-objective, .lesson-watch, .lesson-jargon, .lesson-book,
+  .lesson-book-quote, .lesson-research, .lesson-fun-fact { padding:0.55rem 0.7rem; font-size:0.82rem; }
+  .lesson-toolbar .lesson-tool-btn span { display:none; }
 }
 
 /* ── DELIVERY LANE ─────────────────────────────────────────────────────────

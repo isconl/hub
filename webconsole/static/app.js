@@ -743,6 +743,7 @@ async function fetchState() {
  * feature, it is "your work is stranding on someone else's disk". Loud on
  * purpose, first thing after sign-in, gone the moment the link is back.
  */
+let vaultBannerDismissed = false;
 async function checkVaultLink() {
   let bad = null;
   try {
@@ -752,7 +753,7 @@ async function checkVaultLink() {
   } catch { /* server unreachable - the UI has bigger problems than the banner */ }
 
   let el = document.getElementById('vault-link-banner');
-  if (!bad) { if (el) el.remove(); return; }
+  if (!bad || vaultBannerDismissed) { if (el) el.remove(); return; }
   if (!el) {
     el = document.createElement('div');
     el.id = 'vault-link-banner';
@@ -761,7 +762,28 @@ async function checkVaultLink() {
   }
   el.innerHTML = `
     <span class="vault-banner-icon">⚠</span>
-    <span class="vault-banner-body">${escHtml(bad)} <a href="#" class="vault-banner-link" onclick="navigate('settings');return false">Settings →</a></span>`;
+    <span class="vault-banner-body">${escHtml(bad)} <a href="#" class="vault-banner-link" onclick="navigate('settings');return false">Settings →</a></span>
+    <div class="vault-banner-actions">
+      <button type="button" class="vault-banner-btn" title="Copy error message" id="vault-banner-copy">⧉</button>
+      <button type="button" class="vault-banner-btn" title="Dismiss" id="vault-banner-dismiss">✕</button>
+    </div>`;
+  const copyBtn = el.querySelector('#vault-banner-copy');
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      navigator.clipboard?.writeText(bad).then(() => {
+        copyBtn.textContent = '✓';
+        setTimeout(() => copyBtn.textContent = '⧉', 1200);
+      });
+    };
+  }
+  const dismissBtn = el.querySelector('#vault-banner-dismiss');
+  if (dismissBtn) {
+    dismissBtn.onclick = () => {
+      vaultBannerDismissed = true;
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 300);
+    };
+  }
 }
 // These three are proxied through to legacy and each hit a real external API
 // (GitHub, Jira, calendar) - Jira alone was measured at ~11s (it pages every
@@ -10277,10 +10299,40 @@ function showToast(msg, type='info') {
   }
   const colors={success:'var(--green)',error:'var(--red)',info:'var(--cyan)',warn:'var(--amber)'};
   const t = document.createElement('div');
-  Object.assign(t.style,{background:'var(--panel)',border:`1px solid ${colors[type]||colors.info}`,color:'var(--text)',padding:'0.6rem 1rem',borderRadius:'var(--r-md)',fontSize:'0.83rem',boxShadow:'var(--shadow-modal)',maxWidth:'320px',transition:'opacity 0.3s'});
-  t.textContent=msg;
+  const isError = type === 'error';
+  Object.assign(t.style,{background:'var(--panel)',border:`1px solid ${colors[type]||colors.info}`,color:'var(--text)',padding:'0.6rem 1rem',borderRadius:'var(--r-md)',fontSize:'0.83rem',boxShadow:'var(--shadow-modal)',maxWidth:'340px',transition:'opacity 0.3s'});
+
+  if (isError) {
+    // Errors don't auto-vanish (a 3.5s timer is not enough time to read,
+    // let alone act on, a real failure) and carry a copy button - the exact
+    // message is often the fastest way to search for or report the bug,
+    // and retyping it from memory is friction nobody should have to pay.
+    Object.assign(t.style,{display:'flex',alignItems:'flex-start',gap:'0.5rem'});
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = msg;
+    Object.assign(msgSpan.style,{flex:'1',wordBreak:'break-word'});
+    const btnRow = document.createElement('div');
+    Object.assign(btnRow.style,{display:'flex',flexDirection:'column',gap:'0.3rem',flexShrink:'0'});
+    const mkBtn = (label, title) => {
+      const b = document.createElement('button');
+      b.textContent = label; b.title = title;
+      Object.assign(b.style,{background:'transparent',border:'1px solid var(--border)',color:'var(--text-2)',borderRadius:'4px',fontSize:'0.7rem',padding:'0.1rem 0.4rem',cursor:'pointer'});
+      return b;
+    };
+    const copyBtn = mkBtn('⧉', 'Copy error message');
+    copyBtn.onclick = () => {
+      navigator.clipboard?.writeText(msg).then(() => { copyBtn.textContent = '✓'; setTimeout(() => copyBtn.textContent = '⧉', 1200); });
+    };
+    const dismissBtn = mkBtn('✕', 'Dismiss');
+    dismissBtn.onclick = () => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); };
+    btnRow.append(copyBtn, dismissBtn);
+    t.append(msgSpan, btnRow);
+  } else {
+    t.textContent = msg;
+    setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},3500);
+  }
+
   c.appendChild(t);
-  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},3500);
   // Keep Context HUD in sync with any state-changing notification
   try { refreshContextIfActive(); } catch {}
 }
@@ -13191,19 +13243,56 @@ function learnPlainText(md) {
 }
 
 let learnUtterance = null;
-function learnToggleListen() {
+let learnAudioEl = null;
+
+function learnResetListenBtn() {
   const btn = document.getElementById('lesson-listen-btn');
-  if (!('speechSynthesis' in window)) { showToast('This browser has no built-in speech engine', 'error'); return; }
-  if (window.speechSynthesis.speaking) {
-    window.speechSynthesis.cancel(); learnUtterance = null;
-    if (btn) btn.innerHTML = `${LESSON_ICONS.listen}<span>Listen</span>`;
+  if (btn) btn.innerHTML = `${LESSON_ICONS.listen}<span>Listen</span>`;
+}
+
+/** Real narration (ElevenLabs, generated per module - see vault's
+ *  /learning/audio route) plays through an <audio> element when a version
+ *  exists; otherwise falls back to the browser's own speech engine, exactly
+ *  as before. Checked fresh every open rather than cached - a module can
+ *  gain a real narration between one visit and the next. */
+async function learnToggleListen() {
+  const btn = document.getElementById('lesson-listen-btn');
+  if (learnAudioEl && !learnAudioEl.paused) {
+    learnAudioEl.pause();
+    learnResetListenBtn();
     return;
   }
-  const { title } = learnCurrentLessonMeta();
+  if (window.speechSynthesis && window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel(); learnUtterance = null;
+    learnResetListenBtn();
+    return;
+  }
+
+  const { title, course, lesson } = { ...learnCurrentLessonMeta(), course: learnOpen.course, lesson: learnOpen.file };
+  if (btn) btn.innerHTML = `${LESSON_ICONS.pause}<span>Loading…</span>`;
+
+  let real = null;
+  try {
+    const r = await fetch(`/api/learning/audio?course=${encodeURIComponent(course)}&file=${encodeURIComponent(lesson)}`);
+    const d = await r.json();
+    if (d && d.ok) real = d;
+  } catch {}
+
+  if (real && real.url) {
+    if (!learnAudioEl) learnAudioEl = new Audio();
+    learnAudioEl.src = real.url;
+    learnAudioEl.onended = learnResetListenBtn;
+    learnAudioEl.onerror = () => { showToast('Narration audio failed to load', 'error'); learnResetListenBtn(); };
+    if (btn) btn.innerHTML = `${LESSON_ICONS.pause}<span>Stop</span>`;
+    learnAudioEl.play();
+    return;
+  }
+
+  if (!('speechSynthesis' in window)) { showToast('No narration recorded for this module yet, and this browser has no built-in speech engine', 'error'); learnResetListenBtn(); return; }
   const text = learnPlainText(learnOpen.content);
   learnUtterance = new SpeechSynthesisUtterance(`${title}. ${text}`);
   learnUtterance.rate = 1.0;
-  learnUtterance.onend = () => { if (btn) btn.innerHTML = `${LESSON_ICONS.listen}<span>Listen</span>`; };
+  learnUtterance.onend = learnResetListenBtn;
   learnUtterance.onerror = learnUtterance.onend;
   if (btn) btn.innerHTML = `${LESSON_ICONS.pause}<span>Stop</span>`;
   window.speechSynthesis.speak(learnUtterance);
