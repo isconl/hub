@@ -12880,7 +12880,7 @@ function renderLearning() {
     <div class="view-head">
       <div class="learn-header-bar">
         <div>
-          <h1>Learning Space</h1>
+          <h1>Learning</h1>
           <div class="view-head-meta">private classroom … classified tracks, living courses, and verifiable competency</div>
         </div>
         <div class="learn-controls">
