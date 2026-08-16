@@ -12139,6 +12139,10 @@ async function circleDia(id, btn) {
 let LEARN = null;
 let learnOpen = { course: null, file: null, content: '' };
 let learnCourseOpen = null;   // course id when browsing its modules
+let learnGroupOpen = null;    // group id when browsing a specific track
+let learnViewMode = 'groups'; // 'groups' (track cards) | 'flat' (all courses)
+let learnFilter = 'active';   // 'active' | 'all' | 'archived'
+let learnModalState = null;   // active modal for group/course/module
 let learnNote = { text: '', loadedFor: null, savedAt: null, timer: null };
 let learnRestorePct = null;   // scroll depth to restore once the lesson paints
 
@@ -12563,31 +12567,103 @@ function renderCampus(resumeBanner) {
     </div>`;
 }
 
+function learnRelBadge(rel, note = '') {
+  const r = String(rel || 'current').toLowerCase();
+  const label = r === 'period-specific' ? 'Period-specific'
+              : r === 'outdated' ? 'Outdated'
+              : r === 'evergreen' ? 'Evergreen'
+              : r === 'archived' ? 'Archived'
+              : 'Relevant';
+  const icon = r === 'period-specific' ? '⏳'
+             : r === 'outdated' ? '⚠️'
+             : r === 'evergreen' ? '🌲'
+             : r === 'archived' ? '🗄️'
+             : '✓';
+  return `<span class="learn-rel-pill rel-${escAttr(r)}" title="${escAttr(note || label)}">${icon} ${escHtml(label)}</span>`;
+}
+
+function renderLearnGroupCard(g) {
+  const isArchived = g.status === 'archived';
+  return `
+    <div class="learn-group-card${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
+      <div class="learn-group-top">
+        <div class="learn-group-icon">${escHtml(g.icon || '📚')}</div>
+        <div style="flex:1;min-width:0">
+          <div class="learn-group-title">${escHtml(g.label)}</div>
+          ${isArchived ? `<span class="learn-rel-pill rel-archived" style="margin-top:2px">Archived</span>` : ''}
+        </div>
+        <button class="lesson-gear-btn" onclick="event.stopPropagation();learnShowGroupModal('${escAttr(g.id)}')" title="Manage this classification">⚙</button>
+      </div>
+      <div class="learn-group-desc">${escHtml(g.description || '')}</div>
+      <div class="fin-goal-bar"><div style="width:${g.progressPct || 0}%;background:${escAttr(g.color || '#3b82f6')}"></div></div>
+      <div class="learn-group-stats">
+        <span>${g.courseCount} course${g.courseCount === 1 ? '' : 's'} · ${g.moduleCount} modules</span>
+        <span>${g.doneCount} done (${g.progressPct || 0}%)</span>
+      </div>
+      <div class="learn-group-footer">
+        <span class="card-meta">Track ${escHtml(g.sortOrder || '')}</span>
+        <span class="explore-link">Explore Track →</span>
+      </div>
+    </div>`;
+}
+
+function renderLearnCourseCard(c) {
+  const lessons = c.lessons || [];
+  const done = lessons.filter(l => l.status === 'done').length;
+  const pct = lessons.length ? Math.round(done / lessons.length * 100) : 0;
+  const next = lessons.find(l => l.status !== 'done');
+  const isArchived = c.STATUS === 'archived';
+  return `
+    <div class="circle-card${isArchived ? ' is-archived' : ''}" onclick="learnCourseOpen='${escHtml(c.ID)}';repaintView('learning')">
+      <div class="circle-name" style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem">
+        <span>${escHtml(c.TITLE)}</span>
+        <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.6rem" onclick="event.stopPropagation();learnShowCourseModal('${escAttr(c.ID)}')" title="Course settings">⚙</button>
+      </div>
+      ${c.LEVEL && c.LEVEL !== '-' ? `<span class="learn-level" title="Course progression level">${escHtml(c.LEVEL.replace(/-/g, ' '))}</span>` : ''}
+      ${c.SUBTITLE && c.SUBTITLE !== '-' ? `<div class="circle-role">${escHtml(c.SUBTITLE)}</div>` : ''}
+      <div class="fin-goal-bar" style="margin:0.45rem 0"><div style="width:${pct}%"></div></div>
+      <div class="circle-meta">${lessons.length} module${lessons.length === 1 ? '' : 's'} · ${done} done${
+        next ? ` · next: ${escHtml(next.title.slice(0, 30))}…` : lessons.length ? ' · complete' : ''}</div>
+    </div>`;
+}
+
 function renderLearning() {
   if (!LEARN) { fetchLearning(); return `<div class="card"><div class="empty-state">Opening the classroom…</div></div>`; }
-  const courses = LEARN.courses || [];
+  const allCourses = LEARN.courses || [];
+  const groups = LEARN.groups || [];
 
+  // Filter courses based on learnFilter
+  const courses = allCourses.filter(c => {
+    if (learnFilter === 'active') return c.STATUS !== 'archived' && c.STATUS !== 'disabled';
+    if (learnFilter === 'archived') return c.STATUS === 'archived';
+    return true;
+  });
+
+  // Level 3: Reading a specific lesson
   if (learnOpen.course && learnOpen.file) {
-    const course = courses.find(c => c.ID === learnOpen.course) || {};
+    const course = allCourses.find(c => c.ID === learnOpen.course) || {};
     const lesson = (course.lessons || []).find(l => l.file === learnOpen.file) || {};
+    const group = groups.find(g => g.id === course.GROUP_ID) || null;
     return `
       <div class="view-head">
         <h1>${escHtml(lesson.title || 'Lesson')}</h1>
         <div class="view-head-meta crumbs">
-          <a href="#" class="crumb-link" onclick="learnBack();learnCourseOpen=null;repaintView('learning');return false">Learning</a>
+          <a href="#" class="crumb-link" onclick="learnBack();learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Learning</a>
+          ${group ? `<span class="crumb-sep">/</span><a href="#" class="crumb-link" onclick="learnOpenGroup('${escAttr(group.id)}');return false">${escHtml(group.label)}</a>` : ''}
           <span class="crumb-sep">/</span>
           <a href="#" class="crumb-link" onclick="learnBack();return false">${escHtml(course.TITLE || 'Course')}</a>
           <span class="crumb-sep">/</span><span class="crumb-here">${escHtml(lesson.title || 'Lesson')}</span>
         </div>
-        <!-- When this module was last revised, when he last read it, and a way
-             straight to the source file in the vault - which is the same file
-             OneDrive holds. A date without its weekday makes him do arithmetic. -->
-        <div class="view-head-meta">
-          ${lesson.revisedAt ? `revised ${fmtWhen(lesson.revisedAt, { rel: true })}` : ''}
-          ${lesson.touchedAt ? ` · last read ${fmtWhen(lesson.touchedAt, { rel: true })}` : ''}
-          ${lesson.words ? ` · ${lesson.words} words, about ${Math.max(1, Math.round(lesson.words / 200))} min` : ''}
-          ${lesson.vaultPath ? `<a href="#" class="learn-artifact" title="Open the source file in the vault"
-             onclick="learnOpenSource('${escHtml(lesson.vaultPath)}');return false">${LESSON_ICONS.source} source</a>` : ''}
+        <div class="lesson-meta-bar">
+          <div class="lesson-meta-item">${learnRelBadge(lesson.relevance, lesson.relevanceNote)}</div>
+          <span class="lesson-meta-sep">·</span>
+          <div class="lesson-meta-item"><span class="learn-version-tag">${escHtml(lesson.version || 'v0.0.0')}</span></div>
+          <span class="lesson-meta-sep">·</span>
+          <div class="lesson-meta-item"><span class="learn-reviewed-tag">Reviewed: ${fmtWhen(lesson.reviewedAt || '2026-08-16')}</span></div>
+          ${lesson.words ? `<span class="lesson-meta-sep">·</span><div class="lesson-meta-item">${lesson.words} words, ~${Math.max(1, Math.round(lesson.words / 200))} min read</div>` : ''}
+          ${lesson.touchedAt ? `<span class="lesson-meta-sep">·</span><div class="lesson-meta-item">last read ${fmtWhen(lesson.touchedAt, { rel: true })}</div>` : ''}
+          ${lesson.vaultPath ? `<span class="lesson-meta-sep">·</span><a href="#" class="learn-artifact" title="Open the source file in the vault" onclick="learnOpenSource('${escHtml(lesson.vaultPath)}');return false">${LESSON_ICONS.source} source</a>` : ''}
+          <button class="lesson-gear-btn" onclick="learnShowModuleModal('${escAttr(course.ID)}','${escAttr(lesson.file)}')">⚙ Edit Metadata</button>
         </div>
         <div class="lesson-toolbar">
           <button class="lesson-tool-btn" onclick="learnDownloadPdf()" title="Save this lesson as a PDF (print dialogue)">${LESSON_ICONS.pdf}<span>PDF</span></button>
@@ -12597,9 +12673,6 @@ function renderLearning() {
         </div>
       </div>
       <div class="card lesson-card">
-        <!-- refChips turns every D-024 / R-06 / P-nn in the text into a link to
-             the actual decision or risk. The lessons are full of them and they
-             were dead plain text until now. -->
         <div class="lesson-body">${refChips(learnMd(learnOpen.content))}</div>
         <div class="lesson-actions">
           ${(() => {
@@ -12637,31 +12710,37 @@ function renderLearning() {
           <button class="btn btn-primary" style="padding:6px 14px" onclick="learnAsk(document.getElementById('tutor-q'))">Ask</button>
         </div>
         <div id="tutor-answer"></div>
-      </div>`;
+      </div>
+      ${renderLearnModals()}`;
   }
 
-  // Level 2: one course, browsed - full module list with next-up marker.
+  // Level 2: Browsing a specific course
   if (learnCourseOpen) {
-    const c = courses.find(x => x.ID === learnCourseOpen);
+    const c = allCourses.find(x => x.ID === learnCourseOpen);
     if (!c) { learnCourseOpen = null; }
     else {
       const lessons = c.lessons || [];
       const done = lessons.filter(l => l.status === 'done').length;
       const next = lessons.find(l => l.status !== 'done');
+      const group = groups.find(g => g.id === c.GROUP_ID) || null;
       return `
       <div class="view-head">
-        <h1>${escHtml(c.TITLE)}</h1>
-        <div class="view-head-meta crumbs">
-          <a href="#" class="crumb-link" onclick="learnCourseOpen=null;repaintView('learning');return false">Learning</a>
-          <span class="crumb-sep">/</span><span class="crumb-here">${done}/${lessons.length} lessons done · updated ${fmtWhen(c.UPDATED_AT, { rel: true })}</span>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem">
+          <div>
+            <h1>${escHtml(c.TITLE)}</h1>
+            <div class="view-head-meta crumbs">
+              <a href="#" class="crumb-link" onclick="learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Learning</a>
+              ${group ? `<span class="crumb-sep">/</span><a href="#" class="crumb-link" onclick="learnOpenGroup('${escAttr(group.id)}');return false">${escHtml(group.label)}</a>` : ''}
+              <span class="crumb-sep">/</span><span class="crumb-here">${done}/${lessons.length} lessons done · updated ${fmtWhen(c.UPDATED_AT, { rel: true })}</span>
+            </div>
+          </div>
+          <button class="btn btn-ghost" onclick="learnShowCourseModal('${escAttr(c.ID)}')">⚙ Course Settings</button>
         </div>
       </div>
       <div class="card">
         <div class="fin-goal-bar" style="margin-bottom:0.7rem"><div style="width:${lessons.length ? Math.round(done / lessons.length * 100) : 0}%"></div></div>
         <div class="learn-goal">${escHtml(c.GOAL)}</div>
         ${(() => {
-          // The exact spot beats the next-unfinished guess: if a resume row
-          // exists for this course, the button reopens lesson AND scroll.
           const rs = (LEARN.resume || []).find(r => r.COURSE_ID === c.ID);
           const rsLesson = rs && lessons.find(l => l.file === rs.LESSON);
           if (rsLesson) return `<button class="btn btn-primary" style="margin-bottom:0.8rem"
@@ -12679,76 +12758,378 @@ function renderLearning() {
               <span class="learn-check ${escHtml(l.status)}">${l.status === 'done' ? '✓' : l.status === 'learning' ? '◐' : '○'}</span>
               <span class="learn-title">${escHtml(l.title)}</span>
               ${next && l.file === next.file ? '<span class="learn-next-tag">next up</span>' : ''}
-              <!-- A date he can act on: the weekday is what tells him whether
-                   "the 29th" was before or after the meeting. -->
-              <span class="learn-lesson-meta">${l.touchedAt
-                ? `read ${fmtWhen(l.touchedAt)}`
-                : l.revisedAt ? `revised ${fmtWhen(l.revisedAt)}` : ''}</span>
+              <div class="learn-lesson-badges">
+                ${learnRelBadge(l.relevance, l.relevanceNote)}
+                <span class="learn-version-tag">${escHtml(l.version || 'v0.0.0')}</span>
+                <span class="learn-lesson-meta">${l.reviewedAt ? `rev ${fmtWhen(l.reviewedAt)}` : (l.revisedAt ? `rev ${fmtWhen(l.revisedAt)}` : '')}</span>
+                <button class="learn-gear-btn-sm" onclick="event.stopPropagation();learnShowModuleModal('${escAttr(c.ID)}','${escAttr(l.file)}')" title="Edit module metadata">⚙</button>
+              </div>
             </div>`).join('')}
-        </div>` : `<div class="empty-state">No lessons visible. If this is a fresh host, the vault sync
-          brings course content down on its next pass - give it a minute, then reopen.</div>`}
-        <div class="card-meta" style="margin-top:0.6rem">living course - the current-state module updates first when reality moves</div>
-      </div>`;
+        </div>` : `<div class="empty-state">No lessons visible. Vault sync brings content down on next pass.</div>`}
+        <div class="card-meta" style="margin-top:0.6rem">living course - reviewed dates and versions update when verified</div>
+      </div>
+      ${renderLearnModals()}`;
     }
   }
 
-  // Level 1: the landing - the catalog of everything being learned, grouped by
-  // classroom so it stays legible past the first three courses.
-  const byRoom = courses.reduce((acc, c) => {
-    const room = (c.CLASSROOM && c.CLASSROOM !== '-') ? c.CLASSROOM : 'Other';
-    (acc[room] = acc[room] || []).push(c);
-    return acc;
-  }, {});
+  // Level 1B: Browsing a specific group/track
+  if (learnGroupOpen) {
+    const group = groups.find(g => g.id === learnGroupOpen) || groups[0];
+    const groupCourses = courses.filter(c => c.GROUP_ID === group.id);
+    const totalModules = groupCourses.reduce((acc, c) => acc + (c.lessons || []).length, 0);
+    const doneModules = groupCourses.reduce((acc, c) => acc + (c.lessons || []).filter(l => l.status === 'done').length, 0);
+    const progressPct = totalModules ? Math.round((doneModules / totalModules) * 100) : 0;
 
-  const courseCard = (c) => {
-    const lessons = c.lessons || [];
-    const done = lessons.filter(l => l.status === 'done').length;
-    const pct = lessons.length ? Math.round(done / lessons.length * 100) : 0;
-    const next = lessons.find(l => l.status !== 'done');
     return `
-      <div class="circle-card" onclick="learnCourseOpen='${escHtml(c.ID)}';repaintView('learning')">
-        <div class="circle-name">${escHtml(c.TITLE)}${c.LEVEL && c.LEVEL !== '-'
-          ? `<span class="learn-level" title="This course starts from nothing and goes all the way">${escHtml(c.LEVEL.replace(/-/g, ' '))}</span>` : ''}</div>
-        ${c.SUBTITLE && c.SUBTITLE !== '-' ? `<div class="circle-role">${escHtml(c.SUBTITLE)}</div>` : ''}
-        <div class="fin-goal-bar" style="margin:0.45rem 0"><div style="width:${pct}%"></div></div>
-        <div class="circle-meta">${lessons.length} module${lessons.length === 1 ? '' : 's'} · ${done} done${
-          next ? ` · next: ${escHtml(next.title.slice(0, 30))}…` : lessons.length ? ' · complete' : ''}</div>
-      </div>`;
-  };
+      <div class="view-head">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem">
+          <div>
+            <h1>${escHtml(group.icon || '📚')} ${escHtml(group.label)}</h1>
+            <div class="view-head-meta crumbs">
+              <a href="#" class="crumb-link" onclick="learnCloseGroup();return false">Learning</a>
+              <span class="crumb-sep">/</span><span class="crumb-here">Track Overview</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:0.4rem">
+            <button class="btn btn-ghost" onclick="learnShowGroupModal('${escAttr(group.id)}')">⚙ Edit Track</button>
+            <button class="btn btn-ghost" onclick="learnCloseGroup()">← All Tracks</button>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:1.2rem">
+        <div class="learn-goal">${escHtml(group.description || 'Core learning track.')}</div>
+        <div class="fin-goal-bar" style="margin:0.6rem 0"><div style="width:${progressPct}%;background:${escAttr(group.color || '#3b82f6')}"></div></div>
+        <div class="card-meta">${groupCourses.length} courses · ${totalModules} modules · ${doneModules} completed (${progressPct}%)</div>
+      </div>
+      <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+        ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state">No courses assigned to this track yet.</div>`}
+      </div>
+      ${renderLearnModals()}`;
+  }
 
-  // The resume banner: the newest reading position across every course, so one
-  // tap puts him back on the exact paragraph. Rendered only when there is
-  // genuinely somewhere to return to.
-  const rs = (LEARN.resume || [])[0];
-  const rsCourse = rs && courses.find(c => c.ID === rs.COURSE_ID);
-  const rsLesson = rsCourse && (rsCourse.lessons || []).find(l => l.file === rs.LESSON);
+  // Level 1A: Main Landing (Classified Groups or Flat view)
+  const resume = (LEARN.resume || [])[0];
+  const rsCourse = resume && allCourses.find(c => c.ID === resume.COURSE_ID);
+  const rsLesson = rsCourse && (rsCourse.lessons || []).find(l => l.file === resume.LESSON);
   const resumeBanner = rsLesson ? `
-    <div class="card learn-resume" onclick="learnResume('${escAttr(rs.COURSE_ID)}','${escAttr(rs.LESSON)}',${parseInt(rs.SCROLL_PCT, 10) || 0})"
+    <div class="card learn-resume" onclick="learnResume('${escAttr(resume.COURSE_ID)}','${escAttr(resume.LESSON)}',${parseInt(resume.SCROLL_PCT, 10) || 0})"
          title="Reopens the module at the same spot">
       <div class="learn-resume-label">Continue exactly where you left off</div>
       <div class="learn-resume-line"><strong>${escHtml(rsLesson.title)}</strong>
-        <span class="card-meta"> · ${escHtml(rsCourse.TITLE)} · ${parseInt(rs.SCROLL_PCT, 10) || 0}% in${rs.UPDATED_AT && rs.UPDATED_AT !== '-' ? ` · ${fmtWhen(rs.UPDATED_AT, { rel: true })}` : ''}</span></div>
+        <span class="card-meta"> · ${escHtml(rsCourse.TITLE)} · ${parseInt(resume.SCROLL_PCT, 10) || 0}% in${resume.UPDATED_AT && resume.UPDATED_AT !== '-' ? ` · ${fmtWhen(resume.UPDATED_AT, { rel: true })}` : ''}</span></div>
     </div>` : '';
 
   return `
     <div class="view-head">
-      <h1>Learning</h1>
-      <div class="view-head-meta">private classroom … every course starts from the beginning and goes to expertise, in plain language</div>
+      <div class="learn-header-bar">
+        <div>
+          <h1>Learning Space</h1>
+          <div class="view-head-meta">private classroom … classified tracks, living courses, and verifiable competency</div>
+        </div>
+        <div class="learn-controls">
+          <div class="learn-toggle-group">
+            <button class="learn-toggle-btn${learnViewMode === 'groups' ? ' active' : ''}" onclick="learnSetViewMode('groups')">Classified Tracks</button>
+            <button class="learn-toggle-btn${learnViewMode === 'flat' ? ' active' : ''}" onclick="learnSetViewMode('flat')">All Courses</button>
+          </div>
+          <div class="learn-toggle-group">
+            <button class="learn-toggle-btn${learnFilter === 'active' ? ' active' : ''}" onclick="learnSetFilter('active')">Active</button>
+            <button class="learn-toggle-btn${learnFilter === 'all' ? ' active' : ''}" onclick="learnSetFilter('all')">All</button>
+            <button class="learn-toggle-btn${learnFilter === 'archived' ? ' active' : ''}" onclick="learnSetFilter('archived')">Archived</button>
+          </div>
+          <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="learnShowGroupModal(null)">+ New Track</button>
+        </div>
+      </div>
     </div>
     ${renderCampus(resumeBanner)}
-    ${courses.length ? Object.entries(byRoom).map(([room, list]) => `
-      <div class="learn-section-head">${escHtml(room)}</div>
-      <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-        ${list.map(courseCard).join('')}
-      </div>`).join('')
-      : `<div class="empty-state">No courses yet.</div>`}
-    <div class="card" style="margin-top:0.8rem">
+    ${learnViewMode === 'groups' ? `
+      <div class="learn-section-head" style="margin-bottom:0.75rem">Learning Tracks & Classifications</div>
+      <div class="learn-groups-grid">
+        ${groups.map(renderLearnGroupCard).join('')}
+      </div>
+    ` : `
+      ${groups.map(g => {
+        const groupCourses = courses.filter(c => c.GROUP_ID === g.id);
+        if (!groupCourses.length && learnFilter === 'active') return '';
+        return `
+          <div class="learn-section-head" style="display:flex;align-items:center;justify-content:space-between">
+            <span>${escHtml(g.icon || '📚')} ${escHtml(g.label)}</span>
+            <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">⚙ Track Settings</button>
+          </div>
+          <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-bottom:1.5rem">
+            ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
+          </div>`;
+      }).join('')}
+    `}
+    <div class="card" style="margin-top:1rem">
       <div class="card-header"><span class="card-title">Commission a new course</span></div>
-      <div class="learn-goal">Name a topic in the chat - or to Claude in a work session - and it gets built the
-        way these were: from the ground up, assuming no prior knowledge, every term stated and then explained
-        in plain words, carried all the way to the point where you could teach it back. Grounded in your real
-        context, living in the vault, taught by the tutor.</div>
-    </div>`;
+      <div class="learn-goal">Name a topic in the chat or during a work session — courses are built from the ground up, with strict verification callouts (Research, In a Book, Fun fact, Jargon, Watch for, and Objectives), live versioning, and dated reviews.</div>
+    </div>
+    ${renderLearnModals()}`;
+}
+
+function renderLearnModals() {
+  if (!learnModalState) return '';
+  const m = learnModalState;
+
+  if (m.type === 'group') {
+    const isNew = !m.groupId;
+    const g = isNew ? { id: '', label: '', description: '', icon: '📚', color: '#3b82f6', status: 'active', sortOrder: 99 }
+                    : (LEARN?.groups || []).find(x => x.id === m.groupId) || {};
+    return `
+      <div class="modal-overlay" onclick="if(event.target===this)learnCloseModal()">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span class="modal-title">${isNew ? 'Create New Learning Track' : 'Edit Learning Track'}</span>
+            <button class="btn btn-ghost" onclick="learnCloseModal()">✕</button>
+          </div>
+          <div class="modal-body">
+            <label>Track ID (slug)</label>
+            <input id="modal-group-id" class="jira-input" value="${escAttr(g.id || '')}" ${isNew ? '' : 'readonly'} placeholder="e.g. platform-architecture" style="margin-bottom:0.75rem"/>
+            <label>Label / Title</label>
+            <input id="modal-group-label" class="jira-input" value="${escAttr(g.label || '')}" placeholder="e.g. Platform Architecture" style="margin-bottom:0.75rem"/>
+            <label>Description</label>
+            <textarea id="modal-group-desc" class="jira-input" style="margin-bottom:0.75rem" placeholder="Summary of what this track covers">${escHtml(g.description || '')}</textarea>
+            <div style="display:flex;gap:0.75rem;margin-bottom:0.75rem">
+              <div style="flex:1">
+                <label>Icon</label>
+                <input id="modal-group-icon" class="jira-input" value="${escAttr(g.icon || '📚')}" placeholder="Emoji or icon"/>
+              </div>
+              <div style="flex:1">
+                <label>Sort Order</label>
+                <input id="modal-group-order" type="number" class="jira-input" value="${escAttr(g.sortOrder || 1)}"/>
+              </div>
+            </div>
+            <label>Status / Lifecycle</label>
+            <select id="modal-group-status" class="jira-input">
+              <option value="active"${g.status === 'active' ? ' selected' : ''}>Active (Visible)</option>
+              <option value="archived"${g.status === 'archived' ? ' selected' : ''}>Archived (Decommissioned)</option>
+              <option value="disabled"${g.status === 'disabled' ? ' selected' : ''}>Disabled (Hidden)</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            ${!isNew ? `<button class="btn btn-ghost" style="color:var(--red,#ef4444)" onclick="learnArchiveGroup('${escAttr(g.id)}', '${g.status === 'archived' ? 'active' : 'archived'}')">${g.status === 'archived' ? 'Restore Track' : 'Archive Track'}</button>` : '<span></span>'}
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn btn-ghost" onclick="learnCloseModal()">Cancel</button>
+              <button class="btn btn-primary" onclick="learnSaveGroupFromModal()">Save Track</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (m.type === 'course') {
+    const c = (LEARN?.courses || []).find(x => x.ID === m.courseId) || {};
+    const groups = LEARN?.groups || [];
+    return `
+      <div class="modal-overlay" onclick="if(event.target===this)learnCloseModal()">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span class="modal-title">Course Lifecycle & Settings</span>
+            <button class="btn btn-ghost" onclick="learnCloseModal()">✕</button>
+          </div>
+          <div class="modal-body">
+            <div style="margin-bottom:0.8rem">
+              <strong style="color:var(--text)">${escHtml(c.TITLE || c.ID)}</strong>
+              <div class="card-meta">${c.lessons?.length || 0} modules · ID: ${escHtml(c.ID)}</div>
+            </div>
+            <label>Assigned Track / Classification</label>
+            <select id="modal-course-group" class="jira-input" style="margin-bottom:0.8rem">
+              ${groups.map(g => `<option value="${escAttr(g.id)}"${c.GROUP_ID === g.id ? ' selected' : ''}>${escHtml(g.icon || '')} ${escHtml(g.label)}</option>`).join('')}
+            </select>
+            <label>Course Status</label>
+            <select id="modal-course-status" class="jira-input" style="margin-bottom:0.8rem">
+              <option value="active"${c.STATUS === 'active' ? ' selected' : ''}>Active (In Progress)</option>
+              <option value="archived"${c.STATUS === 'archived' ? ' selected' : ''}>Archived (Decommissioned)</option>
+              <option value="disabled"${c.STATUS === 'disabled' ? ' selected' : ''}>Disabled (Hidden)</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="learnCloseModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="learnSaveCourseFromModal('${escAttr(c.ID)}')">Save Course</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (m.type === 'module') {
+    const course = (LEARN?.courses || []).find(x => x.ID === m.courseId) || {};
+    const lesson = (course.lessons || []).find(l => l.file === m.lessonFile) || {};
+    return `
+      <div class="modal-overlay" onclick="if(event.target===this)learnCloseModal()">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span class="modal-title">Module Metadata & Relevance</span>
+            <button class="btn btn-ghost" onclick="learnCloseModal()">✕</button>
+          </div>
+          <div class="modal-body">
+            <div style="margin-bottom:0.8rem">
+              <strong style="color:var(--text)">${escHtml(lesson.title || lesson.file)}</strong>
+              <div class="card-meta">${escHtml(course.TITLE)} · ${escHtml(lesson.file)}</div>
+            </div>
+            <label>Relevance Classification</label>
+            <select id="modal-mod-relevance" class="jira-input" style="margin-bottom:0.75rem">
+              <option value="current"${lesson.relevance === 'current' ? ' selected' : ''}>Relevant (Verified current operational standard)</option>
+              <option value="period-specific"${lesson.relevance === 'period-specific' ? ' selected' : ''}>Period-specific (Historical baseline / sprint meeting)</option>
+              <option value="evergreen"${lesson.relevance === 'evergreen' ? ' selected' : ''}>Evergreen (Timeless foundational concept)</option>
+              <option value="outdated"${lesson.relevance === 'outdated' ? ' selected' : ''}>Outdated (Superseded by newer decisions)</option>
+              <option value="archived"${lesson.relevance === 'archived' ? ' selected' : ''}>Archived (Decommissioned)</option>
+            </select>
+            <label>Relevance Note / Context</label>
+            <input id="modal-mod-note" class="jira-input" value="${escAttr(lesson.relevanceNote || '')}" placeholder="e.g. August 2026 onboarding standard" style="margin-bottom:0.75rem"/>
+            <div style="display:flex;gap:0.75rem;margin-bottom:0.75rem">
+              <div style="flex:1">
+                <label>Version</label>
+                <input id="modal-mod-version" class="jira-input" value="${escAttr(lesson.version || 'v0.0.0')}" placeholder="v0.0.0"/>
+              </div>
+              <div style="flex:1">
+                <label>Date Reviewed</label>
+                <input id="modal-mod-reviewed" class="jira-input" value="${escAttr(lesson.reviewedAt || '2026-08-16')}" placeholder="YYYY-MM-DD"/>
+              </div>
+            </div>
+            <label>Module Status</label>
+            <select id="modal-mod-status" class="jira-input">
+              <option value="active"${lesson.moduleStatus !== 'archived' && lesson.moduleStatus !== 'disabled' ? ' selected' : ''}>Active</option>
+              <option value="archived"${lesson.moduleStatus === 'archived' ? ' selected' : ''}>Archived / Decommissioned</option>
+              <option value="disabled"${lesson.moduleStatus === 'disabled' ? ' selected' : ''}>Disabled</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="learnCloseModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="learnSaveModuleFromModal('${escAttr(course.ID)}','${escAttr(lesson.file)}')">Save Metadata</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  return '';
+}
+
+function learnOpenGroup(groupId) {
+  learnGroupOpen = groupId;
+  learnCourseOpen = null;
+  learnOpen = { course: null, file: null, content: '' };
+  repaintView('learning');
+}
+
+function learnCloseGroup() {
+  learnGroupOpen = null;
+  repaintView('learning');
+}
+
+function learnSetViewMode(mode) {
+  learnViewMode = mode;
+  repaintView('learning');
+}
+
+function learnSetFilter(f) {
+  learnFilter = f;
+  repaintView('learning');
+}
+
+function learnShowGroupModal(groupId) {
+  learnModalState = { type: 'group', groupId };
+  repaintView('learning');
+}
+
+function learnShowCourseModal(courseId) {
+  learnModalState = { type: 'course', courseId };
+  repaintView('learning');
+}
+
+function learnShowModuleModal(courseId, lessonFile) {
+  learnModalState = { type: 'module', courseId, lessonFile };
+  repaintView('learning');
+}
+
+function learnCloseModal() {
+  learnModalState = null;
+  repaintView('learning');
+}
+
+async function learnSaveGroupFromModal() {
+  const id = (document.getElementById('modal-group-id')?.value || '').trim();
+  const label = (document.getElementById('modal-group-label')?.value || '').trim();
+  const description = (document.getElementById('modal-group-desc')?.value || '').trim();
+  const icon = (document.getElementById('modal-group-icon')?.value || '📚').trim();
+  const sortOrder = document.getElementById('modal-group-order')?.value || 1;
+  const status = document.getElementById('modal-group-status')?.value || 'active';
+
+  if (!id || !label) { showToast('Track ID and Label are required', 'error'); return; }
+  try {
+    const res = await fetch('/api/learning/group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, label, description, icon, sortOrder, status })
+    }).then(r => r.json());
+    if (res.success) {
+      showToast('Track saved successfully', 'success');
+      learnCloseModal();
+      await fetchLearning();
+    } else {
+      showToast(res.error || 'Failed to save track', 'error');
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function learnArchiveGroup(groupId, status) {
+  try {
+    const res = await fetch('/api/learning/group/archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: groupId, status })
+    }).then(r => r.json());
+    if (res.success) {
+      showToast(`Track ${status === 'archived' ? 'archived' : 'restored'}`, 'success');
+      learnCloseModal();
+      await fetchLearning();
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function learnSaveCourseFromModal(courseId) {
+  const groupId = document.getElementById('modal-course-group')?.value;
+  const status = document.getElementById('modal-course-status')?.value;
+  try {
+    const res = await fetch('/api/learning/course/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseId, groupId, status })
+    }).then(r => r.json());
+    if (res.success) {
+      showToast('Course settings updated', 'success');
+      learnCloseModal();
+      await fetchLearning();
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function learnSaveModuleFromModal(courseId, lessonFile) {
+  const relevance = document.getElementById('modal-mod-relevance')?.value;
+  const relevanceNote = document.getElementById('modal-mod-note')?.value;
+  const version = document.getElementById('modal-mod-version')?.value;
+  const reviewedAt = document.getElementById('modal-mod-reviewed')?.value;
+  const status = document.getElementById('modal-mod-status')?.value;
+
+  try {
+    const res = await fetch('/api/learning/module/meta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseId, lessonFile, relevance, relevanceNote, version, reviewedAt, status })
+    }).then(r => r.json());
+    if (res.success) {
+      showToast('Module metadata saved', 'success');
+      learnCloseModal();
+      await fetchLearning();
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
 }
 
 // Minimal markdown for lessons: headings, bold, lists, paragraphs - plus the
@@ -13394,8 +13775,14 @@ async function learnOpenLesson(course, file, opts = {}) {
 }
 
 function learnBack() {
-  learnCourseOpen = learnOpen.course || learnCourseOpen;   // return to the course page, not past it
-  learnOpen = { course: null, file: null, content: '' };
+  if (learnOpen.course && learnOpen.file) {
+    learnCourseOpen = learnOpen.course;
+    learnOpen = { course: null, file: null, content: '' };
+  } else if (learnCourseOpen) {
+    learnCourseOpen = null;
+  } else if (learnGroupOpen) {
+    learnGroupOpen = null;
+  }
   fetchLearning();
 }
 
