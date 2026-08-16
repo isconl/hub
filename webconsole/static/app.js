@@ -12627,10 +12627,67 @@ function renderLearnCourseCard(c) {
     </div>`;
 }
 
+const DEFAULT_LEARNING_GROUPS = [
+  { id: 'inside-the-engagement', label: 'Inside the Engagement', description: 'The house, the people, the rules, the mandate, and task execution.', icon: '🏢', color: '#3b82f6', sortOrder: 1, status: 'active' },
+  { id: 'platform-and-systems', label: 'Platform & Systems Architecture', description: 'The two B2B portals, publishing pipeline, and UX journeys.', icon: '⚙️', color: '#10b981', sortOrder: 2, status: 'active' },
+  { id: 'business-and-market', label: 'Business Model & Market Intelligence', description: 'Deal origination, trust badges, competitor analysis, and liquidity.', icon: '🎯', color: '#8b5cf6', sortOrder: 3, status: 'active' },
+  { id: 'money-that-compounds', label: 'Money That Compounds', description: 'Financial intelligence, capital allocation, valuation, and wealth velocity.', icon: '📈', color: '#f59e0b', sortOrder: 4, status: 'active' },
+  { id: 'people-and-mentoring', label: 'People & Mentoring Arc', description: 'Curriculum, assignments, session logging, and capability gates.', icon: '🤝', color: '#ec4899', sortOrder: 5, status: 'active' },
+];
+
+function getResolvedGroups(courses, backendGroups) {
+  const baseGroups = (backendGroups && backendGroups.length) ? backendGroups : DEFAULT_LEARNING_GROUPS;
+  const courseGroupMap = {
+    'viva': 'inside-the-engagement',
+    'viva-role': 'inside-the-engagement',
+    'viva-meetings': 'inside-the-engagement',
+    'viva-tasks': 'inside-the-engagement',
+    'viva-portals': 'platform-and-systems',
+    'wellspring': 'platform-and-systems',
+    'wabba-ux': 'platform-and-systems',
+    'wabba-content': 'platform-and-systems',
+    'viva-model': 'business-and-market',
+    'financial-intelligence': 'money-that-compounds',
+    'jordan-mentoring': 'people-and-mentoring',
+  };
+
+  return baseGroups.map(g => {
+    const groupCourses = (courses || []).filter(c => (c.GROUP_ID === g.id) || (!c.GROUP_ID && courseGroupMap[c.ID] === g.id));
+    const moduleCount = groupCourses.reduce((acc, c) => acc + (c.lessons || []).length, 0);
+    const doneCount = groupCourses.reduce((acc, c) => acc + (c.lessons || []).filter(l => l.status === 'done').length, 0);
+    const progressPct = moduleCount ? Math.round((doneCount / moduleCount) * 100) : 0;
+    return {
+      ...g,
+      courseCount: groupCourses.length,
+      moduleCount,
+      doneCount,
+      progressPct,
+    };
+  });
+}
+
 function renderLearning() {
   if (!LEARN) { fetchLearning(); return `<div class="card"><div class="empty-state">Opening the classroom…</div></div>`; }
   const allCourses = LEARN.courses || [];
-  const groups = LEARN.groups || [];
+  const groups = getResolvedGroups(allCourses, LEARN.groups);
+
+  // Map courses with resolved GROUP_ID if missing
+  const courseGroupMap = {
+    'viva': 'inside-the-engagement',
+    'viva-role': 'inside-the-engagement',
+    'viva-meetings': 'inside-the-engagement',
+    'viva-tasks': 'inside-the-engagement',
+    'viva-portals': 'platform-and-systems',
+    'wellspring': 'platform-and-systems',
+    'wabba-ux': 'platform-and-systems',
+    'wabba-content': 'platform-and-systems',
+    'viva-model': 'business-and-market',
+    'financial-intelligence': 'money-that-compounds',
+    'jordan-mentoring': 'people-and-mentoring',
+  };
+  for (const c of allCourses) {
+    if (!c.GROUP_ID || c.GROUP_ID === '-') c.GROUP_ID = courseGroupMap[c.ID] || 'inside-the-engagement';
+  }
 
   // Filter courses based on learnFilter
   const courses = allCourses.filter(c => {
@@ -12639,13 +12696,13 @@ function renderLearning() {
     return true;
   });
 
-  // Level 3: Reading a specific lesson
+  // Level 3: Reading a specific lesson (Natural Unboxed Reader View)
   if (learnOpen.course && learnOpen.file) {
     const course = allCourses.find(c => c.ID === learnOpen.course) || {};
     const lesson = (course.lessons || []).find(l => l.file === learnOpen.file) || {};
     const group = groups.find(g => g.id === course.GROUP_ID) || null;
     return `
-      <div class="view-head">
+      <div class="view-head lesson-view-head">
         <h1>${escHtml(lesson.title || 'Lesson')}</h1>
         <div class="view-head-meta crumbs">
           <a href="#" class="crumb-link" onclick="learnBack();learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Learning</a>
@@ -12672,9 +12729,9 @@ function renderLearning() {
           <button class="lesson-tool-btn" onclick="learnViewArtifact()" title="Open a clean, standalone reading page in a new tab">${LESSON_ICONS.artifact}<span>View as artifact</span></button>
         </div>
       </div>
-      <div class="card lesson-card">
-        <div class="lesson-body">${refChips(learnMd(learnOpen.content))}</div>
-        <div class="lesson-actions">
+      <div class="lesson-reader-container">
+        <div class="lesson-body unboxed">${refChips(learnMd(learnOpen.content))}</div>
+        <div class="lesson-actions" style="margin-top:2.5rem;padding-top:1.2rem;border-top:1px solid var(--border)">
           ${(() => {
             const ls = course.lessons || [];
             const i = ls.findIndex(l => l.file === lesson.file);
@@ -12691,7 +12748,7 @@ function renderLearning() {
         </div>
       </div>
       ${course.ID === 'financial-intelligence' || (learnOpen.content || '').includes('$$') ? renderDynamicFinancialCalculators() : ''}
-      <div class="card">
+      <div class="card" style="margin-top:2rem">
         <div class="card-header"><span class="card-title">Your notes on this module</span>
           <span class="card-meta" id="lesson-note-status">${learnNote.loadedFor === `${learnOpen.course}/${learnOpen.file}`
             ? (learnNote.savedAt ? `saved ${fmtWhen(learnNote.savedAt, { rel: true })}` : 'nothing noted yet')
@@ -12807,7 +12864,7 @@ function renderLearning() {
       ${renderLearnModals()}`;
   }
 
-  // Level 1A: Main Landing (Classified Groups or Flat view)
+  // Level 1A: Main Landing (Classified Groups & Intelligent Campus Advice)
   const resume = (LEARN.resume || [])[0];
   const rsCourse = resume && allCourses.find(c => c.ID === resume.COURSE_ID);
   const rsLesson = rsCourse && (rsCourse.lessons || []).find(l => l.file === resume.LESSON);
@@ -12840,10 +12897,11 @@ function renderLearning() {
         </div>
       </div>
     </div>
-    ${renderCampus(resumeBanner)}
+
+    <!-- PRIMARY HERO: Classified Learning Tracks -->
     ${learnViewMode === 'groups' ? `
       <div class="learn-section-head" style="margin-bottom:0.75rem">Learning Tracks & Classifications</div>
-      <div class="learn-groups-grid">
+      <div class="learn-groups-grid" style="margin-bottom:1.5rem">
         ${groups.map(renderLearnGroupCard).join('')}
       </div>
     ` : `
@@ -12860,7 +12918,11 @@ function renderLearning() {
           </div>`;
       }).join('')}
     `}
-    <div class="card" style="margin-top:1rem">
+
+    <!-- SECONDARY: Context-Aware Campus Advice Board -->
+    ${renderCampus(resumeBanner)}
+
+    <div class="card" style="margin-top:1.5rem">
       <div class="card-header"><span class="card-title">Commission a new course</span></div>
       <div class="learn-goal">Name a topic in the chat or during a work session — courses are built from the ground up, with strict verification callouts (Research, In a Book, Fun fact, Jargon, Watch for, and Objectives), live versioning, and dated reviews.</div>
     </div>
