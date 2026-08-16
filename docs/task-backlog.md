@@ -29,6 +29,7 @@
 | ✅ | **Viva/UnionX due diligence** | vault/memory/scope/due_diligence_viva.md (42.6 KB). |
 | ✅ | **viva-model modules 00–04** | Research callouts verified. |
 | ✅ | **Course rewrite: `viva` (10 modules, 00–09)** | All 10 modules audited and rewritten to full depth standard with verified Research, In a book/Book quote, and Fun fact callouts. `courses.tsv` updated. |
+| ✅ | **Course rewrite: `viva-role` (13 modules, 00–12)** | All 13 modules audited and rewritten to full depth standard with verified Research, In a book/Book quote, and Fun fact callouts. `courses.tsv` updated. |
 
 ---
 
@@ -38,8 +39,7 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| C2 | **Course rewrite: `viva-role`** (13 modules) | 🟡 In progress | Full standards audit: Objective/Watch-for/Jargon/In a book/Research/Fun fact. |
-| C3 | **Course rewrite: `viva-meetings`** (8 modules) | ⬜ Queued | Same standard. |
+| C3 | **Course rewrite: `viva-meetings`** (8 modules) | 🟡 In progress | Full standards audit: Objective/Watch-for/Jargon/In a book/Research/Fun fact. |
 | C4 | **Course rewrite: `viva-tasks`** (30 modules) | ⬜ Queued | Largest; do last in Viva series. |
 | C5 | **Course rewrite: `financial-intelligence`** (8 modules) | ⬜ Queued | — |
 | C6 | **Course rewrite: `jordan-mentoring`** (20 modules) | ⬜ Queued | — |
