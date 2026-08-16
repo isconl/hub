@@ -1,7 +1,7 @@
 # iSconl Master Task Backlog
 <!-- LIVE DOCUMENT — update this file after every task touched, in every session -->
-<!-- Accessible to both AGY and Claude via _handoff/task-backlog.md -->
-<!-- Last updated: 2026-08-16T13:10 EAT (Antigravity) -->
+<!-- Accessible to both AGY and Claude via hub/docs/task-backlog.md -->
+<!-- Last updated: 2026-08-16T13:48 EAT (Antigravity) -->
 
 ---
 
@@ -25,9 +25,10 @@
 | ✅ | **Branch lockstep: dev / main / staging synced** | All 6 repos aligned and pushed to remote. |
 | ✅ | **Webconsole live** | Verified at http://localhost:8888/. All 6 engines healthy. |
 | ✅ | **OneDrive error banner: bottom-right + Copy/Dismiss** | hub/webconsole/static/style.css + app.js. |
-| ✅ | **viva-portals module 20** | vault/memory/learning/viva-portals/20-the-full-deal-flow.md (350 lines). courses.tsv updated to 21 lessons. Pushed to OneDrive. |
-| ✅ | **Viva/UnionX due diligence** | vault/memory/scope/due_diligence_viva.md (42.6 KB). Pushed to OneDrive. |
-| ✅ | **viva-model modules 00–04** | Research callouts verified. Pushed to OneDrive. |
+| ✅ | **viva-portals module 20** | vault/memory/learning/viva-portals/20-the-full-deal-flow.md (350 lines). courses.tsv updated to 21 lessons. |
+| ✅ | **Viva/UnionX due diligence** | vault/memory/scope/due_diligence_viva.md (42.6 KB). |
+| ✅ | **viva-model modules 00–04** | Research callouts verified. |
+| ✅ | **Course rewrite: `viva` (10 modules, 00–09)** | All 10 modules audited and rewritten to full depth standard with verified Research, In a book/Book quote, and Fun fact callouts. `courses.tsv` updated. |
 
 ---
 
@@ -37,9 +38,8 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| C1 | **Course rewrite: `viva`** (10 modules) | 🟡 Next up | Full standards audit: Objective/Watch-for/Jargon/Research/Fun fact. Push each module to OneDrive after. |
-| C2 | **Course rewrite: `viva-role`** (13 modules) | ⬜ Queued | Same standard. |
-| C3 | **Course rewrite: `viva-meetings`** (8 modules) | ⬜ Queued | — |
+| C2 | **Course rewrite: `viva-role`** (13 modules) | 🟡 In progress | Full standards audit: Objective/Watch-for/Jargon/In a book/Research/Fun fact. |
+| C3 | **Course rewrite: `viva-meetings`** (8 modules) | ⬜ Queued | Same standard. |
 | C4 | **Course rewrite: `viva-tasks`** (30 modules) | ⬜ Queued | Largest; do last in Viva series. |
 | C5 | **Course rewrite: `financial-intelligence`** (8 modules) | ⬜ Queued | — |
 | C6 | **Course rewrite: `jordan-mentoring`** (20 modules) | ⬜ Queued | — |
@@ -80,16 +80,15 @@
 2. **After receiving a new task:** add it to the right tier with priority context.
 3. **Reorder tiers** after each session so Active Queue top always reflects current reality.
 4. **Branch hygiene:** every code change committed on `dev`, fast-forwarded to `main` and `staging`, pushed to `origin`.
-5. **OneDrive push:** every content file change uploaded via `POST /onedrive/upload`.
-6. **Both AGY and Claude** must update this file at the start and end of each session.
+5. **Both AGY and Claude** must update this file at the start and end of each session.
 
 ---
 
-## BRANCH STATUS (2026-08-16T13:10 EAT)
+## BRANCH STATUS (2026-08-16T13:48 EAT)
 
 | Repo | Branches | Last commit | CI |
 |------|----------|-------------|-----|
-| hub | dev/main/staging | 64fca57 | ✅ |
+| hub | dev/main/staging | f36672b | ✅ |
 | vault | dev/main/staging | latest | ✅ |
 | pulse | dev/main/staging | latest | ✅ |
 | scope | dev/main/staging | d1ffde4 | ✅ |
