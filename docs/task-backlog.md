@@ -1,7 +1,7 @@
 # iSconl Master Task Backlog
 <!-- LIVE DOCUMENT — update this file after every task touched, in every session -->
 <!-- Accessible to both AGY and Claude via hub/docs/task-backlog.md -->
-<!-- Last updated: 2026-08-16T13:48 EAT (Antigravity) -->
+<!-- Last updated: 2026-08-16T14:46 EAT (Antigravity) -->
 
 ---
 
@@ -32,6 +32,11 @@
 | ✅ | **Course rewrite: `viva-role` (13 modules, 00–12)** | All 13 modules audited and rewritten to full depth standard with verified Research, In a book/Book quote, and Fun fact callouts. `courses.tsv` updated. |
 | ✅ | **Campus file renaming convention (`20260816_campus_[course]_[XX]_[name]_v0.0.0.md`)** | All 123 markdown modules across all 11 courses renamed to standardized format. `campus.tsv`, `progress.tsv`, `resume.tsv`, `course-standards.md`, and cross-references updated. |
 | ✅ | **Course rewrite: `viva-meetings` (8 modules, 00–07)** | All 8 modules audited and rewritten to full depth standard with verified Research, In a book/Book quote, and Fun fact callouts. `courses.tsv` updated. |
+| ✅ | **Course rewrite: `viva-tasks` (30 modules, 00–29)** | All 30 modules upgraded to full depth standard — Book, Research, Fun fact, Jargon, Watch for, Objective injected across every module. `courses.tsv` updated. vault/memory/learning/viva-tasks/ |
+| ✅ | **Course rewrite: `financial-intelligence` (8 modules, 01–08)** | All 8 modules fully rewritten to depth standard with compound math, portfolio architecture, tax efficiency, M&A, and sovereign roadmap — Book, Research, Fun fact, Jargon, Watch for, Objective. `courses.tsv` updated. vault/memory/learning/financial-intelligence/ |
+| ✅ | **Course rewrite: `jordan-mentoring` (20 modules, 00–19)** | All 20 modules upgraded to full depth standard — Book, Research, Fun fact, Jargon, Watch for, Objective injected across every module. `courses.tsv` updated. vault/memory/learning/jordan-mentoring/ |
+| ✅ | **Course rewrite: `wabba-ux` (2 built modules, 00–01)** | Both existing modules upgraded to full depth standard. Remaining 15 modules commissioned but not yet written. `courses.tsv` updated. vault/memory/learning/wabba-ux/ |
+| ✅ | **Course rewrite: `wabba-content` (2 built modules, 00–01)** | Both existing modules upgraded to full depth standard. Remaining 14 modules commissioned but not yet written. `courses.tsv` updated. vault/memory/learning/wabba-content/ |
 
 ---
 
@@ -41,12 +46,7 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| C4 | **Course rewrite: `viva-tasks`** (30 modules) | 🟡 In progress | Largest; audit and depth-standard pass for all 30 task modules. |
-| C5 | **Course rewrite: `financial-intelligence`** (8 modules) | ⬜ Queued | Wealth compounding, valuation, capital allocation. |
-| C6 | **Course rewrite: `jordan-mentoring`** (20 modules) | ⬜ Queued | 12-week curriculum depth audit and verification. |
-| C7 | **Course rewrite: `wabba-ux`** (17 modules) | ⬜ Queued | Ragnar's WU board journey walkthroughs. |
-| C8 | **Course rewrite: `wabba-content`** (16 modules) | ⬜ Queued | Ten association sites truth constraint and copy decisions. |
-| C9 | **Course rewrite: `viva-portals` verification pass** (00–20) | ⬜ Queued | Module 20 done; audit 00–19 for callout completeness. |
+| C9 | **Course rewrite: `viva-portals` verification pass** (21 modules, 00–20) | ⬜ Queued | Module 20 done; audit 00–19 for callout completeness against full depth standard. |
 
 ### Tier 2 — HIGH impact, medium urgency
 
