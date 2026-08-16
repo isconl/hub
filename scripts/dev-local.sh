@@ -17,6 +17,16 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # hub/
 ROOT="$(cd "$HERE/.." && pwd)"                             # iSconl/
 LOG_DIR="$HERE/scripts/.dev-logs"
+# Load Bitwarden Secrets Manager bootstrap credentials if available
+if [ -f "$HOME/.bashrc.d/bitwarden.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$HOME/.bashrc.d/bitwarden.sh"
+fi
+export BWS_ORGANIZATION_ID="${BWS_ORGANIZATION_ID:-2d82abe1-cb42-45a0-b1cd-b438013b3f4b}"
+export BWS_API_URL="${BWS_API_URL:-https://api.bitwarden.eu}"
+export BWS_IDENTITY_URL="${BWS_IDENTITY_URL:-https://identity.bitwarden.eu}"
+export BWS_PROJECT_ID="${BWS_PROJECT_ID:-ae96a9c3-5f66-48b7-96b2-b494009ff61b}"
+
 PID_DIR="$HERE/scripts/.dev-pids"
 mkdir -p "$LOG_DIR" "$PID_DIR"
 

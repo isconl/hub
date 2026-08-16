@@ -42,6 +42,11 @@
 | ✅ | **Campus Advice: Self-updating context-aware intelligence engine** | `spark: b3c0b16` — Upgraded `campus()` in `spark/lib/learning.js` with flexible lesson resolution across all standardized filenames, dynamic word-count reading minutes, and automated 5-band priority synthesis (`now`, `week`, `before-event`, `reference`, `background`). |
 | ✅ | **Meeting 08: Sunday 16 August Sam Strategic Alignment codified** | `viva-meetings/20260816_campus_viva_meetings_08_sunday_16_august_swen_alignment_v0.0.0.md` written to full depth standard (Grove citation, Akamai latency research, team HR portal vetting, Egypt/Turkey B2B mapping, CDN edge latency). `courses.tsv` updated (9 modules). |
 
+| ✅ | **Webconsole bugfix: `(str || "").replace` type-safety** | `hub: app.js` — Hardened `escHtml(str)` with `String(str == null ? '' : str)` ensuring numbers (e.g. `track.sortOrder`) and non-strings never throw `.replace is not a function`. |
+| ✅ | **Fleet resilience: Bitwarden credentials auto-bootstrap** | `hub/scripts/dev-local.sh` — Added automated sourcing of `$HOME/.bashrc.d/bitwarden.sh` and EU vault endpoint defaults so all 6 subshell engines boot with full secrets context. |
+| ✅ | **Circle folder pull & DIA profile generation (P1)** | Crawled OneDrive `Sconl/Circle` across Family, Professional, and Social directories; mapped 46 contacts; generated comprehensive SDIAIF v2.1 profiles in `circle/memory/circle/dia/` & `vault/memory/circle/dia/`; uploaded all 46 DIA profiles to respective OneDrive folders. |
+| ✅ | **Business due diligence: Pre.IPO.Capital deep-dive (P2)** | Produced comprehensive institutional report `vault/memory/scope/due_diligence_pre_ipo_capital.md` covering AS bankruptcy proceedings, Maksuamet EUR 179k tax demand, Investoriteliit criminal settlement, personality dossiers (Sam, Mart Opmann, Casey, Margus Uueni, Kaupo Meier), and uploaded to OneDrive `scope/`. |
+
 ---
 
 ## ACTIVE QUEUE (ordered: urgency × impact ÷ complexity)
@@ -50,16 +55,13 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| P1 | **Circle folder pull & DIA profile generation** | ⬜ Queued | Browse .../Sconl/Circle via OneDrive → extract names → build circle/people.tsv → generate DIA profiles. |
+| P3 | **Portal user-group mapping (dev.b2bexchange.co + portal)** | 🟡 Next up | Map all user groups, deal-flow parties, interaction logic for both portals. Output to scope/ and OneDrive. |
 
 ### Tier 2 — HIGH impact, medium urgency
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | N1 | **ElevenLabs narration audio generation** | 🔴 Blocked | Infrastructure 100% built. BLOCKED: ElevenLabs subscription past-due. Clear at elevenlabs.io. Voice: Clara Louise (Bk8cLrXXi9WCZ4GQU4Ah), eleven_multilingual_v2. Output: OneDrive .../learning/<course>/_audio/<moduleId>/v<N>.mp3. |
-| P1 | **Circle folder pull & DIA profile generation** | ⬜ Queued | Browse .../Sconl/Circle via OneDrive → extract names → build circle/people.tsv → generate DIA profiles. |
-| P2 | **Business due diligence: Pre.IPO.Capital deep-dive** | ⬜ Queued | Full profiles on all personalities. Strategies, patterns, forward picture. Land in scope/ and OneDrive. |
-| P3 | **Portal user-group mapping (dev.b2bexchange.co + portal)** | ⬜ Queued | Map all user groups, deal-flow parties, interaction logic for both portals. Output to scope/ and OneDrive. |
 
 ### Tier 3 — Medium impact, lower urgency
 

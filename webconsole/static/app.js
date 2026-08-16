@@ -10943,7 +10943,7 @@ function quickAsk(q) {
   sendRailChat();
 }
 
-function escHtml(str) { return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escHtml(str) { return String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 /**
  * The one date formatter for the whole console.
