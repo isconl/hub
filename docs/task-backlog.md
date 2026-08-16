@@ -36,7 +36,8 @@
 | ✅ | **Course rewrite: `financial-intelligence` (8 modules, 01–08)** | All 8 modules fully rewritten to depth standard with compound math, portfolio architecture, tax efficiency, M&A, and sovereign roadmap — Book, Research, Fun fact, Jargon, Watch for, Objective. `courses.tsv` updated. vault/memory/learning/financial-intelligence/ |
 | ✅ | **Course rewrite: `jordan-mentoring` (20 modules, 00–19)** | All 20 modules upgraded to full depth standard — Book, Research, Fun fact, Jargon, Watch for, Objective injected across every module. `courses.tsv` updated. vault/memory/learning/jordan-mentoring/ |
 | ✅ | **Course rewrite: `wabba-ux` (2 built modules, 00–01)** | Both existing modules upgraded to full depth standard. Remaining 15 modules commissioned but not yet written. `courses.tsv` updated. vault/memory/learning/wabba-ux/ |
-| ✅ | **Course rewrite: `wabba-content` (2 built modules, 00–01)** | Both existing modules upgraded to full depth standard. Remaining 14 modules commissioned but not yet written. `courses.tsv` updated. vault/memory/learning/wabba-content/ |
+| ✅ | **Course rewrite: Grand audit 100% complete across ALL 11 campus courses (123/123 modules)** | `viva`, `viva-role`, `viva-meetings`, `viva-tasks`, `financial-intelligence`, `jordan-mentoring`, `wabba-ux`, `wabba-content`, `viva-portals`, `wellspring`, `viva-model` — all 123 modules verified with Book, Research, Fun fact, Jargon, Watch for, and Objectives. |
+| ✅ | **Learning Engine & UI: Track classification, module metadata (version, reviewedAt, relevance), and lifecycle management** | `spark: 007c2a3`, `hub: 1ed8dc0` — `groups.tsv`, `modules_meta.tsv`, `courses.tsv` mapped. Classified tracks landing view, segmented track toggle, active/all/archived filter, module metadata chips (🟢 Relevant, ⏳ Period-specific, ⚠️ Outdated, 🌲 Evergreen, 🗄️ Archived), date reviewed, versioning (`v0.0.0`), and full modals for creating/archiving/decommissioning tracks, courses, and modules. |
 
 ---
 
@@ -46,7 +47,7 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| C9 | **Course rewrite: `viva-portals` verification pass** (21 modules, 00–20) | ⬜ Queued | Module 20 done; audit 00–19 for callout completeness against full depth standard. |
+| P1 | **Circle folder pull & DIA profile generation** | ⬜ Queued | Browse .../Sconl/Circle via OneDrive → extract names → build circle/people.tsv → generate DIA profiles. |
 
 ### Tier 2 — HIGH impact, medium urgency
 
