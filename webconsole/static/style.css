@@ -4835,7 +4835,16 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
   --wx-rest:#2b3556;
 }
 
-.day-card { padding-bottom:0.9rem; }
+.day-card {
+  padding-bottom: 0.9rem;
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+.day-card .card-header { padding-left: 0; padding-right: 0; }
 .day-card .card-sub {
   font-size:0.78rem; color:var(--text-2); margin:-0.1rem 0 1rem; line-height:1.4;
 }

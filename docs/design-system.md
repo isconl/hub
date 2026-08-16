@@ -1,10 +1,11 @@
 # iSconl Design System & UI Architecture Standard
 
-Version: `5.0.0`  
+Version: `5.1.0`  
 Last Updated: `2026-08-17`  
 Scope: `hub/webconsole`, `circle`, `vault`, `spark`
 
 ---
+
 
 ## 1. Core Visual Philosophy
 
@@ -146,3 +147,74 @@ All floating feedback elements are anchored directly to the true bottom-right co
    - Deterministic parameters: `seed: 482193, temperature: 0.75, exaggeration: 0.5`.
 3. **Sentence Chunking & FFmpeg Assembly**:
    - Automatically chunks long scripts into 350–700 character sentence boundaries and stitches into 128kbps MP3s.
+
+---
+
+## 7. Hub Command View Layout (v5.1)
+
+The Hub uses a two-column CSS grid layout. **Do not revert to the old stacked layout** — Jira and Equicycle are intentionally absent from the hub.
+
+### Column Structure
+```css
+.command-hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 260px;   /* left content, right rail */
+  gap: 1rem;
+  align-items: start;
+}
+.command-right.hub-right-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  position: sticky;
+  top: 1rem;                          /* sticks as you scroll the left column */
+}
+```
+
+### Right Rail Panels
+- `.hub-cal-panel` — wraps `renderMiniCalendar()`. Overrides: `padding: 0.6rem`, smaller cell fonts.
+- `.hub-events-panel` — upcoming events card (up to 5 events from `STATE.calendarEvents`).
+- `.hub-event-item` — individual event row with bottom border separator.
+
+### Left Column Panels
+- `.hub-panels-row` — the `.cards-grid` (2-col) holding tasks + inbox side by side.
+- `.hub-panel-card` — flexbox column, `min-height: 220px`; `.inline-form` pushed to bottom via `margin-top: auto`.
+
+### Intelligent Top-3 Task Engine (`scoreTask()`)
+Defined inside `renderToday()`. Scores every open top-level task:
+| Signal | Points |
+|--------|--------|
+| Status: `today` | +60 |
+| Status: `in-progress` | +40 |
+| Status: `todo` | +10 |
+| Priority: `critical` | +50 |
+| Priority: `high` | +30 |
+| Priority: `medium` | +10 |
+| Overdue (each day past due) | +45 + 3×days |
+| Due today | +35 |
+| Due ≤ 2 days | +20 |
+| Due ≤ 7 days | +10 |
+| Jira-linked | +8 |
+
+### My Day Section: Borderless / Floating
+`renderDayBlocks()` wraps its content in `<div class="day-card">` — NOT `.card.day-card`.
+```css
+.day-card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+.day-card .card-header { padding-left: 0; padding-right: 0; }
+```
+The rail strip, progress bar, day-blocks-window, overflow/unplaced sections — all unchanged.
+The title "My Day" floats inline, reading as a content header rather than a card.
+
+### Responsive Collapse (≤ 780px)
+```css
+.command-hero-grid { grid-template-columns: 1fr; }
+```
+Right rail stacks below left column on smaller viewports.
+
