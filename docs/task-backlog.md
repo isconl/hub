@@ -30,6 +30,8 @@
 | ✅ | **viva-model modules 00–04** | Research callouts verified. |
 | ✅ | **Course rewrite: `viva` (10 modules, 00–09)** | All 10 modules audited and rewritten to full depth standard with verified Research, In a book/Book quote, and Fun fact callouts. `courses.tsv` updated. |
 | ✅ | **Course rewrite: `viva-role` (13 modules, 00–12)** | All 13 modules audited and rewritten to full depth standard with verified Research, In a book/Book quote, and Fun fact callouts. `courses.tsv` updated. |
+| ✅ | **Campus file renaming convention (`20260816_campus_[course]_[XX]_[name]_v0.0.0.md`)** | All 123 markdown modules across all 11 courses renamed to standardized format. `campus.tsv`, `progress.tsv`, `resume.tsv`, `course-standards.md`, and cross-references updated. |
+| ✅ | **Course rewrite: `viva-meetings` (8 modules, 00–07)** | All 8 modules audited and rewritten to full depth standard with verified Research, In a book/Book quote, and Fun fact callouts. `courses.tsv` updated. |
 
 ---
 
@@ -39,12 +41,11 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| C3 | **Course rewrite: `viva-meetings`** (8 modules) | 🟡 In progress | Full standards audit: Objective/Watch-for/Jargon/In a book/Research/Fun fact. |
-| C4 | **Course rewrite: `viva-tasks`** (30 modules) | ⬜ Queued | Largest; do last in Viva series. |
-| C5 | **Course rewrite: `financial-intelligence`** (8 modules) | ⬜ Queued | — |
-| C6 | **Course rewrite: `jordan-mentoring`** (20 modules) | ⬜ Queued | — |
-| C7 | **Course rewrite: `wabba-ux`** (17 modules) | ⬜ Queued | — |
-| C8 | **Course rewrite: `wabba-content`** (16 modules) | ⬜ Queued | — |
+| C4 | **Course rewrite: `viva-tasks`** (30 modules) | 🟡 In progress | Largest; audit and depth-standard pass for all 30 task modules. |
+| C5 | **Course rewrite: `financial-intelligence`** (8 modules) | ⬜ Queued | Wealth compounding, valuation, capital allocation. |
+| C6 | **Course rewrite: `jordan-mentoring`** (20 modules) | ⬜ Queued | 12-week curriculum depth audit and verification. |
+| C7 | **Course rewrite: `wabba-ux`** (17 modules) | ⬜ Queued | Ragnar's WU board journey walkthroughs. |
+| C8 | **Course rewrite: `wabba-content`** (16 modules) | ⬜ Queued | Ten association sites truth constraint and copy decisions. |
 | C9 | **Course rewrite: `viva-portals` verification pass** (00–20) | ⬜ Queued | Module 20 done; audit 00–19 for callout completeness. |
 
 ### Tier 2 — HIGH impact, medium urgency
