@@ -1,0 +1,11 @@
+# Confirmed false positives, checked by hand -- not real secrets. gitleaks
+# scans full git history (fetch-depth: 0 in secrets-scan.yml), so a finding
+# in an OLD commit keeps re-triggering even after the current file is fixed
+# or annotated with `gitleaks:allow` (that only suppresses future commits
+# containing the same line). One fingerprint per line, format:
+# <commit>:<file>:<rule>:<line> -- reproduce with `gitleaks detect --source . -v`.
+
+# app/lib/services/session.dart:52 doc-comment ("KeyStoreException: Signature/MAC
+# verification failed...") false-positives generic-api-key's entropy heuristic.
+# Documented Android Keystore log message -- verified by hand.
+8ff5679cb51d7773f5c92de313c960612e8d2f69:app/lib/services/session.dart:generic-api-key:52
