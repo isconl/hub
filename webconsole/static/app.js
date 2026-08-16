@@ -1031,25 +1031,55 @@ function renderToday() {
   setTimeout(fetchDataHealth, 0);
   const ctx = STATE.time || getEquicycleContext();
   // The command view shows only LIVE work. Finished tasks leave this screen
-  // entirely (his 29 Jul rule) - they live on as the Archive filter in the
-  // dedicated Tasks view, where the record stays complete.
+  // entirely - they live on as the Archive filter in the dedicated Tasks view.
   const tasks = (STATE.tasks || []).filter(t => t.STATUS !== 'done');
   const jc = STATE.services && STATE.services.jiraConfig ? STATE.services.jiraConfig : {};
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Morning Brief' : hour < 18 ? 'Afternoon Checkpoint' : 'Evening Review';
-  const todayTasks = tasks.filter(t => t.STATUS==='today').slice(0, 2);
-  const taskBullet = todayTasks.length ? todayTasks.map(t=>t.TITLE).join(', ') : 'No high-priority tasks flagged.';
 
-  // Upcoming events (next 5)
-  const today = new Date().toISOString().slice(0,10);
+  // ── Intelligent top-3 task selection ─────────────────────────────────────
+  // Score each task based on urgency signals so the hub always surfaces the
+  // three highest-leverage items, not just the three oldest.
+  const today = new Date().toISOString().slice(0, 10);
+  function scoreTask(t) {
+    let s = 0;
+    // Status weight: today-flagged tasks are the most important
+    if (t.STATUS === 'today')    s += 60;
+    if (t.STATUS === 'in-progress' || t.STATUS === 'inprogress') s += 40;
+    if (t.STATUS === 'todo')     s += 10;
+    // Priority weight
+    if (t.PRIORITY === 'critical') s += 50;
+    if (t.PRIORITY === 'high')     s += 30;
+    if (t.PRIORITY === 'medium')   s += 10;
+    // Overdue penalty becomes a boost (overdue = act now)
+    if (t.DUE_DATE && t.DUE_DATE !== '-') {
+      const diff = Math.floor((new Date(t.DUE_DATE) - new Date(today)) / 864e5);
+      if (diff < 0)       s += 45 + Math.abs(diff) * 3; // overdue: urgent
+      else if (diff === 0) s += 35;                      // due today
+      else if (diff <= 2)  s += 20;                      // due very soon
+      else if (diff <= 7)  s += 10;                      // due this week
+    }
+    // Jira-linked tasks signal committed scope
+    if (t.JIRA_KEY && t.JIRA_KEY !== '-') s += 8;
+    return s;
+  }
+  const topTasks = tasks
+    .filter(t => !t.PARENT_ID || t.PARENT_ID === '-')
+    .map(t => ({ ...t, _score: scoreTask(t) }))
+    .sort((a, b) => b._score - a._score)
+    .slice(0, 3);
+
+  const taskBullet = topTasks.length ? topTasks.map(t => t.TITLE).join(', ') : 'No high-priority tasks flagged.';
+
+  // Upcoming events (next 5 for the right-rail events list)
   const upcomingEvents = (STATE.calendarEvents || [])
     .filter(e => e.date >= today)
-    .sort((a,b) => a.date.localeCompare(b.date))
+    .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 5);
 
   return `
     <div class="command-hero-grid">
-      <!-- Brief + Stats -->
+      <!-- ── Left: Brief + Stats + Tasks + Inbox ── -->
       <div class="command-left">
         <div id="day-card-slot">${renderDayBlocks()}</div>
 
@@ -1057,7 +1087,6 @@ function renderToday() {
           <div class="morning-brief-title">${greeting}</div>
           <div class="morning-brief-bullets">
             <div class="morning-brief-bullet linked" title="Open Tasks" onclick="navigate('tasks')">Focus: ${taskBullet}</div>
-            <div class="morning-brief-bullet linked" title="${jc.host?'Open Jira board':'Configure Jira in Settings'}" onclick="navigate('${jc.host?'jira':'settings'}')">Jira: <strong>${jc.host||'Not configured'}</strong> · <strong>${STATE.jiraIssues.length}</strong> open issues</div>
             <div class="morning-brief-bullet">
               <span class="linked" title="Open GitHub" onclick="navigate('github')">GitHub: <strong>${STATE.github.repos.length}</strong> repos</span>
               ·
@@ -1078,35 +1107,28 @@ function renderToday() {
 
         <div id="data-health-slot"></div>
 
-        <div class="cards-grid">
-          <div class="card">
+        <!-- Tasks + Inbox: side by side, each using a square footprint -->
+        <div class="cards-grid hub-panels-row">
+          <!-- TOP 3 INTELLIGENT TASKS -->
+          <div class="card hub-panel-card">
             <div class="card-header">
-              <span class="card-title">Tasks</span>
-              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('tasks')">${tasks.length} open · Edit all →</button>
+              <span class="card-title">${svgIcon('check-square', 13, 'icon-muted')} Top Tasks</span>
+              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('tasks')">${tasks.length} open · All →</button>
             </div>
-            <!-- Minimal, like the Inbox card beside it: top 5 only, so the
-                 command view's other cards are reachable without scrolling
-                 past a full task list. The dedicated Tasks screen (Edit
-                 all →) is where the whole board actually lives. -->
-            ${(() => {
-              const topLevel = tasks.filter(t => !t.PARENT_ID || t.PARENT_ID === '-');
-              if (!topLevel.length) return '<div class="empty-state">Nothing open. The archive keeps the finished ones.</div>';
-              const shown = topLevel.slice(0, 5).map(t => taskRowMini(t)).join('');
-              const rest = topLevel.length - 5;
-              return shown + (rest > 0 ? `<div class="empty-state linked" onclick="navigate('tasks')">+${rest} more →</div>` : '');
-            })()}
-            <div class="inline-form">
-              <input id="quick-task-input" type="text" placeholder="Quick add task (auto-syncs to Jira)..."/>
+            ${topTasks.length ? topTasks.map(t => taskRowMini(t)).join('') : '<div class="empty-state">Nothing open. Clean slate.</div>'}
+            <div class="inline-form" style="margin-top:auto;padding-top:0.5rem">
+              <input id="quick-task-input" type="text" placeholder="Quick add task…"/>
               <button class="btn btn-primary" onclick="quickAddTask()">+ Add</button>
             </div>
           </div>
 
-          <div class="card">
+          <!-- INBOX: top 5 messages -->
+          <div class="card hub-panel-card">
             <div class="card-header">
-              <span class="card-title">Inbox</span>
+              <span class="card-title">${svgIcon('inbox', 13, 'icon-muted')} Inbox</span>
               <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('inbox')">Full Inbox →</button>
             </div>
-            ${(STATE.feed || []).slice(0, 4).map(m => `
+            ${(STATE.feed || []).slice(0, 5).map(m => `
               <div class="inbox-item ${m.STATUS === 'new' ? 'unread' : ''}" style="cursor:pointer"
                    title="Open in Inbox" onclick="inboxOpen['${escHtml(m.ID)}']=true;navigate('inbox')">
                 <div class="inbox-head" style="pointer-events:none">
@@ -1118,48 +1140,33 @@ function renderToday() {
               </div>`).join('') || '<div class="empty-state linked" onclick="navigate(\'inbox\')">Inbox zero →</div>'}
           </div>
         </div>
-
-        <div class="cards-grid">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Upcoming Events</span>
-              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('calendar')">Full Calendar →</button>
-            </div>
-            ${upcomingEvents.length ? upcomingEvents.map(e=>`
-              <div class="task-item linked" title="Open Calendar" onclick="navigate('calendar')">
-                <div class="task-text">
-                  <div class="task-title">${escHtml(e.title)}</div>
-                  <div class="task-meta">
-                    <span class="badge badge-today">${e.date}</span>
-                    ${e.time?`<span class="badge badge-low">${e.time}</span>`:''}
-                    ${e.source==='microsoft365'?'<span class="badge badge-jira">M365</span>':''}
-                  </div>
-                </div>
-              </div>`).join('') : '<div class="empty-state">No upcoming events. The calendar is between engagements. <a href="#" onclick="openAddEventModal()" style="color:var(--green)">+ Schedule one</a></div>'}
-          </div>
-
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Equicycle Cycle ${ctx.cycleNum} - ${ctx.theme}</span>
-              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('calendar')">Day ${ctx.dayInCycle} of 28 →</button>
-            </div>
-            ${renderEqGrid(ctx.cycleNum, ctx.dayInCycle)}
-          </div>
-        </div>
       </div>
 
-      <!-- Mini Calendar Sidebar -->
-      <div class="command-right">
-        ${renderMiniCalendar(calendarState.year, calendarState.month, STATE.calendarEvents)}
-        <div class="card" style="margin-top:0.75rem">
-          <div class="card-header"><span class="card-title">Live Jira</span><button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('jira')">Board →</button></div>
-          ${(STATE.jiraIssues||[]).slice(0,4).map(i=>`
-            <div class="task-item linked" title="Open ${escHtml(i.key)} on the Jira board" onclick="navigate('jira')">
-              <div class="task-text">
-                <div class="task-title"><span style="color:var(--cyan);font-weight:600">[${i.key}]</span> ${escHtml((i.summary||'').slice(0,50))}</div>
-                <div class="task-meta"><span class="badge badge-jira">${i.status||'To Do'}</span></div>
+      <!-- ── Right: Calendar + Upcoming Events (square panels) ── -->
+      <div class="command-right hub-right-rail">
+        <!-- Mini calendar: compact square -->
+        <div class="hub-cal-panel">
+          ${renderMiniCalendar(calendarState.year, calendarState.month, STATE.calendarEvents)}
+        </div>
+
+        <!-- Upcoming events: fills the remaining square -->
+        <div class="card hub-events-panel">
+          <div class="card-header">
+            <span class="card-title">${svgIcon('calendar', 13, 'icon-muted')} Upcoming</span>
+            <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('calendar')">Full Calendar →</button>
+          </div>
+          ${upcomingEvents.length ? upcomingEvents.map(e => `
+            <div class="task-item linked hub-event-item" title="Open Calendar" onclick="navigate('calendar')">
+              <div class="task-text" style="pointer-events:none">
+                <div class="task-title" style="font-size:0.8rem">${escHtml(e.title)}</div>
+                <div class="task-meta">
+                  <span class="badge badge-today">${e.date}</span>
+                  ${e.time ? `<span class="badge badge-low">${e.time}</span>` : ''}
+                  ${e.source === 'microsoft365' ? '<span class="badge badge-jira">M365</span>' : ''}
+                </div>
               </div>
-            </div>`).join('') || `<div class="empty-state linked" onclick="navigate('${jc.host?'jira':'settings'}')">${jc.host?'No issues found.':'Configure Jira in Settings →'}</div>`}
+            </div>`).join('') : `
+            <div class="empty-state">No upcoming events. <a href="#" onclick="openAddEventModal()" style="color:var(--green)">+ Schedule one</a></div>`}
         </div>
       </div>
     </div>
@@ -1188,8 +1195,6 @@ function renderToday() {
           </select>
           <label>Notes</label>
           <input id="evt-notes" type="text" placeholder="Optional notes..." />
-          <!-- Scheduling something usually means committing to prepare for it.
-               One checkbox instead of retyping the same thing as a task. -->
           <label class="evt-check">
             <input type="checkbox" id="evt-make-task"/>
             <span>Also add a task to prepare for it, due the same day</span>
@@ -10147,6 +10152,14 @@ function navigate(viewName, params = {}, opts = {}) {
   if (viewName==='social')   { setTimeout(()=>loadBufferDesk(), 60); }
   // Tree is small and cached after the first load, so re-render only when the
   // fetch actually had to happen.
+  if (viewName==='contacts') {
+    fetchCircle().then(() => {
+      if (currentView === 'contacts') {
+        container.innerHTML = renderContacts();
+        if (selectedContactId) openContactPreviewInRail(selectedContactId);
+      }
+    });
+  }
   if (viewName==='spaces' && !STATE.spacesTree) {
     fetchSpaces().then(()=>{ if(currentView==='spaces') container.innerHTML=renderSpaces(); });
   }
@@ -12198,6 +12211,13 @@ let selectedContactId = null;
 let contactsModalState = null; // null | { type: 'add'|'edit'|'import'|'touch', id?: string }
 let contactsImportData = [];
 
+let contactsViewMode = 'grid'; // 'grid' | 'table'
+
+function contactsSetViewMode(mode) {
+  contactsViewMode = mode;
+  repaintView('contacts');
+}
+
 function contactsSetFilter(f) {
   contactsFilter = f;
   repaintView('contacts');
@@ -12210,22 +12230,50 @@ function contactsSetSort(s) {
 
 function contactsOnSearch(val) {
   contactsSearch = (val || '').toLowerCase().trim();
-  const listEl = document.getElementById('contacts-list-container');
-  if (listEl) {
-    listEl.innerHTML = renderContactsListItems();
+  const container = document.getElementById('contacts-content-area');
+  if (container) {
+    const filtered = getFilteredContacts();
+    container.innerHTML = contactsViewMode === 'grid' ? renderContactsGrid(filtered) : renderContactsTable(filtered);
   }
 }
 
-function contactsSelect(id) {
+function contactsSelect(id, andOpenRail = true) {
   selectedContactId = id;
-  const detailEl = document.getElementById('contacts-detail-container');
-  if (detailEl) {
-    detailEl.innerHTML = renderContactDetail();
-  }
-  // Update list selection highlight
-  document.querySelectorAll('.contact-list-item').forEach(el => {
+  // Update visual selection in main workspace
+  document.querySelectorAll('.contact-grid-card, .contact-table-row').forEach(el => {
     el.classList.toggle('selected', el.dataset.id === id);
   });
+  if (andOpenRail) {
+    openContactPreviewInRail(id);
+  }
+}
+
+function openContactPreviewInRail(id) {
+  selectedContactId = id;
+  const people = CIRCLE?.people || [];
+  const p = people.find(x => x.ID === id);
+  if (!p) return;
+
+  // Switch right rail to reader mode
+  setRailMode('reader');
+
+  const readerDock = document.getElementById('reader-dock');
+  const nameEl = document.getElementById('reader-name');
+  const metaEl = document.getElementById('reader-meta');
+  const bodyEl = document.getElementById('reader-body');
+  const dlBtn = document.getElementById('reader-download');
+
+  if (readerDock) readerDock.classList.remove('hidden');
+  if (dlBtn) dlBtn.style.display = 'none';
+  if (nameEl) nameEl.textContent = p.NAME;
+  if (metaEl) {
+    const ringCap = (p.CIRCLE || 'social').toUpperCase();
+    const roleStr = p.ROLE !== '-' ? p.ROLE : (p.GROUP !== '-' ? p.GROUP : 'Contact');
+    metaEl.textContent = `${ringCap} · ${roleStr} · OneDrive Dossier`;
+  }
+  if (bodyEl) {
+    bodyEl.innerHTML = renderContactDetail();
+  }
 }
 
 function getFilteredContacts() {
@@ -12244,7 +12292,8 @@ function getFilteredContacts() {
                     (p.GROUP || '').toLowerCase().includes(q) ||
                     (p.CIRCLE || '').toLowerCase().includes(q) ||
                     (p.TAGS || '').toLowerCase().includes(q) ||
-                    (p.NOTES || '').toLowerCase().includes(q);
+                    (p.NOTES || '').toLowerCase().includes(q) ||
+                    (p.REMEMBER || '').toLowerCase().includes(q);
       if (!match) return false;
     }
     return true;
@@ -12266,12 +12315,16 @@ function renderContacts() {
   const people = CIRCLE.people || [];
   const filtered = getFilteredContacts();
 
-  // If selected contact is not in current filter, pick the first
   if (!selectedContactId || !people.some(p => p.ID === selectedContactId)) {
     selectedContactId = filtered[0]?.ID || people[0]?.ID || null;
   }
 
+  const totalCount = people.length;
+  const profCount = people.filter(p => p.CIRCLE === 'professional').length;
+  const famCount = people.filter(p => p.CIRCLE === 'family').length;
+  const socCount = people.filter(p => p.CIRCLE === 'social').length;
   const dueCount = people.filter(p => p.dueIn != null && p.dueIn <= 0).length;
+  const diaCount = people.filter(p => p.hasDia).length;
 
   return `
     <div class="view-head">
@@ -12289,87 +12342,216 @@ function renderContacts() {
       </div>
     </div>
 
+    <!-- SUMMARY KPI STRIP -->
+    <div class="contacts-stats-strip">
+      <div class="contacts-stat-card" onclick="contactsSetFilter('all')" style="cursor:pointer">
+        <span class="contacts-stat-label">Total Roster</span>
+        <span class="contacts-stat-val">${totalCount}</span>
+      </div>
+      <div class="contacts-stat-card" onclick="contactsSetFilter('professional')" style="cursor:pointer;border-left:3px solid #58a6ff">
+        <span class="contacts-stat-label" style="color:#58a6ff">Professional</span>
+        <span class="contacts-stat-val" style="color:#58a6ff">${profCount}</span>
+      </div>
+      <div class="contacts-stat-card" onclick="contactsSetFilter('family')" style="cursor:pointer;border-left:3px solid #3fb950">
+        <span class="contacts-stat-label" style="color:#3fb950">Family</span>
+        <span class="contacts-stat-val" style="color:#3fb950">${famCount}</span>
+      </div>
+      <div class="contacts-stat-card" onclick="contactsSetFilter('social')" style="cursor:pointer;border-left:3px solid #bc8cff">
+        <span class="contacts-stat-label" style="color:#bc8cff">Social</span>
+        <span class="contacts-stat-val" style="color:#bc8cff">${socCount}</span>
+      </div>
+      <div class="contacts-stat-card" onclick="contactsSetFilter('due')" style="cursor:pointer;border-left:3px solid var(--red)">
+        <span class="contacts-stat-label" style="color:var(--red)">Due for Touch</span>
+        <span class="contacts-stat-val" style="color:var(--red)">${dueCount}</span>
+      </div>
+      <div class="contacts-stat-card" onclick="contactsSetFilter('dia')" style="cursor:pointer;border-left:3px solid var(--cyan)">
+        <span class="contacts-stat-label" style="color:var(--cyan)">DIA Dossiers</span>
+        <span class="contacts-stat-val" style="color:var(--cyan)">${diaCount}</span>
+      </div>
+    </div>
+
     <div class="contacts-root">
       <!-- TOOLBAR & FILTERS -->
       <div class="contacts-toolbar">
         <div class="contacts-search-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="contacts-search" type="text" placeholder="Search contacts by name, role, organization, tags..."
+          ${svgIcon('search', 14)}
+          <input class="contacts-search" type="text" placeholder="Search contacts by name, role, organization, tags, notes..."
                  value="${escAttr(contactsSearch)}" oninput="contactsOnSearch(this.value)">
         </div>
 
         <div class="contacts-filter-group">
-          <button class="contacts-filter-btn${contactsFilter === 'all' ? ' active' : ''}" onclick="contactsSetFilter('all')">All (${people.length})</button>
-          <button class="contacts-filter-btn${contactsFilter === 'professional' ? ' active' : ''}" onclick="contactsSetFilter('professional')">Professional (${people.filter(p => p.CIRCLE === 'professional').length})</button>
-          <button class="contacts-filter-btn${contactsFilter === 'family' ? ' active' : ''}" onclick="contactsSetFilter('family')">Family (${people.filter(p => p.CIRCLE === 'family').length})</button>
-          <button class="contacts-filter-btn${contactsFilter === 'social' ? ' active' : ''}" onclick="contactsSetFilter('social')">Social (${people.filter(p => p.CIRCLE === 'social').length})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'all' ? ' active' : ''}" onclick="contactsSetFilter('all')">All (${totalCount})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'professional' ? ' active' : ''}" onclick="contactsSetFilter('professional')">Professional (${profCount})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'family' ? ' active' : ''}" onclick="contactsSetFilter('family')">Family (${famCount})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'social' ? ' active' : ''}" onclick="contactsSetFilter('social')">Social (${socCount})</button>
           <button class="contacts-filter-btn${contactsFilter === 'due' ? ' active' : ''}" onclick="contactsSetFilter('due')">Due Now (${dueCount})</button>
-          <button class="contacts-filter-btn${contactsFilter === 'dia' ? ' active' : ''}" onclick="contactsSetFilter('dia')">${svgIcon('zap', 12)} DIA Dossier (${people.filter(p => p.hasDia).length})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'dia' ? ' active' : ''}" onclick="contactsSetFilter('dia')">${svgIcon('zap', 12)} DIA (${diaCount})</button>
         </div>
 
-        <div style="margin-left:auto;display:flex;align-items:center;gap:0.4rem">
-          <span style="font-size:0.72rem;color:var(--text-3)">Sort:</span>
-          <select class="jira-input" style="padding:0.25rem 1.4rem 0.25rem 0.5rem;font-size:0.75rem" onchange="contactsSetSort(this.value)">
-            <option value="name"${contactsSort === 'name' ? ' selected' : ''}>Name (A-Z)</option>
-            <option value="due"${contactsSort === 'due' ? ' selected' : ''}>Due Soonest</option>
-            <option value="cadence"${contactsSort === 'cadence' ? ' selected' : ''}>Cadence (Asc)</option>
-            <option value="lastTouch"${contactsSort === 'lastTouch' ? ' selected' : ''}>Recently Touched</option>
-          </select>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:0.6rem">
+          <div style="display:flex;align-items:center;gap:0.3rem">
+            <span style="font-size:0.72rem;color:var(--text-3)">Sort:</span>
+            <select class="jira-input" style="padding:0.25rem 1.4rem 0.25rem 0.5rem;font-size:0.75rem" onchange="contactsSetSort(this.value)">
+              <option value="name"${contactsSort === 'name' ? ' selected' : ''}>Name (A-Z)</option>
+              <option value="due"${contactsSort === 'due' ? ' selected' : ''}>Due Soonest</option>
+              <option value="cadence"${contactsSort === 'cadence' ? ' selected' : ''}>Cadence (Asc)</option>
+              <option value="lastTouch"${contactsSort === 'lastTouch' ? ' selected' : ''}>Recently Touched</option>
+            </select>
+          </div>
+
+          <div class="contacts-view-switch">
+            <button class="contacts-view-btn${contactsViewMode === 'grid' ? ' active' : ''}" onclick="contactsSetViewMode('grid')" title="Card Grid View">${svgIcon('grid', 13)}</button>
+            <button class="contacts-view-btn${contactsViewMode === 'table' ? ' active' : ''}" onclick="contactsSetViewMode('table')" title="Data Table View">${svgIcon('list', 13)}</button>
+          </div>
         </div>
       </div>
 
-      <!-- SPLIT VIEW: LIST + DETAIL -->
-      <div class="contacts-split">
-        <div class="contacts-list" id="contacts-list-container">
-          ${renderContactsListItems()}
-        </div>
-
-        <div class="contact-detail" id="contacts-detail-container">
-          ${renderContactDetail()}
-        </div>
+      <!-- MAIN CRM WORKSPACE -->
+      <div id="contacts-content-area">
+        ${filtered.length === 0
+          ? `<div class="card"><div class="empty-state">No contacts matching the current filter or search query.</div></div>`
+          : (contactsViewMode === 'grid' ? renderContactsGrid(filtered) : renderContactsTable(filtered))
+        }
       </div>
     </div>
 
     ${renderContactsModal()}`;
 }
 
-function renderContactsListItems() {
-  const filtered = getFilteredContacts();
-  if (!filtered.length) {
-    return `<div class="contacts-list-empty">No contacts matching current filter or search query.</div>`;
-  }
+function renderContactsGrid(contacts) {
+  const RING_COLOR = { family: '#3fb950', professional: '#58a6ff', social: '#bc8cff' };
 
-  return filtered.map(p => {
-    const isSel = p.ID === selectedContactId;
-    const initials = (p.NAME || '??').split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
-    const ringKey = p.CIRCLE || 'social';
-    const dueClass = p.dueIn != null ? (p.dueIn <= 0 ? 'overdue' : (p.dueIn <= 7 ? 'soon' : 'ok')) : '';
-    const dueLabel = p.dueIn != null ? (p.dueIn <= 0 ? 'Due now' : `${p.dueIn}d`) : '';
+  return `
+    <div class="contacts-grid">
+      ${contacts.map(p => {
+        const isSel = p.ID === selectedContactId;
+        const initials = (p.NAME || '??').split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
+        const ringKey = p.CIRCLE || 'social';
+        const col = RING_COLOR[ringKey] || '#888';
+        const ringCap = ringKey.charAt(0).toUpperCase() + ringKey.slice(1);
+        const folderPath = p.FOLDER_PATH || `Sconl/Circle/${ringCap}/${p.NAME}`;
+        const dueClass = p.dueIn != null ? (p.dueIn <= 0 ? 'overdue' : (p.dueIn <= 7 ? 'soon' : 'ok')) : '';
+        const dueLabel = p.dueIn != null ? (p.dueIn <= 0 ? 'Due now' : `In ${p.dueIn}d`) : 'No cadence';
 
-    const avatarHtml = p.AVATAR_URL
-      ? `<div class="contact-avatar ring-${escAttr(ringKey)}" style="padding:0;overflow:hidden"><img src="${escAttr(p.AVATAR_URL)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" alt="${escAttr(p.NAME)}"></div>`
-      : `<div class="contact-avatar ring-${escAttr(ringKey)}">${escHtml(initials)}</div>`;
+        const avatarHtml = p.AVATAR_URL
+          ? `<div class="contact-avatar ring-${escAttr(ringKey)}" style="padding:0;overflow:hidden"><img src="${escAttr(p.AVATAR_URL)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" alt="${escAttr(p.NAME)}"></div>`
+          : `<div class="contact-avatar ring-${escAttr(ringKey)}">${escHtml(initials)}</div>`;
 
-    return `
-      <div class="contact-list-item${isSel ? ' selected' : ''}" data-id="${escAttr(p.ID)}" onclick="contactsSelect('${escAttr(p.ID)}')">
-        ${avatarHtml}
-        <div class="contact-list-info">
-          <div class="contact-list-name">${escHtml(p.NAME)}</div>
-          <div class="contact-list-role">${escHtml(p.ROLE !== '-' ? p.ROLE : (p.GROUP !== '-' ? p.GROUP : ringKey))}</div>
-        </div>
-        <div class="contact-list-meta">
-          ${dueLabel ? `<span class="contact-due-badge ${dueClass}">${escHtml(dueLabel)}</span>` : ''}
-          ${p.CADENCE_DAYS ? `<span style="font-size:0.62rem;color:var(--text-3);font-family:var(--font-mono)">${p.CADENCE_DAYS}d cadence</span>` : ''}
-        </div>
-      </div>`;
-  }).join('');
+        return `
+          <div class="contact-grid-card${isSel ? ' selected' : ''}" data-id="${escAttr(p.ID)}" onclick="contactsSelect('${escAttr(p.ID)}')">
+            <div class="contact-card-top">
+              ${avatarHtml}
+              <div class="contact-card-info">
+                <div class="contact-card-name">${escHtml(p.NAME)}</div>
+                <div class="contact-card-role">${escHtml(p.ROLE !== '-' ? p.ROLE : (p.GROUP !== '-' ? p.GROUP : ringCap))}</div>
+              </div>
+              <span class="contact-tag" style="border-color:${col};color:${col};text-transform:capitalize;font-size:0.65rem">${escHtml(ringKey)}</span>
+            </div>
+
+            <div class="contact-card-metrics">
+              <span style="color:var(--text-3);font-family:var(--font-mono)">${p.CADENCE_DAYS ? `Cadence: ${p.CADENCE_DAYS}d` : 'No schedule'}</span>
+              <span class="contact-due-badge ${dueClass}">${escHtml(dueLabel)}</span>
+            </div>
+
+            <div class="contact-card-notes">
+              ${escHtml(p.REMEMBER || p.NOTES || 'No standing notes recorded.')}
+            </div>
+
+            <div class="contact-card-footer" onclick="event.stopPropagation()">
+              <button class="btn btn-primary" style="padding:3px 8px;font-size:0.72rem" onclick="contactsOpenModal('touch','${escAttr(p.ID)}')">
+                ${svgIcon('message', 11)} Touch
+              </button>
+              <button class="btn btn-ghost" style="padding:3px 8px;font-size:0.72rem" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')">
+                ${svgIcon('folder', 11)} Folder
+              </button>
+              <button class="btn btn-ghost" style="padding:3px 8px;font-size:0.72rem" onclick="contactsSelect('${escAttr(p.ID)}')">
+                ${svgIcon('eye', 11)} Dossier
+              </button>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function renderContactsTable(contacts) {
+  const RING_COLOR = { family: '#3fb950', professional: '#58a6ff', social: '#bc8cff' };
+
+  return `
+    <div class="contacts-table-wrap">
+      <table class="contacts-table">
+        <thead>
+          <tr>
+            <th>Contact</th>
+            <th>Ring</th>
+            <th>Role &amp; Org</th>
+            <th>Cadence</th>
+            <th>Last Touch</th>
+            <th>Status / Due</th>
+            <th>Dossier</th>
+            <th style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${contacts.map(p => {
+            const isSel = p.ID === selectedContactId;
+            const initials = (p.NAME || '??').split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
+            const ringKey = p.CIRCLE || 'social';
+            const col = RING_COLOR[ringKey] || '#888';
+            const ringCap = ringKey.charAt(0).toUpperCase() + ringKey.slice(1);
+            const folderPath = p.FOLDER_PATH || `Sconl/Circle/${ringCap}/${p.NAME}`;
+            const dueClass = p.dueIn != null ? (p.dueIn <= 0 ? 'overdue' : (p.dueIn <= 7 ? 'soon' : 'ok')) : '';
+            const dueLabel = p.dueIn != null ? (p.dueIn <= 0 ? 'Due now' : `In ${p.dueIn}d`) : '—';
+
+            const avatarHtml = p.AVATAR_URL
+              ? `<div class="contact-avatar ring-${escAttr(ringKey)}" style="width:28px;height:28px;padding:0;overflow:hidden"><img src="${escAttr(p.AVATAR_URL)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" alt="${escAttr(p.NAME)}"></div>`
+              : `<div class="contact-avatar ring-${escAttr(ringKey)}" style="width:28px;height:28px;font-size:0.7rem">${escHtml(initials)}</div>`;
+
+            return `
+              <tr class="contact-table-row${isSel ? ' selected' : ''}" data-id="${escAttr(p.ID)}" onclick="contactsSelect('${escAttr(p.ID)}')">
+                <td>
+                  <div style="display:flex;align-items:center;gap:0.55rem">
+                    ${avatarHtml}
+                    <span style="font-weight:600;color:var(--text)">${escHtml(p.NAME)}</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="contact-tag" style="border-color:${col};color:${col};text-transform:capitalize;font-size:0.65rem">${escHtml(ringKey)}</span>
+                </td>
+                <td>
+                  <div>${escHtml(p.ROLE !== '-' ? p.ROLE : '—')}</div>
+                  ${p.GROUP && p.GROUP !== '-' ? `<div style="font-size:0.68rem;color:var(--text-3)">${escHtml(p.GROUP)}</div>` : ''}
+                </td>
+                <td style="font-family:var(--font-mono);font-size:0.72rem">
+                  ${p.CADENCE_DAYS ? `${p.CADENCE_DAYS}d` : '<span style="color:var(--text-3)">—</span>'}
+                </td>
+                <td style="font-family:var(--font-mono);font-size:0.72rem">
+                  ${p.lastTouch ? escHtml(p.lastTouch) : '<span style="color:var(--text-3)">—</span>'}
+                </td>
+                <td>
+                  <span class="contact-due-badge ${dueClass}">${escHtml(dueLabel)}</span>
+                </td>
+                <td>
+                  ${p.hasDia ? `<span class="contact-tag" style="border-color:var(--cyan);color:var(--cyan);font-size:0.65rem">${svgIcon('zap', 11)} DIA</span>` : '<span style="color:var(--text-3);font-size:0.7rem">Standard</span>'}
+                </td>
+                <td style="text-align:right" onclick="event.stopPropagation()">
+                  <div style="display:inline-flex;gap:0.25rem">
+                    <button class="btn btn-ghost" style="padding:2px 6px;font-size:0.7rem" onclick="contactsOpenModal('touch','${escAttr(p.ID)}')" title="Log Touch">${svgIcon('message', 11)}</button>
+                    <button class="btn btn-ghost" style="padding:2px 6px;font-size:0.7rem" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')" title="Open Folder">${svgIcon('folder', 11)}</button>
+                    <button class="btn btn-ghost" style="padding:2px 6px;font-size:0.7rem" onclick="contactsSelect('${escAttr(p.ID)}')" title="Preview Dossier">${svgIcon('eye', 11)}</button>
+                  </div>
+                </td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function renderContactDetail() {
   const people = CIRCLE?.people || [];
   const p = people.find(x => x.ID === selectedContactId);
   if (!p) {
-    return `<div class="contact-detail-empty">Select a contact from the roster to view dossier and relationship details.</div>`;
+    return `<div class="contact-detail-empty" style="padding:2rem;text-align:center;color:var(--text-3)">Select a contact to inspect dossier.</div>`;
   }
 
   const initials = (p.NAME || '??').split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
@@ -12404,12 +12586,12 @@ function renderContactDetail() {
           ${p.GROUP && p.GROUP !== '-' ? `<span class="contact-tag">${escHtml(p.GROUP)}</span>` : ''}
           ${p.hasDia ? `<span class="contact-tag" style="border-color:var(--cyan);color:var(--cyan)">${svgIcon('zap', 12)} DIA Dossier</span>` : ''}
         </div>
-        <div class="contact-detail-actions" style="margin-top:0.6rem;display:flex;gap:0.4rem;flex-wrap:wrap">
-          <button class="btn btn-primary" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('touch','${escAttr(p.ID)}')">${svgIcon('message', 13)} Log Touch</button>
-          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')">${svgIcon('folder', 13)} Open Folder</button>
-          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('photo','${escAttr(p.ID)}')">${svgIcon('eye', 13)} Photo</button>
-          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="circleOpen('${escAttr(p.ID)}')">${svgIcon('file', 13)} DIA Profile</button>
-          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('edit','${escAttr(p.ID)}')">${svgIcon('edit', 13)} Edit</button>
+        <div class="contact-detail-actions">
+          <button class="btn btn-primary" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenModal('touch','${escAttr(p.ID)}')">${svgIcon('message', 12)} Log Touch</button>
+          <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')">${svgIcon('folder', 12)} Files</button>
+          <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenModal('photo','${escAttr(p.ID)}')">${svgIcon('eye', 12)} Photo</button>
+          <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="circleOpen('${escAttr(p.ID)}')">${svgIcon('file', 12)} DIA Profile</button>
+          <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenModal('edit','${escAttr(p.ID)}')">${svgIcon('edit', 12)} Edit</button>
         </div>
       </div>
     </div>
@@ -12446,9 +12628,9 @@ function renderContactDetail() {
           <div class="contact-field" style="grid-column:1/-1">
             <span class="contact-field-label">OneDrive Dossier Folder</span>
             <span class="contact-field-value" style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
-              <span style="font-family:var(--font-mono);font-size:0.75rem;color:var(--cyan);word-break:break-all">${escHtml(folderPath)}</span>
-              <button class="btn btn-ghost" style="padding:2px 8px;font-size:0.7rem;flex-shrink:0" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')">
-                ${svgIcon('external', 11)} Open in Files
+              <span style="font-family:var(--font-mono);font-size:0.74rem;color:var(--cyan);word-break:break-all">${escHtml(folderPath)}</span>
+              <button class="btn btn-ghost" style="padding:2px 7px;font-size:0.68rem;flex-shrink:0" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')">
+                ${svgIcon('external', 10)} Open in Files
               </button>
             </span>
           </div>
@@ -12459,9 +12641,9 @@ function renderContactDetail() {
       <div>
         <div class="contact-section-head">Key Context &amp; Standing Notes</div>
         <div style="display:flex;flex-direction:column;gap:0.4rem">
-          <textarea id="contacts-remember-box" class="jira-input" rows="3" style="width:100%;font-size:0.8rem;line-height:1.45"
+          <textarea id="contacts-remember-box" class="jira-input" rows="3" style="width:100%;font-size:0.78rem;line-height:1.45"
                     placeholder="Standing context, preferences, conversational boundaries, or things to remember...">${escHtml(p.REMEMBER || p.NOTES || '')}</textarea>
-          <button class="btn btn-ghost" style="align-self:flex-start;font-size:0.72rem;padding:3px 9px" onclick="contactsSaveRemember('${escAttr(p.ID)}')">${svgIcon('check', 12)} Save Notes</button>
+          <button class="btn btn-ghost" style="align-self:flex-start;font-size:0.7rem;padding:3px 8px" onclick="contactsSaveRemember('${escAttr(p.ID)}')">${svgIcon('check', 11)} Save Notes</button>
         </div>
       </div>
 
@@ -12478,7 +12660,7 @@ function renderContactDetail() {
               </div>
             </div>
           `).join('') : `
-            <div style="font-size:0.78rem;color:var(--text-3);font-style:italic">No logged touches for this contact yet. Click "Log Touch" to record one.</div>
+            <div style="font-size:0.76rem;color:var(--text-3);font-style:italic">No logged touches for this contact yet. Click "Log Touch" to record one.</div>
           `}
         </div>
       </div>
