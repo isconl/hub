@@ -8378,6 +8378,7 @@ const viewFns = {
   journal:renderJournal, learning:renderLearning, circle:renderCircle, ideas:renderIdeas,
   projects:renderProjects, corporate:renderCorporate, 'corporate-detail':renderCorporateDetail, notifications:renderNotifications, articles:renderArticles,
   rhythm:renderRhythm, personal:renderRhythm, teams:renderTeams,
+  contacts:renderContacts,
 };
 
 /* ── THE NOTIFICATION CENTRE ──────────────────────────────────────────────────
@@ -8708,7 +8709,7 @@ function pushHistory(viewName, params, replace) {
 const VIEW_LABELS = {
   today:'Hub', jira:'Kanban', calendar:'Calendar', inbox:'Inbox', notifications:'Alerts',
   github:'GitHub', files:'File Manager', tasks:'Tasks', spaces:'Spaces',
-  journal:'Journal', learning:'Learning', circle:'Circle', projects:'Projects', ideas:'Ideas',
+  journal:'Journal', learning:'Learning', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
   decisions:'Decision Log', risks:'Risk Register', social:'Buffer',
   integrations:'Integrations Hub', audit:'Audit Chain', settings:'Settings',
   task:'Task', 'whatsapp-guide':'WhatsApp',
@@ -12131,6 +12132,708 @@ async function circleDia(id, btn) {
   btn.disabled = false;
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONTACTS SPACE — Modern Personal CRM & Unified Roster
+   A powerful Google Contacts / personal CRM interface inside the Circle space.
+   Data is tenant-specific (rehydrates from OneDrive, never committed).
+   Implementation logic is 100% agnostic.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+let contactsSearch = '';
+let contactsFilter = 'all'; // 'all' | 'family' | 'professional' | 'social' | 'due' | 'dia'
+let contactsSort = 'name';   // 'name' | 'due' | 'cadence' | 'lastTouch'
+let selectedContactId = null;
+let contactsModalState = null; // null | { type: 'add'|'edit'|'import'|'touch', id?: string }
+let contactsImportData = [];
+
+function contactsSetFilter(f) {
+  contactsFilter = f;
+  repaintView('contacts');
+}
+
+function contactsSetSort(s) {
+  contactsSort = s;
+  repaintView('contacts');
+}
+
+function contactsOnSearch(val) {
+  contactsSearch = (val || '').toLowerCase().trim();
+  const listEl = document.getElementById('contacts-list-container');
+  if (listEl) {
+    listEl.innerHTML = renderContactsListItems();
+  }
+}
+
+function contactsSelect(id) {
+  selectedContactId = id;
+  const detailEl = document.getElementById('contacts-detail-container');
+  if (detailEl) {
+    detailEl.innerHTML = renderContactDetail();
+  }
+  // Update list selection highlight
+  document.querySelectorAll('.contact-list-item').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === id);
+  });
+}
+
+function getFilteredContacts() {
+  const people = (CIRCLE?.people || []).slice();
+  return people.filter(p => {
+    if (contactsFilter === 'family' && p.CIRCLE !== 'family') return false;
+    if (contactsFilter === 'professional' && p.CIRCLE !== 'professional') return false;
+    if (contactsFilter === 'social' && p.CIRCLE !== 'social') return false;
+    if (contactsFilter === 'due' && (p.dueIn == null || p.dueIn > 0)) return false;
+    if (contactsFilter === 'dia' && !p.hasDia) return false;
+
+    if (contactsSearch) {
+      const q = contactsSearch;
+      const match = (p.NAME || '').toLowerCase().includes(q) ||
+                    (p.ROLE || '').toLowerCase().includes(q) ||
+                    (p.GROUP || '').toLowerCase().includes(q) ||
+                    (p.CIRCLE || '').toLowerCase().includes(q) ||
+                    (p.TAGS || '').toLowerCase().includes(q) ||
+                    (p.NOTES || '').toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    return true;
+  }).sort((a, b) => {
+    if (contactsSort === 'name') return (a.NAME || '').localeCompare(b.NAME || '');
+    if (contactsSort === 'due') return (a.dueIn ?? 9999) - (b.dueIn ?? 9999);
+    if (contactsSort === 'cadence') return (parseInt(a.CADENCE_DAYS || 999, 10)) - (parseInt(b.CADENCE_DAYS || 999, 10));
+    if (contactsSort === 'lastTouch') return (b.LAST_TOUCH || '').localeCompare(a.LAST_TOUCH || '');
+    return 0;
+  });
+}
+
+function renderContacts() {
+  if (!CIRCLE) {
+    fetchCircle();
+    return `<div class="card"><div class="empty-state">Loading your contacts roster…</div></div>`;
+  }
+
+  const people = CIRCLE.people || [];
+  const filtered = getFilteredContacts();
+
+  // If selected contact is not in current filter, pick the first
+  if (!selectedContactId || !people.some(p => p.ID === selectedContactId)) {
+    selectedContactId = filtered[0]?.ID || people[0]?.ID || null;
+  }
+
+  const dueCount = people.filter(p => p.dueIn != null && p.dueIn <= 0).length;
+
+  return `
+    <div class="view-head">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+        <div>
+          <h1>Contacts</h1>
+          <div class="view-head-meta">personal CRM … unified roster with ring classification, touch cadence, and multi-source import</div>
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+          <button class="btn btn-primary" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('add')">+ Add Contact</button>
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('import')">⬇ Import</button>
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsExportCSV()">⬆ Export CSV</button>
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="fetchCircle();repaintView('contacts')">↻ Refresh</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="contacts-root">
+      <!-- TOOLBAR & FILTERS -->
+      <div class="contacts-toolbar">
+        <div class="contacts-search-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="contacts-search" type="text" placeholder="Search contacts by name, role, organization, tags..."
+                 value="${escAttr(contactsSearch)}" oninput="contactsOnSearch(this.value)">
+        </div>
+
+        <div class="contacts-filter-group">
+          <button class="contacts-filter-btn${contactsFilter === 'all' ? ' active' : ''}" onclick="contactsSetFilter('all')">All (${people.length})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'professional' ? ' active' : ''}" onclick="contactsSetFilter('professional')">Professional (${people.filter(p => p.CIRCLE === 'professional').length})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'family' ? ' active' : ''}" onclick="contactsSetFilter('family')">Family (${people.filter(p => p.CIRCLE === 'family').length})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'social' ? ' active' : ''}" onclick="contactsSetFilter('social')">Social (${people.filter(p => p.CIRCLE === 'social').length})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'due' ? ' active' : ''}" onclick="contactsSetFilter('due')">Due Now (${dueCount})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'dia' ? ' active' : ''}" onclick="contactsSetFilter('dia')">DIA Dossier (${people.filter(p => p.hasDia).length})</button>
+        </div>
+
+        <div style="margin-left:auto;display:flex;align-items:center;gap:0.4rem">
+          <span style="font-size:0.72rem;color:var(--text-3)">Sort:</span>
+          <select class="jira-input" style="padding:0.25rem 1.4rem 0.25rem 0.5rem;font-size:0.75rem" onchange="contactsSetSort(this.value)">
+            <option value="name"${contactsSort === 'name' ? ' selected' : ''}>Name (A-Z)</option>
+            <option value="due"${contactsSort === 'due' ? ' selected' : ''}>Due Soonest</option>
+            <option value="cadence"${contactsSort === 'cadence' ? ' selected' : ''}>Cadence (Asc)</option>
+            <option value="lastTouch"${contactsSort === 'lastTouch' ? ' selected' : ''}>Recently Touched</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- SPLIT VIEW: LIST + DETAIL -->
+      <div class="contacts-split">
+        <div class="contacts-list" id="contacts-list-container">
+          ${renderContactsListItems()}
+        </div>
+
+        <div class="contact-detail" id="contacts-detail-container">
+          ${renderContactDetail()}
+        </div>
+      </div>
+    </div>
+
+    ${renderContactsModal()}`;
+}
+
+function renderContactsListItems() {
+  const filtered = getFilteredContacts();
+  if (!filtered.length) {
+    return `<div class="contacts-list-empty">No contacts matching current filter or search query.</div>`;
+  }
+
+  return filtered.map(p => {
+    const isSel = p.ID === selectedContactId;
+    const initials = (p.NAME || '??').split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
+    const ringKey = p.CIRCLE || 'social';
+    const dueClass = p.dueIn != null ? (p.dueIn <= 0 ? 'overdue' : (p.dueIn <= 7 ? 'soon' : 'ok')) : '';
+    const dueLabel = p.dueIn != null ? (p.dueIn <= 0 ? 'Due now' : `${p.dueIn}d`) : '';
+
+    return `
+      <div class="contact-list-item${isSel ? ' selected' : ''}" data-id="${escAttr(p.ID)}" onclick="contactsSelect('${escAttr(p.ID)}')">
+        <div class="contact-avatar ring-${escAttr(ringKey)}">${escHtml(initials)}</div>
+        <div class="contact-list-info">
+          <div class="contact-list-name">${escHtml(p.NAME)}</div>
+          <div class="contact-list-role">${escHtml(p.ROLE !== '-' ? p.ROLE : (p.GROUP !== '-' ? p.GROUP : ringKey))}</div>
+        </div>
+        <div class="contact-list-meta">
+          ${dueLabel ? `<span class="contact-due-badge ${dueClass}">${escHtml(dueLabel)}</span>` : ''}
+          ${p.CADENCE_DAYS ? `<span style="font-size:0.62rem;color:var(--text-3);font-family:var(--font-mono)">${p.CADENCE_DAYS}d cadence</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderContactDetail() {
+  const people = CIRCLE?.people || [];
+  const p = people.find(x => x.ID === selectedContactId);
+  if (!p) {
+    return `<div class="contact-detail-empty">Select a contact from the roster to view dossier and relationship details.</div>`;
+  }
+
+  const initials = (p.NAME || '??').split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
+  const ringKey = p.CIRCLE || 'social';
+  const RING_COLOR = { family: '#3fb950', professional: '#58a6ff', social: '#bc8cff' };
+  const col = RING_COLOR[ringKey] || '#888';
+
+  return `
+    <div class="contact-detail-hero">
+      <div class="contact-detail-avatar ring-${escAttr(ringKey)}" style="background:rgba(255,255,255,0.04);border-color:${col};color:${col}">
+        ${escHtml(initials)}
+      </div>
+      <div class="contact-detail-hero-info">
+        <div class="contact-detail-name">
+          <span class="ring-dot" style="background:${col};display:inline-block;margin-right:6px"></span>
+          ${escHtml(p.NAME)}
+        </div>
+        <div class="contact-detail-role">${escHtml(p.ROLE !== '-' ? p.ROLE : 'No formal role specified')}</div>
+        <div style="display:flex;gap:0.35rem;margin-top:0.4rem;align-items:center">
+          <span class="contact-tag" style="text-transform:capitalize;border-color:${col};color:${col}">${escHtml(p.CIRCLE || 'social')}</span>
+          ${p.GROUP && p.GROUP !== '-' ? `<span class="contact-tag">${escHtml(p.GROUP)}</span>` : ''}
+          ${p.hasDia ? `<span class="contact-tag" style="border-color:var(--cyan);color:var(--cyan)">⚡ DIA Dossier</span>` : ''}
+        </div>
+        <div class="contact-detail-actions">
+          <button class="btn btn-primary" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('touch','${escAttr(p.ID)}')">💬 Log Touch</button>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="circleOpen('${escAttr(p.ID)}')">📄 Full DIA Profile</button>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.75rem" onclick="contactsOpenModal('edit','${escAttr(p.ID)}')">✏ Edit</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="contact-detail-body">
+      <!-- PROFILE FIELDS -->
+      <div>
+        <div class="contact-section-head">Contact Information & Cadence</div>
+        <div class="contact-field-grid">
+          <div class="contact-field">
+            <span class="contact-field-label">Circle Ring</span>
+            <span class="contact-field-value" style="text-transform:capitalize">${escHtml(p.CIRCLE || 'social')}</span>
+          </div>
+          <div class="contact-field">
+            <span class="contact-field-label">Cadence</span>
+            <span class="contact-field-value">${p.CADENCE_DAYS ? `Every ${p.CADENCE_DAYS} days` : '<span class="empty">Not configured</span>'}</span>
+          </div>
+          <div class="contact-field">
+            <span class="contact-field-label">Preferred Channel</span>
+            <span class="contact-field-value">${escHtml(p.CHANNEL || 'WhatsApp')}</span>
+          </div>
+          <div class="contact-field">
+            <span class="contact-field-label">Group / Organization</span>
+            <span class="contact-field-value">${escHtml(p.GROUP !== '-' ? p.GROUP : 'Individual')}</span>
+          </div>
+          <div class="contact-field">
+            <span class="contact-field-label">Last Interaction</span>
+            <span class="contact-field-value">${p.lastTouch ? escHtml(p.lastTouch) : '<span class="empty">No record on file</span>'}</span>
+          </div>
+          <div class="contact-field">
+            <span class="contact-field-label">Next Due</span>
+            <span class="contact-field-value">${p.dueIn != null ? (p.dueIn <= 0 ? '<strong style="color:var(--red)">Due now</strong>' : `In ${p.dueIn} days`) : '<span class="empty">No schedule</span>'}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- REMEMBER & CONTEXT -->
+      <div>
+        <div class="contact-section-head">Key Context &amp; Standing Notes</div>
+        <div style="display:flex;flex-direction:column;gap:0.4rem">
+          <textarea id="contacts-remember-box" class="jira-input" rows="3" style="width:100%;font-size:0.8rem;line-height:1.45"
+                    placeholder="Standing context, preferences, conversational boundaries, or things to remember...">${escHtml(p.REMEMBER || p.NOTES || '')}</textarea>
+          <button class="btn btn-ghost" style="align-self:flex-start;font-size:0.72rem;padding:3px 9px" onclick="contactsSaveRemember('${escAttr(p.ID)}')">Save Notes</button>
+        </div>
+      </div>
+
+      <!-- TOUCH TIMELINE -->
+      <div>
+        <div class="contact-section-head">Recent Touch History</div>
+        <div class="contact-touches">
+          ${(p.touches || []).length ? (p.touches || []).slice(0, 5).map(t => `
+            <div class="contact-touch-item">
+              <div class="contact-touch-dot"></div>
+              <div class="contact-touch-body">
+                <div class="contact-touch-when">${escHtml(t.DATE || t.TS || '')} · ${escHtml(t.CHANNEL || 'interaction')}</div>
+                <div class="contact-touch-note">${escHtml(t.SUMMARY || t.NOTE || '')}</div>
+              </div>
+            </div>
+          `).join('') : `
+            <div style="font-size:0.78rem;color:var(--text-3);font-style:italic">No logged touches for this contact yet. Click "Log Touch" to record one.</div>
+          `}
+        </div>
+      </div>
+    </div>`;
+}
+
+function contactsOpenModal(type, id = null) {
+  contactsModalState = { type, id };
+  contactsImportData = [];
+  repaintView('contacts');
+}
+
+function contactsCloseModal() {
+  contactsModalState = null;
+  contactsImportData = [];
+  repaintView('contacts');
+}
+
+function renderContactsModal() {
+  if (!contactsModalState) return '';
+  const { type, id } = contactsModalState;
+  const people = CIRCLE?.people || [];
+  const p = id ? people.find(x => x.ID === id) : null;
+
+  if (type === 'add' || type === 'edit') {
+    const isAdd = type === 'add';
+    return `
+      <div class="modal-overlay" onclick="if(event.target===this)contactsCloseModal()">
+        <div class="modal-box" style="max-width:520px">
+          <div class="modal-header">
+            <span class="modal-title">${isAdd ? 'Add New Contact' : 'Edit Contact'}</span>
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">✕</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:0.8rem">
+            <div>
+              <label class="contact-field-label">Full Name *</label>
+              <input id="cm-name" class="jira-input" style="width:100%" placeholder="e.g. Sam Uusjärv" value="${escAttr(p?.NAME || '')}">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+              <div>
+                <label class="contact-field-label">Circle Ring *</label>
+                <select id="cm-circle" class="jira-input" style="width:100%">
+                  <option value="professional"${p?.CIRCLE === 'professional' ? ' selected' : ''}>Professional</option>
+                  <option value="family"${p?.CIRCLE === 'family' ? ' selected' : ''}>Family</option>
+                  <option value="social"${p?.CIRCLE === 'social' || !p ? ' selected' : ''}>Social</option>
+                </select>
+              </div>
+              <div>
+                <label class="contact-field-label">Touch Cadence (Days)</label>
+                <input id="cm-cadence" type="number" class="jira-input" style="width:100%" placeholder="e.g. 14" value="${escAttr(p?.CADENCE_DAYS || '30')}">
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+              <div>
+                <label class="contact-field-label">Role / Relationship</label>
+                <input id="cm-role" class="jira-input" style="width:100%" placeholder="e.g. CEO, Advisor, Friend" value="${escAttr(p?.ROLE !== '-' ? (p?.ROLE || '') : '')}">
+              </div>
+              <div>
+                <label class="contact-field-label">Group / Company</label>
+                <input id="cm-group" class="jira-input" style="width:100%" placeholder="e.g. Viva, Pre.IPO.Capital" value="${escAttr(p?.GROUP !== '-' ? (p?.GROUP || '') : '')}">
+              </div>
+            </div>
+            <div>
+              <label class="contact-field-label">Preferred Channel</label>
+              <input id="cm-channel" class="jira-input" style="width:100%" placeholder="e.g. WhatsApp, Email, In-person" value="${escAttr(p?.CHANNEL || 'WhatsApp')}">
+            </div>
+            <div>
+              <label class="contact-field-label">Standing Context / Notes</label>
+              <textarea id="cm-notes" class="jira-input" rows="3" style="width:100%" placeholder="Key facts, context, or conversational boundaries...">${escHtml(p?.REMEMBER || p?.NOTES || '')}</textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="contactsSavePerson('${escAttr(p?.ID || '')}')">${isAdd ? 'Create Contact' : 'Save Changes'}</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (type === 'touch') {
+    return `
+      <div class="modal-overlay" onclick="if(event.target===this)contactsCloseModal()">
+        <div class="modal-box" style="max-width:480px">
+          <div class="modal-header">
+            <span class="modal-title">Log Interaction · ${escHtml(p?.NAME || '')}</span>
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">✕</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:0.8rem">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+              <div>
+                <label class="contact-field-label">Channel</label>
+                <select id="ct-modal-channel" class="jira-input" style="width:100%">
+                  <option value="WhatsApp">WhatsApp</option>
+                  <option value="Call">Phone Call</option>
+                  <option value="Meeting">Meeting / In-Person</option>
+                  <option value="Email">Email</option>
+                  <option value="Signal">Signal</option>
+                  <option value="Telegram">Telegram</option>
+                </select>
+              </div>
+              <div>
+                <label class="contact-field-label">Date</label>
+                <input id="ct-modal-date" type="date" class="jira-input" style="width:100%" value="${new Date().toISOString().slice(0, 10)}">
+              </div>
+            </div>
+            <div>
+              <label class="contact-field-label">Summary *</label>
+              <textarea id="ct-modal-summary" class="jira-input" rows="3" style="width:100%" placeholder="Key outcomes, discussed topics, or next steps..."></textarea>
+            </div>
+            <div>
+              <label class="contact-field-label">Next Action / Follow-up (optional)</label>
+              <input id="ct-modal-next" class="jira-input" style="width:100%" placeholder="e.g. Send updated pitch deck next Tuesday">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="contactsSubmitTouch('${escAttr(p?.ID || '')}')">Record Interaction</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (type === 'import') {
+    return `
+      <div class="modal-overlay" onclick="if(event.target===this)contactsCloseModal()">
+        <div class="modal-box" style="max-width:680px">
+          <div class="modal-header">
+            <span class="modal-title">Import Contacts (Google Contacts / CRM / CSV)</span>
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">✕</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:0.9rem">
+            <div class="contact-import-methods">
+              <div class="contact-import-method" onclick="document.getElementById('import-file-input').click()">
+                <div class="contact-import-method-icon">📁</div>
+                <div class="contact-import-method-name">Google Contacts CSV / vCard</div>
+                <div class="contact-import-method-desc">Upload exported .csv or .vcf file from Google Contacts</div>
+              </div>
+              <div class="contact-import-method" onclick="document.getElementById('import-file-input').click()">
+                <div class="contact-import-method-icon">💼</div>
+                <div class="contact-import-method-name">Standard CRM Export</div>
+                <div class="contact-import-method-desc">HubSpot, Salesforce, Notion, or generic CSV</div>
+              </div>
+              <div class="contact-import-method" onclick="document.getElementById('import-paste-area').focus()">
+                <div class="contact-import-method-icon">📋</div>
+                <div class="contact-import-method-name">Paste Raw CSV / JSON</div>
+                <div class="contact-import-method-desc">Paste comma or tab-separated text directly</div>
+              </div>
+            </div>
+
+            <input type="file" id="import-file-input" style="display:none" accept=".csv,.tsv,.vcf,.json,.txt" onchange="contactsHandleFileSelect(this)">
+
+            <div>
+              <label class="contact-field-label">Or Paste CSV / vCard / JSON text here:</label>
+              <textarea id="import-paste-area" class="jira-input" rows="4" style="width:100%;font-family:var(--font-mono);font-size:0.75rem"
+                        placeholder="Name,Email,Phone,Organization,Role,Ring
+John Doe,john@example.com,+123456789,Acme,Advisor,professional"
+                        oninput="contactsParseImportText(this.value)"></textarea>
+            </div>
+
+            <div id="import-preview-zone">
+              ${contactsRenderImportPreview()}
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">Cancel</button>
+            <button class="btn btn-primary" id="import-commit-btn" ${!contactsImportData.length ? 'disabled' : ''} onclick="contactsCommitImport()">
+              Import ${contactsImportData.length ? `${contactsImportData.length} Contacts` : ''}
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  return '';
+}
+
+function contactsRenderImportPreview() {
+  if (!contactsImportData.length) return '';
+  return `
+    <div>
+      <div class="contact-section-head">Detected ${contactsImportData.length} Contact(s) for Import:</div>
+      <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-raised)">
+        <table style="width:100%;font-size:0.72rem;border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);color:var(--text-3);text-align:left">
+              <th style="padding:4px 8px">Name</th>
+              <th style="padding:4px 8px">Ring</th>
+              <th style="padding:4px 8px">Role</th>
+              <th style="padding:4px 8px">Group</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${contactsImportData.map(c => `
+              <tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:4px 8px;font-weight:600">${escHtml(c.name)}</td>
+                <td style="padding:4px 8px">${escHtml(c.circle || 'social')}</td>
+                <td style="padding:4px 8px">${escHtml(c.role || '-')}</td>
+                <td style="padding:4px 8px">${escHtml(c.group || '-')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function contactsHandleFileSelect(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target?.result;
+    if (typeof text === 'string') {
+      const area = document.getElementById('import-paste-area');
+      if (area) area.value = text;
+      contactsParseImportText(text);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function contactsParseImportText(text) {
+  contactsImportData = [];
+  if (!text || !text.trim()) {
+    const previewEl = document.getElementById('import-preview-zone');
+    if (previewEl) previewEl.innerHTML = '';
+    const btn = document.getElementById('import-commit-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Import Contacts'; }
+    return;
+  }
+
+  // 1. Check if JSON
+  try {
+    const parsed = JSON.parse(text);
+    const arr = Array.isArray(parsed) ? parsed : (parsed.contacts || parsed.people || [parsed]);
+    contactsImportData = arr.map(x => ({
+      name: x.name || x.NAME || x.fullName || 'Unknown',
+      circle: (x.circle || x.CIRCLE || 'social').toLowerCase(),
+      role: x.role || x.ROLE || x.jobTitle || '-',
+      group: x.group || x.GROUP || x.organization || x.company || '-',
+      cadence: x.cadence || x.CADENCE_DAYS || '30',
+      channel: x.channel || x.CHANNEL || 'WhatsApp',
+      notes: x.notes || x.NOTES || x.remember || ''
+    }));
+  } catch {
+    // 2. CSV parser
+    const lines = text.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length > 0) {
+      const headerLine = lines[0];
+      const delim = headerLine.includes('\t') ? '\t' : ',';
+      const headers = headerLine.split(delim).map(h => h.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+      
+      const nameIdx = headers.findIndex(h => h.includes('name') || h === 'first name');
+      const roleIdx = headers.findIndex(h => h.includes('title') || h.includes('role') || h.includes('position'));
+      const groupIdx = headers.findIndex(h => h.includes('org') || h.includes('company') || h.includes('group'));
+      const circleIdx = headers.findIndex(h => h.includes('circle') || h.includes('ring') || h.includes('category'));
+      const noteIdx = headers.findIndex(h => h.includes('note') || h.includes('remember'));
+
+      for (let i = 1; i < lines.length; i++) {
+        const row = lines[i].split(delim).map(col => col.trim().replace(/^["']|["']$/g, ''));
+        const name = row[nameIdx] || row[0];
+        if (name && name !== 'Name' && name !== 'name') {
+          contactsImportData.push({
+            name,
+            role: (roleIdx >= 0 ? row[roleIdx] : '') || '-',
+            group: (groupIdx >= 0 ? row[groupIdx] : '') || '-',
+            circle: (circleIdx >= 0 ? row[circleIdx] : 'social').toLowerCase() || 'social',
+            cadence: '30',
+            channel: 'WhatsApp',
+            notes: noteIdx >= 0 ? row[noteIdx] : ''
+          });
+        }
+      }
+    }
+  }
+
+  const previewEl = document.getElementById('import-preview-zone');
+  if (previewEl) previewEl.innerHTML = contactsRenderImportPreview();
+  const btn = document.getElementById('import-commit-btn');
+  if (btn) {
+    btn.disabled = !contactsImportData.length;
+    btn.textContent = `Import ${contactsImportData.length} Contacts`;
+  }
+}
+
+async function contactsCommitImport() {
+  if (!contactsImportData.length) return;
+  const btn = document.getElementById('import-commit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+
+  let imported = 0;
+  for (const c of contactsImportData) {
+    try {
+      await fetch('/api/circle/person', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: c.name,
+          circle: c.circle || 'social',
+          role: c.role || '-',
+          group: c.group || '-',
+          cadence: c.cadence || '30',
+          channel: c.channel || 'WhatsApp',
+          notes: c.notes || ''
+        })
+      });
+      imported++;
+    } catch {}
+  }
+
+  showToast(`Successfully imported ${imported} contacts`, 'success');
+  contactsCloseModal();
+  await fetchCircle();
+  repaintView('contacts');
+}
+
+async function contactsSavePerson(existingId) {
+  const name = document.getElementById('cm-name')?.value.trim();
+  if (!name) { showToast('Name is required', 'error'); return; }
+
+  const payload = {
+    id: existingId || undefined,
+    name,
+    circle: document.getElementById('cm-circle')?.value || 'social',
+    role: document.getElementById('cm-role')?.value.trim() || '-',
+    group: document.getElementById('cm-group')?.value.trim() || '-',
+    cadence: document.getElementById('cm-cadence')?.value || '30',
+    channel: document.getElementById('cm-channel')?.value.trim() || 'WhatsApp',
+    notes: document.getElementById('cm-notes')?.value.trim() || ''
+  };
+
+  try {
+    const res = await (await fetch('/api/circle/person', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })).json();
+
+    if (res.success || res.ok) {
+      showToast(`${name} saved`, 'success');
+      contactsCloseModal();
+      await fetchCircle();
+      repaintView('contacts');
+    } else {
+      showToast(res.error || 'Failed to save', 'error');
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function contactsSaveRemember(personId) {
+  const notes = document.getElementById('contacts-remember-box')?.value.trim();
+  try {
+    const res = await (await fetch('/api/circle/person', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: personId, remember: notes })
+    })).json();
+    if (res.success || res.ok) {
+      showToast('Notes saved', 'success');
+      await fetchCircle();
+    } else {
+      showToast(res.error || 'Failed', 'error');
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function contactsSubmitTouch(personId) {
+  const summary = document.getElementById('ct-modal-summary')?.value.trim();
+  if (!summary) { showToast('Summary is required', 'error'); return; }
+
+  const payload = {
+    personId,
+    channel: document.getElementById('ct-modal-channel')?.value || 'WhatsApp',
+    date: document.getElementById('ct-modal-date')?.value || new Date().toISOString().slice(0, 10),
+    summary,
+    next: document.getElementById('ct-modal-next')?.value.trim() || ''
+  };
+
+  try {
+    const res = await (await fetch('/api/circle/touch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })).json();
+
+    if (res.success || res.ok) {
+      showToast('Interaction recorded', 'success');
+      contactsCloseModal();
+      await fetchCircle();
+      repaintView('contacts');
+    } else {
+      showToast(res.error || 'Failed', 'error');
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+function contactsExportCSV() {
+  const people = CIRCLE?.people || [];
+  if (!people.length) { showToast('No contacts to export', 'error'); return; }
+
+  const headers = ['ID', 'NAME', 'CIRCLE', 'GROUP', 'ROLE', 'CADENCE_DAYS', 'CHANNEL', 'LAST_TOUCH', 'DUE_IN_DAYS', 'NOTES'];
+  const rows = people.map(p => [
+    p.ID || '',
+    `"${(p.NAME || '').replace(/"/g, '""')}"`,
+    p.CIRCLE || '',
+    `"${(p.GROUP || '').replace(/"/g, '""')}"`,
+    `"${(p.ROLE || '').replace(/"/g, '""')}"`,
+    p.CADENCE_DAYS || '',
+    p.CHANNEL || '',
+    p.lastTouch || '',
+    p.dueIn != null ? p.dueIn : '',
+    `"${(p.REMEMBER || p.NOTES || '').replace(/"/g, '""')}"`
+  ].join(','));
+
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `contacts_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('Contacts exported to CSV', 'success');
+}
+
 // ── LEARNING ─────────────────────────────────────────────────────────────────
 // The agent as tutor. Courses come from the vault (OneDrive-synced); a lesson
 // opens in a reader with a tutor box underneath that answers on plane B,
@@ -12898,7 +13601,10 @@ function renderLearning() {
       </div>
     </div>
 
-    <!-- PRIMARY HERO: Classified Learning Tracks -->
+    <!-- CAMPUS: Context-Aware Advice Board — shown first -->
+    ${renderCampus(resumeBanner)}
+
+    <!-- LEARNING TRACKS: Classified groups and course cards -->
     ${learnViewMode === 'groups' ? `
       <div class="learn-section-head" style="margin-bottom:0.75rem">Learning Tracks & Classifications</div>
       <div class="learn-groups-grid" style="margin-bottom:1.5rem">
@@ -12918,9 +13624,6 @@ function renderLearning() {
           </div>`;
       }).join('')}
     `}
-
-    <!-- SECONDARY: Context-Aware Campus Advice Board -->
-    ${renderCampus(resumeBanner)}
 
     <div class="card" style="margin-top:1.5rem">
       <div class="card-header"><span class="card-title">Commission a new course</span></div>

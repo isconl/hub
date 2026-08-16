@@ -46,6 +46,11 @@
 | ✅ | **Fleet resilience: Bitwarden credentials auto-bootstrap** | `hub/scripts/dev-local.sh` — Added automated sourcing of `$HOME/.bashrc.d/bitwarden.sh` and EU vault endpoint defaults so all 6 subshell engines boot with full secrets context. |
 | ✅ | **Circle folder pull & DIA profile generation (P1)** | Crawled OneDrive `Sconl/Circle` across Family, Professional, and Social directories; mapped 46 contacts; generated comprehensive SDIAIF v2.1 profiles in `circle/memory/circle/dia/` & `vault/memory/circle/dia/`; uploaded all 46 DIA profiles to respective OneDrive folders. |
 | ✅ | **Business due diligence: Pre.IPO.Capital deep-dive (P2)** | Produced comprehensive institutional report `vault/memory/scope/due_diligence_pre_ipo_capital.md` covering AS bankruptcy proceedings, Maksuamet EUR 179k tax demand, Investoriteliit criminal settlement, personality dossiers (Sam, Mart Opmann, Casey, Margus Uueni, Kaupo Meier), and uploaded to OneDrive `scope/`. |
+| ✅ | **Contacts CRM Space in Circle** | `hub: app.js, index.html, style.css` — Built dedicated personal CRM / Google Contacts space in Circle nav: real-time search, ring & cadence filters, contact cards list + detailed profile split view, touch logging, Google Contacts CSV / vCard / generic CRM importer, and CSV export. All logic strictly data-agnostic; tenant data pulled exclusively from OneDrive. |
+| ✅ | **Campus Advice Board Elevation & Update Date** | `hub: app.js` — Re-anchored Campus advice block prominently above track cards on learning landing, displaying last-updated timestamp and instant reading cues. |
+| ✅ | **OneDrive Sync Loop Fix (`audio_versions.tsv` exclusion)** | `vault: sync-loop.js` — Excluded new local-only audio versions registry from pull loop until first audio push, resolving the 404 itemNotFound error banner. |
+| ✅ | **Lesson Reader Typography Upgrade** | `hub: style.css` — Increased font size (1.08rem) and line height (1.82) across boxed and unboxed lesson bodies for enhanced reading comfort. |
+| ✅ | **Alerts / Error Toast Viewport Positioning** | `hub: style.css` — Re-anchored `.vault-banner` and system toasts directly to the bottom-right corner (`right: 1.1rem; bottom: 4.8rem; z-index: 9998`). |
 
 ---
 
@@ -55,7 +60,9 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| P3 | **Portal user-group mapping (dev.b2bexchange.co + portal)** | 🟡 Next up | Map all user groups, deal-flow parties, interaction logic for both portals. Output to scope/ and OneDrive. |
+| C1 | **Chat Archive Ingestion & Intelligence Extraction** | 🟡 Active | Unpack & ingest `WhatsApp Chat with Alex Rivera Viva.zip`, `WhatsApp Chat with Jordan.zip`, `WhatsApp Chat with Operator (Viva).zip`, `WhatsApp Chat with Sam Whitfield.zip` from `~/Downloads`; extract interaction timelines, enrich DIA profiles, and upload archives to OneDrive `Sconl/Circle/.../chat-archives/`. |
+| C2 | **Codify Sam Strategic Meeting Notes (16 Aug)** | 🟡 Active | Complete multi-channel synthesis of yesterday's alignment notes across viva-meetings, task register, decisions, and OneDrive scope dossiers. |
+| P3 | **Portal user-group mapping (dev.b2bexchange.co + portal)** | ⬜ Queued | Map all user groups, deal-flow parties, interaction logic for both portals. Output to scope/ and OneDrive. |
 
 ### Tier 2 — HIGH impact, medium urgency
 

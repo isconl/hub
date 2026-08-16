@@ -70,7 +70,7 @@ start_one() {
     if [ "$name" = "vault" ]; then
       export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
     fi
-    setsid node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+    nohup node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
     local p=$!
     disown "$p" 2>/dev/null || true
     echo "$p" > "$pidfile"

@@ -166,17 +166,41 @@ select option { background:var(--panel); color:var(--text); }
   font-size:0.58rem; font-weight:600; letter-spacing:0.1em;
   color:var(--text-3); padding:0.5rem 0.5rem 0.15rem; text-transform:uppercase;
 }
-.nav-icon { width:15px; height:15px; flex-shrink:0; opacity:0.6; transition:opacity 0.15s; }
+.nav-icon {
+  width:15px; height:15px; flex-shrink:0; opacity:0.55;
+  transition:opacity 0.15s, transform 0.15s, color 0.15s;
+  stroke-linecap:round; stroke-linejoin:round;
+}
 .nav-item {
   display:flex; align-items:center; gap:0.55rem;
   background:transparent; border:none; border-left:2px solid transparent; border-radius:0 var(--r-md) var(--r-md) 0;
   color:var(--text-2); padding:0.34rem 0.6rem; font-size:0.81rem; font-weight:500;
-  cursor:pointer; transition:all 0.15s; position:relative;
+  cursor:pointer; transition:all 0.15s; position:relative; width:100%;
 }
 .nav-item:hover { background:var(--panel-hover); color:var(--text); }
-.nav-item:hover .nav-icon { opacity:1; }
+.nav-item:hover .nav-icon { opacity:1; transform:scale(1.1); }
 .nav-item.active { background:var(--green-bg2); color:var(--green-bright); border-left-color:var(--green); }
 .nav-item.active .nav-icon { opacity:1; color:var(--green-bright); }
+
+/* ── NAV GROUP ICON ACCENT COLORS ───────────────────────────────────────────
+   Each nav group wears its own icon accent when active: COMMAND stays green
+   (the console's primary), CHANNELS gets cyan (information flowing in),
+   PERSONAL gets amber (things that are yours), CIRCLE gets violet (people),
+   PROJECTS gets blue (builds). Inactive icons remain neutral. */
+#nav-group-command .nav-item.active .nav-icon { color:var(--green-bright); }
+#nav-group-flow .nav-item.active { background:rgba(88,166,255,0.07); color:var(--cyan); border-left-color:var(--cyan); }
+#nav-group-flow .nav-item.active .nav-icon { color:var(--cyan); }
+#nav-group-flow .nav-item:hover .nav-icon { color:var(--cyan); }
+#nav-group-life .nav-item.active { background:rgba(210,153,34,0.07); color:var(--amber); border-left-color:var(--amber); }
+#nav-group-life .nav-item.active .nav-icon { color:var(--amber); }
+#nav-group-life .nav-item:hover .nav-icon { color:var(--amber); }
+#nav-group-circle .nav-item.active { background:rgba(188,140,255,0.08); color:var(--violet); border-left-color:var(--violet); }
+#nav-group-circle .nav-item.active .nav-icon { color:var(--violet); }
+#nav-group-circle .nav-item:hover .nav-icon { color:var(--violet); }
+#nav-group-projects .nav-item.active { background:rgba(88,166,255,0.07); color:var(--cyan); border-left-color:var(--cyan); }
+#nav-group-projects .nav-item.active .nav-icon { color:var(--cyan); }
+#nav-group-projects .nav-item:hover .nav-icon { color:var(--cyan); }
+
 .nav-badge {
   margin-left:auto; font-size:0.62rem; font-family:var(--font-mono);
   background:var(--surface); color:var(--text-3);
@@ -1901,9 +1925,9 @@ button.task-cb { padding:0; margin-top:4px; background:transparent; }
    clear of the toast stack (bottom-right) and the sidebar's own controls
    (which stop well above this height). */
 .vault-banner {
-  position:fixed; right:380px; bottom:1.1rem; z-index:9998;
+  position:fixed; right:1.1rem; bottom:4.8rem; z-index:9998;
   display:flex; align-items:flex-start; gap:0.55rem;
-  max-width:24rem;
+  max-width:310px;
   background:var(--panel); border:1px solid var(--red-dim, var(--red));
   border-radius:var(--r-md); box-shadow:var(--shadow-modal, 0 8px 24px rgba(0,0,0,0.45));
   color:var(--text); font-size:0.76rem; line-height:1.5;
@@ -2389,7 +2413,7 @@ button.orient-chip:focus-visible { outline:2px solid var(--green); outline-offse
   --lb-research-bg: rgba(110,166,217,0.10);
   --lb-fact: #d9c15c;           /* fun fact - gold, the one playful hue in the family */
   --lb-fact-bg: rgba(217,193,92,0.10);
-  font-family: var(--lb-serif); font-size:1.04rem; line-height:1.78; color:var(--text);
+  font-family: var(--lb-serif); font-size:1.08rem; line-height:1.82; color:var(--text);
   max-width:720px; margin:0 auto;
   /* A long unbroken token (a URL, a Confluence path, an id) inside inline
      code has no natural wrap point - on a wide screen the 720px column
@@ -5149,8 +5173,8 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
   box-shadow: none !important;
   padding: 0 !important;
   max-width: 100% !important;
-  font-size: 1.02rem;
-  line-height: 1.78;
+  font-size: 1.06rem;
+  line-height: 1.82;
   color: var(--text, #e6edf3);
 }
 .lesson-body.unboxed h1 { font-size: 1.75rem; margin: 2rem 0 1rem; color: var(--text); }
@@ -5179,4 +5203,142 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
   .learn-groups-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CONTACTS SPACE — Personal CRM
+   Full-featured personal contacts manager inside the Circle space.
+   Layout: search/filter bar → split view (list + detail panel).
+   Data is tenant-specific (pulled from OneDrive, never committed). The
+   rendering logic here is agnostic to the actual contact data.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.contacts-root { display:flex; flex-direction:column; gap:0; }
+.contacts-toolbar {
+  display:flex; align-items:center; gap:0.6rem;
+  padding:0 0 1rem; flex-shrink:0; flex-wrap:wrap;
+}
+.contacts-search-wrap { flex:1; min-width:180px; position:relative; }
+.contacts-search-wrap svg {
+  position:absolute; left:0.6rem; top:50%; transform:translateY(-50%);
+  width:14px; height:14px; stroke:var(--text-3); pointer-events:none;
+}
+.contacts-search {
+  width:100%; background:var(--bg-raised); border:1px solid var(--border);
+  border-radius:var(--r-md); color:var(--text); font-size:0.82rem;
+  padding:0.42rem 0.75rem 0.42rem 2rem; transition:border-color 0.15s;
+}
+.contacts-search:focus { outline:none; border-color:var(--violet); }
+.contacts-search::placeholder { color:var(--text-3); }
+.contacts-filter-group { display:flex; gap:0.3rem; flex-wrap:wrap; }
+.contacts-filter-btn {
+  background:transparent; border:1px solid var(--border); border-radius:var(--r-md);
+  color:var(--text-3); font-size:0.75rem; padding:0.35rem 0.7rem; cursor:pointer;
+  transition:all 0.15s; white-space:nowrap;
+}
+.contacts-filter-btn:hover { border-color:var(--violet); color:var(--text); }
+.contacts-filter-btn.active { background:rgba(188,140,255,0.12); border-color:var(--violet); color:var(--violet); font-weight:600; }
+
+.contacts-split {
+  display:grid; grid-template-columns:290px 1fr;
+  gap:1rem; min-height:0;
+}
+.contacts-list {
+  display:flex; flex-direction:column; gap:0; overflow-y:auto;
+  border:1px solid var(--border); border-radius:var(--r-lg);
+  background:var(--panel); max-height:75vh;
+}
+.contacts-list-empty { padding:2rem; text-align:center; color:var(--text-3); font-size:0.82rem; }
+.contact-list-item {
+  display:flex; align-items:center; gap:0.65rem;
+  padding:0.62rem 0.85rem; border-bottom:1px solid var(--border);
+  cursor:pointer; transition:background 0.12s; position:relative;
+}
+.contact-list-item:last-child { border-bottom:none; }
+.contact-list-item:hover { background:var(--panel-hover); }
+.contact-list-item.selected { background:rgba(188,140,255,0.07); }
+.contact-list-item.selected::before {
+  content:''; position:absolute; left:0; top:0; bottom:0;
+  width:2.5px; background:var(--violet); border-radius:0 1px 1px 0;
+}
+.contact-avatar {
+  width:33px; height:33px; border-radius:50%; flex-shrink:0;
+  background:var(--surface); display:flex; align-items:center; justify-content:center;
+  font-size:0.8rem; font-weight:700; color:var(--text-2); border:1.5px solid var(--border);
+}
+.contact-avatar.ring-family   { border-color:#3fb950; background:rgba(63,185,80,0.1); color:#3fb950; }
+.contact-avatar.ring-professional { border-color:#58a6ff; background:rgba(88,166,255,0.1); color:#58a6ff; }
+.contact-avatar.ring-social   { border-color:#bc8cff; background:rgba(188,140,255,0.1); color:#bc8cff; }
+.contact-list-info { flex:1; min-width:0; }
+.contact-list-name { font-size:0.83rem; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.contact-list-role { font-size:0.71rem; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.contact-list-meta { display:flex; flex-direction:column; align-items:flex-end; gap:0.15rem; flex-shrink:0; }
+.contact-due-badge { font-size:0.62rem; font-family:var(--font-mono); padding:1px 5px; border-radius:4px; }
+.contact-due-badge.overdue { background:var(--red-bg); color:var(--red); }
+.contact-due-badge.soon    { background:var(--amber-bg); color:var(--amber); }
+.contact-due-badge.ok      { background:var(--green-bg); color:var(--green-bright); }
+
+.contact-detail {
+  display:flex; flex-direction:column; gap:0;
+  border:1px solid var(--border); border-radius:var(--r-lg);
+  background:var(--panel); overflow-y:auto; max-height:75vh;
+}
+.contact-detail-empty {
+  display:flex; align-items:center; justify-content:center;
+  height:200px; color:var(--text-3); font-size:0.85rem;
+}
+.contact-detail-hero {
+  padding:1.4rem 1.5rem 1rem; border-bottom:1px solid var(--border);
+  display:flex; align-items:flex-start; gap:1rem;
+}
+.contact-detail-avatar {
+  width:50px; height:50px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.1rem; font-weight:700; border:2px solid var(--border);
+}
+.contact-detail-hero-info { flex:1; min-width:0; }
+.contact-detail-name { font-size:1.1rem; font-weight:700; color:var(--text); line-height:1.3; }
+.contact-detail-role { font-size:0.82rem; color:var(--text-2); margin-top:0.1rem; }
+.contact-detail-actions { display:flex; gap:0.4rem; margin-top:0.7rem; flex-wrap:wrap; }
+.contact-detail-body { padding:1rem 1.4rem; display:flex; flex-direction:column; gap:1.1rem; }
+.contact-section-head {
+  font-size:0.64rem; font-weight:700; letter-spacing:0.08em;
+  color:var(--text-3); text-transform:uppercase; margin-bottom:0.4rem;
+}
+.contact-field-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem 1rem; }
+.contact-field { display:flex; flex-direction:column; gap:0.1rem; }
+.contact-field-label { font-size:0.66rem; color:var(--text-3); font-weight:600; letter-spacing:0.04em; text-transform:uppercase; }
+.contact-field-value { font-size:0.83rem; color:var(--text); word-break:break-word; }
+.contact-field-value a { color:var(--cyan); text-decoration:none; }
+.contact-field-value a:hover { text-decoration:underline; }
+.contact-field-value.empty { color:var(--text-3); font-style:italic; }
+.contact-tags { display:flex; flex-wrap:wrap; gap:0.3rem; }
+.contact-tag {
+  font-size:0.7rem; padding:0.15rem 0.5rem;
+  background:var(--surface); border-radius:20px; color:var(--text-2); border:1px solid var(--border);
+}
+.contact-touches { display:flex; flex-direction:column; gap:0.4rem; }
+.contact-touch-item {
+  display:flex; gap:0.7rem; padding:0.5rem 0.7rem;
+  background:var(--bg-raised); border-radius:var(--r-md); border:1px solid var(--border);
+}
+.contact-touch-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; margin-top:0.35rem; background:var(--green); }
+.contact-touch-body { flex:1; min-width:0; }
+.contact-touch-when { font-size:0.67rem; color:var(--text-3); font-family:var(--font-mono); }
+.contact-touch-note { font-size:0.81rem; color:var(--text); line-height:1.45; margin-top:0.1rem; }
+
+.contact-import-methods { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.75rem; margin-top:0.75rem; }
+.contact-import-method {
+  display:flex; flex-direction:column; align-items:center; gap:0.5rem;
+  padding:1rem 0.75rem; border:1px solid var(--border); border-radius:var(--r-lg);
+  cursor:pointer; transition:all 0.15s; background:var(--bg-raised); text-align:center;
+}
+.contact-import-method:hover { border-color:var(--violet); background:rgba(188,140,255,0.05); }
+.contact-import-method-icon { font-size:1.4rem; line-height:1; }
+.contact-import-method-name { font-size:0.78rem; font-weight:600; color:var(--text); }
+.contact-import-method-desc { font-size:0.67rem; color:var(--text-3); line-height:1.35; }
+
+@media (max-width: 900px) {
+  .contacts-split { grid-template-columns:1fr; }
+  .contact-import-methods { grid-template-columns:1fr 1fr; }
 }

@@ -9,7 +9,7 @@
   <!-- Versioned asset URLs: a URL the browser has never seen is always fetched
        fresh, which makes stale-cache archaeology impossible regardless of any
        heuristic. Bump the v token whenever a release must land instantly. -->
-  <link rel="stylesheet" href="/static/style.css?v=20260817a">
+  <link rel="stylesheet" href="/static/style.css?v=20260817b">
   <!-- Design-token engine, ported from QSpace Pages' brand_config.dart/app_theme.dart:
        a few seed colors regenerate the derived palette (light/dark/on-color
        variants) instead of every shade being separately hand-picked. Runs
@@ -48,6 +48,7 @@
         <div class="cmd-item" data-view="journal">Journal</div>
         <div class="cmd-item" data-view="learning">Learning</div>
         <div class="cmd-item" data-view="circle">Circle</div>
+        <div class="cmd-item" data-view="contacts">Contacts</div>
         <div class="cmd-item" data-view="projects">Projects</div>
         <div class="cmd-item" data-view="notifications">Alerts</div>
         <div class="cmd-item" data-view="inbox">Inbox</div>
@@ -198,6 +199,10 @@
           <button class="nav-item" data-view="circle" data-ring="social" id="nav-circle-social">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
             Social
+          </button>
+          <button class="nav-item" data-view="contacts" id="nav-contacts">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><line x1="19" y1="11" x2="19" y2="17"/><line x1="22" y1="14" x2="16" y2="14"/></svg>
+            Contacts
           </button>
           </div>
 
@@ -477,6 +482,6 @@
     </button>
   </nav>
 
-  <script src="/static/app.js?v=20260817a"></script>
+  <script src="/static/app.js?v=20260817b"></script>
 </body>
 </html>
