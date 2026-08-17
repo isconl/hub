@@ -1,7 +1,8 @@
 # iSconl Master Task Backlog
 <!-- LIVE DOCUMENT — update this file after every task touched, in every session -->
 <!-- Accessible to both AGY and Claude via hub/docs/task-backlog.md -->
-<!-- Last updated: 2026-08-17T02:27 EAT (Antigravity) -->
+<!-- Last updated: 2026-08-17T03:42 EAT (Antigravity) -->
+
 
 ---
 
@@ -20,11 +21,13 @@
 
 | # | Task | Commit / Location |
 |---|------|-------------------|
+| ✅ | **INC-001: PIN auth restored — `blocks.js` regex crash fixed** | `vault/lib/blocks.js:231` — `escapeRegex()` + try/catch guards any NAME with metacharacters (phone numbers from Google Contacts import). Vault restarted with full credentials. `/auth/methods` → `{"totp":true,"pin":true}`. |
+| ✅ | **INC-001: BWS token persistence — `dev-local.sh` fallback + hard-fail** | `hub/scripts/dev-local.sh` — reads `~/.isconl/bws-access-token` as fallback if shell profile missing. Aborts with clear error if token still empty. Prevents silent no-auth vault starts. |
+| ✅ | **INC-001: Post-mortem documented** | `_handoff/INCIDENTS.md` — full root cause analysis, diff, standing guards, and lesson. Permanent incident register created. |
 | ✅ | **Hub command view: complete layout redesign** | `hub: 96c576d` — Right rail = mini-calendar (compact/square) + upcoming events. Left = morning brief + stat tiles + intelligent top-3 tasks + 5-item inbox. Removed Jira live-feed and Equicycle cards from hub. |
 | ✅ | **Intelligent top-3 task engine (`scoreTask()`)** | `hub: app.js` — Multi-signal urgency scoring: status (today/in-progress/todo), priority (critical/high/medium), due-date proximity (overdue days amplified), Jira linkage. Hub always surfaces highest-leverage 3 tasks. |
-| ✅ | **My Day section: borderless floating layout** | `hub: app.js + style.css` — Removed `card` class from day-card wrapper. `.day-card` now has `background:transparent; border:none; box-shadow:none` — floats inline in hub without a box. Layout/rail/blocks unchanged. |
+| ✅ | **My Day → "Today" header fix** | `hub: app.js + style.css` — renamed to "Today", font-size increased for hierarchy, removed uppercase. |
 | ✅ | **Contacts CRM right-plane integration** | `hub: app.js` — Contact dossiers open in the right rail `#reader-dock`. Added `navigate('contacts')` hook with `fetchCircle()` auto-refresh. Fixed duplicate renderContactDetail syntax error. |
-| ✅ | **Duplicate old renderToday body cleaned up** | `hub: app.js` — Orphaned old layout body (Equicycle, Jira, 4-item inbox) removed. Syntax clean: `node -c` passing. |
 
 ---
 

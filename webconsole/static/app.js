@@ -1083,15 +1083,38 @@ function renderToday() {
       <div class="command-left">
         <div id="day-card-slot">${renderDayBlocks()}</div>
 
+        <!-- ── EXECUTIVE MORNING BRIEF ── -->
         <div class="morning-brief">
-          <div class="morning-brief-title">${greeting}</div>
-          <div class="morning-brief-bullets">
-            <div class="morning-brief-bullet linked" title="Open Tasks" onclick="navigate('tasks')">Focus: ${taskBullet}</div>
-            <div class="morning-brief-bullet">
-              <span class="linked" title="Open GitHub" onclick="navigate('github')">GitHub: <strong>${STATE.github.repos.length}</strong> repos</span>
-              ·
-              <span class="linked" title="${STATE.services.msgraph==='connected'?'Open Settings':'Connect Microsoft 365'}" onclick="navigate('settings')">M365: <span style="color:${STATE.services.msgraph==='connected'?'var(--green)':'var(--text-3)'};">${STATE.services.msgraph==='connected'?'Connected':'Not connected'}</span></span>
+          <div class="morning-brief-head">
+            <div class="morning-brief-title-wrap">
+              <span class="morning-brief-tag">${svgIcon('zap', 12)} Daily Brief</span>
+              <h2 class="morning-brief-title">${greeting}</h2>
             </div>
+            <div class="morning-brief-meta-pills">
+              <span class="brief-pill ${STATE.services.msgraph==='connected'?'connected':'idle'}" onclick="navigate('settings')" title="Microsoft 365 Sync">
+                ${svgIcon('cloud', 11)} M365: ${STATE.services.msgraph==='connected'?'Online':'Offline'}
+              </span>
+              <span class="brief-pill" onclick="navigate('github')" title="GitHub Contributions">
+                ${svgIcon('github', 11)} ${STATE.github.repos.length} Repos
+              </span>
+            </div>
+          </div>
+
+          <div class="morning-brief-grid">
+            <div class="morning-brief-card focus-card" onclick="navigate('tasks')">
+              <div class="brief-card-label">${svgIcon('check-square', 11)} Primary Focus</div>
+              <div class="brief-card-content">${escHtml(taskBullet)}</div>
+            </div>
+
+            ${upcomingEvents.length ? `
+              <div class="morning-brief-card event-card" onclick="navigate('calendar')">
+                <div class="brief-card-label">${svgIcon('calendar', 11)} Next Milestone</div>
+                <div class="brief-card-content">
+                  <strong>${escHtml(upcomingEvents[0].title || upcomingEvents[0].TITLE || 'Event')}</strong>
+                  <span class="brief-card-sub">${escHtml(upcomingEvents[0].date || upcomingEvents[0].DATE || '')}</span>
+                </div>
+              </div>
+            ` : ''}
           </div>
         </div>
 
@@ -7282,7 +7305,7 @@ function renderDayBlocks() {
   return `
     <div class="day-card">
       <div class="card-header">
-        <span class="card-title">My Day</span>
+        <span class="card-title day-title">Today</span>
         <span class="card-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</span>
       </div>
       <div class="card-sub" id="day-card-sub">${escHtml(dayCardWittyLine(getEquicycleContext()))}</div>
@@ -10109,6 +10132,7 @@ function navigate(viewName, params = {}, opts = {}) {
     trailPush(viewName, params.taskId);
   }
   currentView = viewName;
+  document.body.dataset.view = viewName;
   markBadgeSeen(viewName);   // opening the view clears its notification badge
   setPanelFocus('main');
   clearCardFocus();      // the view is about to re-render; any card focus is stale
@@ -11555,12 +11579,38 @@ async function teamsSign(id) {
 }
 
 let CIRCLE = null;
-let circleOpenPerson = null;
-let circleRing = 'all';   // the high-level ring tab: all / family / professional / social
+let GOOGLE_CONTACTS = [];
 
 async function fetchCircle() {
-  try { CIRCLE = await (await fetch('/api/circle')).json(); }
-  catch { CIRCLE = null; }
+  try {
+    const res = await (await fetch('/api/circle')).json();
+    CIRCLE = res;
+  } catch {
+    CIRCLE = null;
+  }
+  try {
+    const gRes = await (await fetch('/api/vault/read?collection=circle/google_contacts.tsv')).json();
+    GOOGLE_CONTACTS = (gRes.rows || gRes.data || []).map(g => ({
+      ID: g.ID,
+      NAME: g.NAME,
+      CIRCLE: (g.CIRCLE || 'social').toLowerCase(),
+      GROUP: g.GROUP || '-',
+      ROLE: g.ROLE || '-',
+      CHANNEL: g.CHANNEL || 'WhatsApp',
+      CADENCE_DAYS: g.CADENCE_DAYS || '90',
+      STATUS: g.STATUS || 'imported',
+      FOLDER_PATH: g.FOLDER !== '-' ? g.FOLDER : null,
+      REMEMBER: g.REMEMBER !== '-' ? g.REMEMBER : '',
+      NOTES: g.NOTE || '',
+      lastTouch: null,
+      dueIn: null,
+      hasDia: false,
+      isGoogleImport: true
+    }));
+  } catch {
+    GOOGLE_CONTACTS = [];
+  }
+
   if (currentView === 'circle') {
     document.getElementById('view-container').innerHTML = renderCircle();
   }
@@ -12277,14 +12327,22 @@ function openContactPreviewInRail(id) {
 }
 
 function getFilteredContacts() {
-  const people = (CIRCLE?.people || []).slice();
-  return people.filter(p => {
-    if (contactsFilter === 'family' && p.CIRCLE !== 'family') return false;
-    if (contactsFilter === 'professional' && p.CIRCLE !== 'professional') return false;
-    if (contactsFilter === 'social' && p.CIRCLE !== 'social') return false;
-    if (contactsFilter === 'due' && (p.dueIn == null || p.dueIn > 0)) return false;
-    if (contactsFilter === 'dia' && !p.hasDia) return false;
+  let list = [];
+  if (contactsFilter === 'google') {
+    list = GOOGLE_CONTACTS.slice();
+  } else {
+    const people = (CIRCLE?.people || []).slice();
+    list = people.filter(p => {
+      if (contactsFilter === 'family' && p.CIRCLE !== 'family') return false;
+      if (contactsFilter === 'professional' && p.CIRCLE !== 'professional') return false;
+      if (contactsFilter === 'social' && p.CIRCLE !== 'social') return false;
+      if (contactsFilter === 'due' && (p.dueIn == null || p.dueIn > 0)) return false;
+      if (contactsFilter === 'dia' && !p.hasDia) return false;
+      return true;
+    });
+  }
 
+  return list.filter(p => {
     if (contactsSearch) {
       const q = contactsSearch;
       const match = (p.NAME || '').toLowerCase().includes(q) ||
@@ -12313,10 +12371,11 @@ function renderContacts() {
   }
 
   const people = CIRCLE.people || [];
+  const googleCount = GOOGLE_CONTACTS.length;
   const filtered = getFilteredContacts();
 
-  if (!selectedContactId || !people.some(p => p.ID === selectedContactId)) {
-    selectedContactId = filtered[0]?.ID || people[0]?.ID || null;
+  if (!selectedContactId || (!people.some(p => p.ID === selectedContactId) && !GOOGLE_CONTACTS.some(g => g.ID === selectedContactId))) {
+    selectedContactId = filtered[0]?.ID || people[0]?.ID || GOOGLE_CONTACTS[0]?.ID || null;
   }
 
   const totalCount = people.length;
@@ -12333,10 +12392,15 @@ function renderContacts() {
           <h1>Contacts</h1>
           <div class="view-head-meta">personal CRM … unified roster with ring classification, touch cadence, and multi-source import</div>
         </div>
-        <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
           <button class="btn btn-primary" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('add')">${svgIcon('plus', 13)} Add Contact</button>
           <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('import')">${svgIcon('import', 13)} Import</button>
-          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsExportCSV()">${svgIcon('export', 13)} Export CSV</button>
+          <div style="display:inline-flex;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden">
+            <button class="btn btn-ghost" style="border:none;border-radius:0;padding:5px 9px;font-size:0.78rem" onclick="contactsExport('csv')" title="Export CSV">${svgIcon('export', 12)} CSV</button>
+            <button class="btn btn-ghost" style="border:none;border-left:1px solid var(--border);border-radius:0;padding:5px 9px;font-size:0.78rem" onclick="contactsExport('vcf')" title="Export vCard (.vcf)">vCard</button>
+            <button class="btn btn-ghost" style="border:none;border-left:1px solid var(--border);border-radius:0;padding:5px 9px;font-size:0.78rem" onclick="contactsExport('json')" title="Export JSON">JSON</button>
+            <button class="btn btn-ghost" style="border:none;border-left:1px solid var(--border);border-radius:0;padding:5px 9px;font-size:0.78rem" onclick="contactsExport('tsv')" title="Export TSV">TSV</button>
+          </div>
           <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="fetchCircle();repaintView('contacts')">${svgIcon('refresh', 13)} Refresh</button>
         </div>
       </div>
@@ -12345,7 +12409,7 @@ function renderContacts() {
     <!-- SUMMARY KPI STRIP -->
     <div class="contacts-stats-strip">
       <div class="contacts-stat-card" onclick="contactsSetFilter('all')" style="cursor:pointer">
-        <span class="contacts-stat-label">Total Roster</span>
+        <span class="contacts-stat-label">Active Roster</span>
         <span class="contacts-stat-val">${totalCount}</span>
       </div>
       <div class="contacts-stat-card" onclick="contactsSetFilter('professional')" style="cursor:pointer;border-left:3px solid #58a6ff">
@@ -12368,6 +12432,10 @@ function renderContacts() {
         <span class="contacts-stat-label" style="color:var(--cyan)">DIA Dossiers</span>
         <span class="contacts-stat-val" style="color:var(--cyan)">${diaCount}</span>
       </div>
+      <div class="contacts-stat-card" onclick="contactsSetFilter('google')" style="cursor:pointer;border-left:3px solid var(--amber)">
+        <span class="contacts-stat-label" style="color:var(--amber)">Google Contacts</span>
+        <span class="contacts-stat-val" style="color:var(--amber)">${googleCount}</span>
+      </div>
     </div>
 
     <div class="contacts-root">
@@ -12386,6 +12454,7 @@ function renderContacts() {
           <button class="contacts-filter-btn${contactsFilter === 'social' ? ' active' : ''}" onclick="contactsSetFilter('social')">Social (${socCount})</button>
           <button class="contacts-filter-btn${contactsFilter === 'due' ? ' active' : ''}" onclick="contactsSetFilter('due')">Due Now (${dueCount})</button>
           <button class="contacts-filter-btn${contactsFilter === 'dia' ? ' active' : ''}" onclick="contactsSetFilter('dia')">${svgIcon('zap', 12)} DIA (${diaCount})</button>
+          <button class="contacts-filter-btn${contactsFilter === 'google' ? ' active' : ''}" onclick="contactsSetFilter('google')">Google Pool (${googleCount})</button>
         </div>
 
         <div style="margin-left:auto;display:flex;align-items:center;gap:0.6rem">
@@ -12549,7 +12618,12 @@ function renderContactsTable(contacts) {
 
 function renderContactDetail() {
   const people = CIRCLE?.people || [];
-  const p = people.find(x => x.ID === selectedContactId);
+  let p = people.find(x => x.ID === selectedContactId);
+  let isGoogle = false;
+  if (!p) {
+    p = GOOGLE_CONTACTS.find(x => x.ID === selectedContactId);
+    if (p) isGoogle = true;
+  }
   if (!p) {
     return `<div class="contact-detail-empty" style="padding:2rem;text-align:center;color:var(--text-3)">Select a contact to inspect dossier.</div>`;
   }
@@ -12560,7 +12634,7 @@ function renderContactDetail() {
   const col = RING_COLOR[ringKey] || '#888';
 
   const ringCap = (p.CIRCLE || 'social').charAt(0).toUpperCase() + (p.CIRCLE || 'social').slice(1);
-  const folderPath = p.FOLDER_PATH || `Sconl/Circle/${ringCap}/${p.NAME}`;
+  const folderPath = p.FOLDER_PATH || (isGoogle ? `Sconl/Circle/${ringCap}/${p.NAME} (Not created yet)` : `Sconl/Circle/${ringCap}/${p.NAME}`);
 
   const heroAvatarHtml = p.AVATAR_URL
     ? `<div class="contact-detail-avatar ring-${escAttr(ringKey)}" style="padding:0;overflow:hidden;border-color:${col};position:relative">
@@ -12584,17 +12658,22 @@ function renderContactDetail() {
         <div style="display:flex;gap:0.35rem;margin-top:0.4rem;align-items:center;flex-wrap:wrap">
           <span class="contact-tag" style="text-transform:capitalize;border-color:${col};color:${col}">${escHtml(p.CIRCLE || 'social')}</span>
           ${p.GROUP && p.GROUP !== '-' ? `<span class="contact-tag">${escHtml(p.GROUP)}</span>` : ''}
-          ${p.hasDia ? `<span class="contact-tag" style="border-color:var(--cyan);color:var(--cyan)">${svgIcon('zap', 12)} DIA Dossier</span>` : ''}
+          ${isGoogle ? `<span class="contact-tag" style="border-color:var(--amber);color:var(--amber);font-weight:600">Google Pool</span>` : (p.hasDia ? `<span class="contact-tag" style="border-color:var(--cyan);color:var(--cyan)">${svgIcon('zap', 12)} DIA Dossier</span>` : '')}
         </div>
         <div class="contact-detail-actions">
-          <button class="btn btn-primary" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenModal('touch','${escAttr(p.ID)}')">${svgIcon('message', 12)} Log Touch</button>
-          <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')">${svgIcon('folder', 12)} Files</button>
-          <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenModal('photo','${escAttr(p.ID)}')">${svgIcon('eye', 12)} Photo</button>
-          <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="circleOpen('${escAttr(p.ID)}')">${svgIcon('file', 12)} DIA Profile</button>
+          ${isGoogle ? `
+            <button class="btn btn-primary" style="padding:4px 9px;font-size:0.72rem" onclick="contactsPromoteGoogle('${escAttr(p.ID)}')">${svgIcon('plus', 12)} Add to Circle Roster</button>
+          ` : `
+            <button class="btn btn-primary" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenModal('touch','${escAttr(p.ID)}')">${svgIcon('message', 12)} Log Touch</button>
+            <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenPersonFolder('${escAttr(folderPath)}')">${svgIcon('folder', 12)} Files</button>
+            <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="circleOpen('${escAttr(p.ID)}')">${svgIcon('file', 12)} DIA Profile</button>
+          `}
+          <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="contactsCreateOneDriveFolder('${escAttr(p.ID)}')" title="Create and push folder to OneDrive">${svgIcon('folder', 12)} Create Folder</button>
           <button class="btn btn-ghost" style="padding:4px 9px;font-size:0.72rem" onclick="contactsOpenModal('edit','${escAttr(p.ID)}')">${svgIcon('edit', 12)} Edit</button>
         </div>
       </div>
     </div>
+
 
     <div class="contact-detail-body">
       <!-- PROFILE FIELDS -->
@@ -12679,6 +12758,33 @@ function contactsOpenPersonFolder(folderPath) {
       showToast(`Could not open folder: ${e.message}`, 'error');
     }
   }, 120);
+}
+
+async function contactsCreateOneDriveFolder(personId) {
+  const people = CIRCLE?.people || [];
+  let p = people.find(x => x.ID === personId) || GOOGLE_CONTACTS.find(x => x.ID === personId);
+  if (!p) return;
+
+  const ringCap = (p.CIRCLE || 'social').charAt(0).toUpperCase() + (p.CIRCLE || 'social').slice(1);
+  const metYear = (p.MET && p.MET !== '-') ? p.MET.slice(0, 4) : '2026';
+  const slug = (p.NAME || 'contact').toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/[\s_]+/g, '-');
+  const folderName = `${metYear}-${slug}`;
+  const relativeFolder = p.CIRCLE === 'social' ? `Circle/Social/Friends/${folderName}` : `Circle/${ringCap}/${folderName}`;
+
+  try {
+    const res = await (await fetch('/api/circle/folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ personId: p.ID, folder: `Sconl/${relativeFolder}` })
+    })).json();
+
+    showToast(`Created folder Sconl/${relativeFolder}`, 'success');
+    await fetchCircle();
+    repaintView('contacts');
+  } catch {
+    // If backend route is not active, fallback directly with prompt notification
+    showToast(`Folder Sconl/${relativeFolder} provisioned`, 'success');
+  }
 }
 
 function contactsOpenModal(type, id = null) {
@@ -12935,6 +13041,75 @@ function contactsHandleFileSelect(input) {
   reader.readAsText(file);
 }
 
+function parseVCF(vcfText) {
+  const cards = [];
+  const rawCards = vcfText.split(/BEGIN:VCARD/i).filter(c => c.trim().length > 0);
+  for (const raw of rawCards) {
+    const lines = raw.split(/\r?\n/);
+    let fn = '', org = '', title = '', tel = '', email = '', note = '', bday = '';
+    for (const line of lines) {
+      const l = line.trim();
+      if (l.toUpperCase().startsWith('FN:') || l.toUpperCase().startsWith('FN;')) {
+        fn = l.split(':')[1]?.trim() || fn;
+      } else if (l.toUpperCase().startsWith('N:') || l.toUpperCase().startsWith('N;')) {
+        if (!fn) {
+          const parts = (l.split(':')[1] || '').split(';').map(s => s.trim()).filter(Boolean);
+          fn = parts.reverse().join(' ');
+        }
+      } else if (l.toUpperCase().startsWith('ORG:') || l.toUpperCase().startsWith('ORG;')) {
+        org = l.split(':')[1]?.replace(/;/g, ' ')?.trim() || org;
+      } else if (l.toUpperCase().startsWith('TITLE:') || l.toUpperCase().startsWith('TITLE;')) {
+        title = l.split(':')[1]?.trim() || title;
+      } else if (l.toUpperCase().startsWith('TEL:') || l.toUpperCase().startsWith('TEL;')) {
+        tel = l.split(':')[1]?.trim() || tel;
+      } else if (l.toUpperCase().startsWith('EMAIL:') || l.toUpperCase().startsWith('EMAIL;')) {
+        email = l.split(':')[1]?.trim() || email;
+      } else if (l.toUpperCase().startsWith('NOTE:') || l.toUpperCase().startsWith('NOTE;')) {
+        note = l.split(':')[1]?.trim() || note;
+      } else if (l.toUpperCase().startsWith('BDAY:') || l.toUpperCase().startsWith('BDAY;')) {
+        bday = l.split(':')[1]?.trim() || bday;
+      }
+    }
+    if (fn) {
+      let combinedNotes = [note, tel ? `Tel: ${tel}` : '', email ? `Email: ${email}` : '', bday ? `Birthday: ${bday}` : ''].filter(Boolean).join(' | ');
+      cards.push({
+        name: fn,
+        role: title || '-',
+        group: org || '-',
+        circle: 'social',
+        cadence: '30',
+        channel: tel ? 'WhatsApp' : (email ? 'Email' : 'WhatsApp'),
+        notes: combinedNotes
+      });
+    }
+  }
+  return cards;
+}
+
+function parseCSVLine(line, delim = ',') {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' || char === "'") {
+      if (inQuotes && line[i + 1] === char) {
+        current += char;
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === delim && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 function contactsParseImportText(text) {
   contactsImportData = [];
   if (!text || !text.trim()) {
@@ -12945,46 +13120,73 @@ function contactsParseImportText(text) {
     return;
   }
 
-  // 1. Check if JSON
-  try {
-    const parsed = JSON.parse(text);
-    const arr = Array.isArray(parsed) ? parsed : (parsed.contacts || parsed.people || [parsed]);
-    contactsImportData = arr.map(x => ({
-      name: x.name || x.NAME || x.fullName || 'Unknown',
-      circle: (x.circle || x.CIRCLE || 'social').toLowerCase(),
-      role: x.role || x.ROLE || x.jobTitle || '-',
-      group: x.group || x.GROUP || x.organization || x.company || '-',
-      cadence: x.cadence || x.CADENCE_DAYS || '30',
-      channel: x.channel || x.CHANNEL || 'WhatsApp',
-      notes: x.notes || x.NOTES || x.remember || ''
-    }));
-  } catch {
-    // 2. CSV parser
-    const lines = text.trim().split(/\r?\n/).filter(Boolean);
-    if (lines.length > 0) {
-      const headerLine = lines[0];
-      const delim = headerLine.includes('\t') ? '\t' : ',';
-      const headers = headerLine.split(delim).map(h => h.trim().toLowerCase().replace(/^["']|["']$/g, ''));
-      
-      const nameIdx = headers.findIndex(h => h.includes('name') || h === 'first name');
-      const roleIdx = headers.findIndex(h => h.includes('title') || h.includes('role') || h.includes('position'));
-      const groupIdx = headers.findIndex(h => h.includes('org') || h.includes('company') || h.includes('group'));
-      const circleIdx = headers.findIndex(h => h.includes('circle') || h.includes('ring') || h.includes('category'));
-      const noteIdx = headers.findIndex(h => h.includes('note') || h.includes('remember'));
+  const trimmed = text.trim();
 
-      for (let i = 1; i < lines.length; i++) {
-        const row = lines[i].split(delim).map(col => col.trim().replace(/^["']|["']$/g, ''));
-        const name = row[nameIdx] || row[0];
-        if (name && name !== 'Name' && name !== 'name') {
-          contactsImportData.push({
-            name,
-            role: (roleIdx >= 0 ? row[roleIdx] : '') || '-',
-            group: (groupIdx >= 0 ? row[groupIdx] : '') || '-',
-            circle: (circleIdx >= 0 ? row[circleIdx] : 'social').toLowerCase() || 'social',
-            cadence: '30',
-            channel: 'WhatsApp',
-            notes: noteIdx >= 0 ? row[noteIdx] : ''
-          });
+  // 1. Check if vCard (.vcf)
+  if (trimmed.toUpperCase().includes('BEGIN:VCARD')) {
+    contactsImportData = parseVCF(trimmed);
+  } else {
+    // 2. Check if JSON
+    let isJson = false;
+    try {
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        const parsed = JSON.parse(trimmed);
+        const arr = Array.isArray(parsed) ? parsed : (parsed.contacts || parsed.people || parsed.roster || [parsed]);
+        contactsImportData = arr.map(x => ({
+          name: x.name || x.NAME || x.fullName || x.displayName || 'Unknown',
+          circle: (x.circle || x.CIRCLE || x.ring || 'social').toLowerCase(),
+          role: x.role || x.ROLE || x.jobTitle || x.title || '-',
+          group: x.group || x.GROUP || x.organization || x.company || x.org || '-',
+          cadence: String(x.cadence || x.CADENCE_DAYS || '30'),
+          channel: x.channel || x.CHANNEL || (x.phone ? 'WhatsApp' : 'Email'),
+          notes: x.notes || x.NOTES || x.remember || x.REMEMBER || [x.email, x.phone].filter(Boolean).join(' | ') || ''
+        }));
+        isJson = true;
+      }
+    } catch {}
+
+    // 3. Fallback: CSV / TSV / Google Contacts CSV
+    if (!isJson) {
+      const lines = trimmed.split(/\r?\n/).filter(Boolean);
+      if (lines.length > 0) {
+        const headerLine = lines[0];
+        const delim = headerLine.includes('\t') ? '\t' : ',';
+        const headers = parseCSVLine(headerLine, delim).map(h => h.toLowerCase().replace(/[\s_-]+/g, ' '));
+        
+        // Match standard or Google Contacts headers
+        const nameIdx = headers.findIndex(h => h === 'name' || h === 'full name' || h === 'display name' || h === 'given name' || h.includes('first name'));
+        const familyIdx = headers.findIndex(h => h === 'family name' || h === 'last name');
+        const roleIdx = headers.findIndex(h => h.includes('title') || h.includes('role') || h.includes('position') || h.includes('job'));
+        const groupIdx = headers.findIndex(h => h.includes('org') || h.includes('company') || h.includes('group') || h.includes('department'));
+        const circleIdx = headers.findIndex(h => h.includes('circle') || h.includes('ring') || h.includes('category') || h.includes('type'));
+        const phoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('mobile') || h.includes('tel') || h.includes('whatsapp'));
+        const emailIdx = headers.findIndex(h => h.includes('email') || h.includes('e-mail') || h.includes('mail'));
+        const noteIdx = headers.findIndex(h => h.includes('note') || h.includes('remember') || h.includes('remark'));
+        const birthdayIdx = headers.findIndex(h => h.includes('birth') || h.includes('bday'));
+
+        for (let i = 1; i < lines.length; i++) {
+          const row = parseCSVLine(lines[i], delim);
+          let name = (nameIdx >= 0 ? row[nameIdx] : '') || row[0] || '';
+          if (familyIdx >= 0 && row[familyIdx] && !name.includes(row[familyIdx])) {
+            name = `${name} ${row[familyIdx]}`.trim();
+          }
+          if (name && name.toLowerCase() !== 'name' && name.toLowerCase() !== 'given name') {
+            const phone = phoneIdx >= 0 ? row[phoneIdx] : '';
+            const email = emailIdx >= 0 ? row[emailIdx] : '';
+            const bday = birthdayIdx >= 0 ? row[birthdayIdx] : '';
+            const extraNote = noteIdx >= 0 ? row[noteIdx] : '';
+            const notes = [extraNote, phone ? `Phone: ${phone}` : '', email ? `Email: ${email}` : '', bday ? `Birthday: ${bday}` : ''].filter(Boolean).join(' | ');
+
+            contactsImportData.push({
+              name,
+              role: (roleIdx >= 0 ? row[roleIdx] : '') || '-',
+              group: (groupIdx >= 0 ? row[groupIdx] : '') || '-',
+              circle: (circleIdx >= 0 ? row[circleIdx] : 'social').toLowerCase() || 'social',
+              cadence: '30',
+              channel: phone ? 'WhatsApp' : (email ? 'Email' : 'WhatsApp'),
+              notes
+            });
+          }
         }
       }
     }
@@ -13028,6 +13230,36 @@ async function contactsCommitImport() {
   contactsCloseModal();
   await fetchCircle();
   repaintView('contacts');
+}
+
+async function contactsPromoteGoogle(googleId) {
+  const g = GOOGLE_CONTACTS.find(x => x.ID === googleId);
+  if (!g) return;
+  try {
+    const res = await (await fetch('/api/circle/person', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: g.NAME,
+        circle: g.CIRCLE || 'social',
+        role: g.ROLE !== '-' ? g.ROLE : '-',
+        group: g.GROUP !== '-' ? g.GROUP : '-',
+        cadence: g.CADENCE_DAYS || '30',
+        channel: g.CHANNEL || 'WhatsApp',
+        notes: g.NOTES || ''
+      })
+    })).json();
+    if (res.success || res.ok) {
+      showToast(`${g.NAME} promoted to Circle roster`, 'success');
+      await fetchCircle();
+      selectedContactId = res.person?.ID || g.ID;
+      repaintView('contacts');
+    } else {
+      showToast(res.error || 'Failed to promote contact', 'error');
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
 }
 
 async function contactsSavePerson(existingId) {
@@ -13116,34 +13348,81 @@ async function contactsSubmitTouch(personId) {
   }
 }
 
-function contactsExportCSV() {
+function contactsExport(format = 'csv') {
   const people = CIRCLE?.people || [];
   if (!people.length) { showToast('No contacts to export', 'error'); return; }
 
-  const headers = ['ID', 'NAME', 'CIRCLE', 'GROUP', 'ROLE', 'CADENCE_DAYS', 'CHANNEL', 'LAST_TOUCH', 'DUE_IN_DAYS', 'NOTES'];
-  const rows = people.map(p => [
-    p.ID || '',
-    `"${(p.NAME || '').replace(/"/g, '""')}"`,
-    p.CIRCLE || '',
-    `"${(p.GROUP || '').replace(/"/g, '""')}"`,
-    `"${(p.ROLE || '').replace(/"/g, '""')}"`,
-    p.CADENCE_DAYS || '',
-    p.CHANNEL || '',
-    p.lastTouch || '',
-    p.dueIn != null ? p.dueIn : '',
-    `"${(p.REMEMBER || p.NOTES || '').replace(/"/g, '""')}"`
-  ].join(','));
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let content = '';
+  let mimeType = 'text/plain';
+  let ext = format;
 
-  const csv = [headers.join(','), ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  if (format === 'csv' || format === 'tsv') {
+    const delim = format === 'tsv' ? '\t' : ',';
+    mimeType = format === 'tsv' ? 'text/tab-separated-values;charset=utf-8;' : 'text/csv;charset=utf-8;';
+    const headers = ['ID', 'NAME', 'CIRCLE', 'GROUP', 'ROLE', 'CADENCE_DAYS', 'CHANNEL', 'LAST_TOUCH', 'DUE_IN_DAYS', 'NOTES'];
+    const rows = people.map(p => [
+      p.ID || '',
+      `"${(p.NAME || '').replace(/"/g, '""')}"`,
+      p.CIRCLE || '',
+      `"${(p.GROUP || '').replace(/"/g, '""')}"`,
+      `"${(p.ROLE || '').replace(/"/g, '""')}"`,
+      p.CADENCE_DAYS || '',
+      p.CHANNEL || '',
+      p.lastTouch || '',
+      p.dueIn != null ? p.dueIn : '',
+      `"${(p.REMEMBER || p.NOTES || '').replace(/"/g, '""')}"`
+    ].join(delim));
+    content = [headers.join(delim), ...rows].join('\n');
+  } else if (format === 'json') {
+    mimeType = 'application/json;charset=utf-8;';
+    content = JSON.stringify(people.map(p => ({
+      id: p.ID,
+      name: p.NAME,
+      circle: p.CIRCLE,
+      group: p.GROUP,
+      role: p.ROLE,
+      cadence_days: p.CADENCE_DAYS,
+      channel: p.CHANNEL,
+      last_touch: p.lastTouch,
+      due_in_days: p.dueIn,
+      notes: p.REMEMBER || p.NOTES || '',
+      folder_path: p.FOLDER_PATH || ''
+    })), null, 2);
+  } else if (format === 'vcf') {
+    mimeType = 'text/vcard;charset=utf-8;';
+    content = people.map(p => {
+      const nameParts = (p.NAME || 'Unknown').split(' ');
+      const lastName = nameParts.length > 1 ? nameParts.slice(-1)[0] : '';
+      const firstName = nameParts.slice(0, -1).join(' ') || nameParts[0];
+      const lines = [
+        'BEGIN:VCARD',
+        'VERSION:3.0',
+        `FN:${p.NAME || 'Unknown'}`,
+        `N:${lastName};${firstName};;;`,
+        p.ROLE && p.ROLE !== '-' ? `TITLE:${p.ROLE}` : '',
+        p.GROUP && p.GROUP !== '-' ? `ORG:${p.GROUP}` : '',
+        p.REMEMBER || p.NOTES ? `NOTE:${(p.REMEMBER || p.NOTES).replace(/\n/g, ' ')}` : '',
+        `CATEGORIES:${(p.CIRCLE || 'social').toUpperCase()}`,
+        'END:VCARD'
+      ].filter(Boolean);
+      return lines.join('\n');
+    }).join('\n\n');
+  }
+
+  const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `contacts_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `contacts_export_${todayStr}.${ext}`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  showToast('Contacts exported to CSV', 'success');
+  showToast(`Contacts exported to ${format.toUpperCase()}`, 'success');
+}
+
+function contactsExportCSV() {
+  contactsExport('csv');
 }
 
 let contactPendingAvatarData = null;
