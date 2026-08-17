@@ -3302,6 +3302,7 @@ body[data-callout-theme="muted"] .lesson-body {
 .space-shell.axis-visionary { --axis: var(--violet, #a371f7); }
 .space-shell.axis-innovator { --axis: var(--cyan,   #39c5cf); }
 .space-shell.axis-creator   { --axis: var(--amber,  #d29922); }
+.space-shell.axis-writer    { --axis: var(--green,  #3fb950); }
 
 .space-crumbs {
   display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;
@@ -3341,6 +3342,7 @@ body[data-callout-theme="muted"] .lesson-body {
 .space-card.axis-visionary { --axis:var(--violet,#a371f7); --wash:rgba(188,140,255,0.045); --wash-hover:rgba(188,140,255,0.09); }
 .space-card.axis-innovator { --axis:var(--cyan,#39c5cf);   --wash:rgba(57,197,207,0.045);  --wash-hover:rgba(57,197,207,0.09); }
 .space-card.axis-creator   { --axis:var(--amber,#d29922);  --wash:rgba(210,153,34,0.045);  --wash-hover:rgba(210,153,34,0.09); }
+.space-card.axis-writer    { --axis:var(--green,#3fb950);  --wash:rgba(63,185,80,0.045);   --wash-hover:rgba(63,185,80,0.09); }
 .space-card.leaf    { border-style:dashed; }
 .space-card.is-view { border-color:var(--border-mid); }
 
@@ -3352,6 +3354,21 @@ body[data-callout-theme="muted"] .lesson-body {
 .nav-item.nav-axis[data-axis="AX-INN"].active .nav-icon { color:var(--cyan); opacity:1; }
 .nav-item.nav-axis[data-axis="AX-CRE"].active { background:var(--amber-bg); color:var(--amber); border-left-color:var(--amber); }
 .nav-item.nav-axis[data-axis="AX-CRE"].active .nav-icon { color:var(--amber); opacity:1; }
+.nav-item.nav-axis[data-axis="AX-WRI"].active { background:rgba(63,185,80,0.10); color:var(--green); border-left-color:var(--green); }
+.nav-item.nav-axis[data-axis="AX-WRI"].active .nav-icon { color:var(--green); opacity:1; }
+
+/* Every other nav group tints its icon on hover to match its own accent
+   (see "NAV GROUP ICON ACCENT COLORS" above) -- the Spaces axis buttons
+   were missing that entirely, so hovering (not yet clicked) Visionary/
+   Innovator/Creator/Writer fell through to the base .nav-item:hover's flat
+   neutral color no matter which axis it was, the one Architect flagged 17 Aug
+   ("if the color for a space is blue, I don't want the hover to be
+   green"). Same per-axis color each button's .active rule already uses,
+   just also applied on :hover. */
+.nav-item.nav-axis[data-axis="AX-VIS"]:hover .nav-icon { color:var(--violet); }
+.nav-item.nav-axis[data-axis="AX-INN"]:hover .nav-icon { color:var(--cyan); }
+.nav-item.nav-axis[data-axis="AX-CRE"]:hover .nav-icon { color:var(--amber); }
+.nav-item.nav-axis[data-axis="AX-WRI"]:hover .nav-icon { color:var(--green); }
 
 .space-card-top { display:flex; align-items:baseline; justify-content:space-between; gap:0.4rem; }
 .space-card-label { font-size:0.86rem; font-weight:700; color:var(--text); }

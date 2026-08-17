@@ -5192,7 +5192,7 @@ function renderCorporateDetail() {
 }
 
 // ── SPACES (axial tree) ───────────────────────────────────────────────────────
-// Navigates the same shape as the folder tree on disk: three axes, then facets,
+// Navigates the same shape as the folder tree on disk: top-level axes, then facets,
 // then domains. One level visible at a time with a breadcrumb back out, because
 // the whole point of a three-wide tree is that you never face more than three
 // choices at once. Command stays global and aggregated; this is the opposite -
@@ -5297,7 +5297,7 @@ function renderSpaces() {
       <div class="space-crumbs">${crumbs}</div>
 
       ${current ? `<div class="space-context">${escHtml(current.DESCRIPTION && current.DESCRIPTION !== '-' ? current.DESCRIPTION : '')}</div>` :
-                  `<div class="space-context">Three axes. Everything you do sits under exactly one of them.</div>`}
+                  `<div class="space-context">${tree.length} axes. Everything you do sits under exactly one of them.</div>`}
 
       ${items.length
         ? `<div class="space-grid">${items.map(card).join('')}</div>`
@@ -10500,7 +10500,7 @@ function navigate(viewName, params = {}, opts = {}) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view===viewName));
   // The rail shows where you are: Command plus the one group holding this view.
   if (typeof syncNavGroupToView === 'function') syncNavGroupToView(viewName);
-  // All three axis buttons share data-view="spaces", so narrow the highlight to
+  // Every axis button shares data-view="spaces", so narrow the highlight to
   // the axis actually being viewed rather than lighting up all three.
   if (viewName === 'spaces') {
     const axisId = spacesPath[0] || '';
