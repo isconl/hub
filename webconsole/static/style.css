@@ -49,6 +49,25 @@
      chevron for every select in the console. */
   color-scheme: dark;
   --chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237d8590' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+
+  /* ── MENU COLORS: one named color per sidebar group/axis ──────────────────
+     Architect (17 Aug): "the coloring of the hover is determined by the main
+     menus... have these colors configurable in the settings space." These
+     are the single source of truth every nav-group and Spaces-axis rule
+     below reads from (var(--mc-x)) instead of a literal hex/var per rule -
+     Settings > Menu Colors (app.js's applyMenuColors()) overrides these
+     same custom-property names on :root's inline style, so a saved color
+     takes effect everywhere at once with no CSS rewrite needed. Defaults
+     match the palette already in place before this was configurable. */
+  --mc-command:   var(--green-bright);
+  --mc-flow:      var(--cyan);
+  --mc-life:      var(--amber);
+  --mc-circle:    var(--violet);
+  --mc-projects:  var(--cyan);
+  --mc-visionary: var(--violet);
+  --mc-innovator: var(--cyan);
+  --mc-creator:   var(--amber);
+  --mc-writer:    var(--green);
 }
 
 /* ── SPACE-SPECIFIC PALETTES & TAILORED HOVER STATES ── */
@@ -266,24 +285,39 @@ select option { background:var(--panel); color:var(--text); }
 .nav-item.active { background:var(--green-bg2); color:var(--green-bright); border-left-color:var(--green); }
 .nav-item.active .nav-icon { opacity:1; color:var(--green-bright); }
 
-/* ── NAV GROUP ICON ACCENT COLORS ───────────────────────────────────────────
-   Each nav group wears its own icon accent when active: COMMAND stays green
-   (the console's primary), CHANNELS gets cyan (information flowing in),
-   PERSONAL gets amber (things that are yours), CIRCLE gets violet (people),
-   PROJECTS gets blue (builds). Inactive icons remain neutral. */
-#nav-group-command .nav-item.active .nav-icon { color:var(--green-bright); }
-#nav-group-flow .nav-item.active { background:rgba(88,166,255,0.07); color:var(--cyan); border-left-color:var(--cyan); }
-#nav-group-flow .nav-item.active .nav-icon { color:var(--cyan); }
-#nav-group-flow .nav-item:hover .nav-icon { color:var(--cyan); }
-#nav-group-life .nav-item.active { background:rgba(210,153,34,0.07); color:var(--amber); border-left-color:var(--amber); }
-#nav-group-life .nav-item.active .nav-icon { color:var(--amber); }
-#nav-group-life .nav-item:hover .nav-icon { color:var(--amber); }
-#nav-group-circle .nav-item.active { background:rgba(188,140,255,0.08); color:var(--violet); border-left-color:var(--violet); }
-#nav-group-circle .nav-item.active .nav-icon { color:var(--violet); }
-#nav-group-circle .nav-item:hover .nav-icon { color:var(--violet); }
-#nav-group-projects .nav-item.active { background:rgba(88,166,255,0.07); color:var(--cyan); border-left-color:var(--cyan); }
-#nav-group-projects .nav-item.active .nav-icon { color:var(--cyan); }
-#nav-group-projects .nav-item:hover .nav-icon { color:var(--cyan); }
+/* ── NAV GROUP ACCENT COLORS ─────────────────────────────────────────────
+   Each nav group wears its own accent, on both hover AND active (hover
+   used to only tint the icon, leaving background/text a flat neutral no
+   matter which group - fixed 17 Aug per Architect: "the coloring of the hover
+   is determined by the main menus"). Colors come from the --mc-* custom
+   properties defined in :root above, which Settings > Menu Colors can
+   override live - never a literal hex/var here, so a saved color takes
+   effect without touching this file again. color-mix() derives the
+   translucent wash backgrounds from whatever color is set, instead of a
+   fixed rgba() per group that would go stale the moment the color changes. */
+#nav-group-command .nav-item.active .nav-icon { color:var(--mc-command); }
+#nav-group-command .nav-item:hover { background:color-mix(in srgb, var(--mc-command) 7%, transparent); color:var(--mc-command); }
+#nav-group-command .nav-item:hover .nav-icon { color:var(--mc-command); }
+
+#nav-group-flow .nav-item.active { background:color-mix(in srgb, var(--mc-flow) 10%, transparent); color:var(--mc-flow); border-left-color:var(--mc-flow); }
+#nav-group-flow .nav-item.active .nav-icon { color:var(--mc-flow); }
+#nav-group-flow .nav-item:hover { background:color-mix(in srgb, var(--mc-flow) 7%, transparent); color:var(--mc-flow); }
+#nav-group-flow .nav-item:hover .nav-icon { color:var(--mc-flow); }
+
+#nav-group-life .nav-item.active { background:color-mix(in srgb, var(--mc-life) 10%, transparent); color:var(--mc-life); border-left-color:var(--mc-life); }
+#nav-group-life .nav-item.active .nav-icon { color:var(--mc-life); }
+#nav-group-life .nav-item:hover { background:color-mix(in srgb, var(--mc-life) 7%, transparent); color:var(--mc-life); }
+#nav-group-life .nav-item:hover .nav-icon { color:var(--mc-life); }
+
+#nav-group-circle .nav-item.active { background:color-mix(in srgb, var(--mc-circle) 10%, transparent); color:var(--mc-circle); border-left-color:var(--mc-circle); }
+#nav-group-circle .nav-item.active .nav-icon { color:var(--mc-circle); }
+#nav-group-circle .nav-item:hover { background:color-mix(in srgb, var(--mc-circle) 7%, transparent); color:var(--mc-circle); }
+#nav-group-circle .nav-item:hover .nav-icon { color:var(--mc-circle); }
+
+#nav-group-projects .nav-item.active { background:color-mix(in srgb, var(--mc-projects) 10%, transparent); color:var(--mc-projects); border-left-color:var(--mc-projects); }
+#nav-group-projects .nav-item.active .nav-icon { color:var(--mc-projects); }
+#nav-group-projects .nav-item:hover { background:color-mix(in srgb, var(--mc-projects) 7%, transparent); color:var(--mc-projects); }
+#nav-group-projects .nav-item:hover .nav-icon { color:var(--mc-projects); }
 
 .nav-badge {
   margin-left:auto; font-size:0.62rem; font-family:var(--font-mono);
@@ -905,6 +939,58 @@ select option { background:var(--panel); color:var(--text); }
 }
 .settings-page textarea:focus { border-color:var(--green-dim); }
 
+/* ── Menu Colors (Settings > Menu Colors) ────────────────────────────────
+   One row per nav group/axis: a real color swatch, its label+hint, and a
+   live preview chip built from the exact color-mix() wash the sidebar
+   itself uses, so what's shown here is a true preview, not a guess. */
+.mc-swatch-grid { display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.8rem; }
+.mc-swatch-row {
+  display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:0.75rem;
+  padding:0.5rem 0.6rem; border-radius:var(--r-md); background:var(--bg-raised);
+  border:1px solid var(--border); transition:border-color 0.15s;
+}
+.mc-swatch-row:hover { border-color:var(--border-mid); }
+.mc-swatch-input { position:relative; width:32px; height:32px; cursor:pointer; flex-shrink:0; }
+.mc-swatch-input input[type="color"] {
+  position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; padding:0; border:0;
+}
+.mc-swatch-dot {
+  position:absolute; inset:0; border-radius:50%;
+  background:var(--mc-preview); border:2px solid var(--border-mid);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--mc-preview) 18%, transparent);
+  pointer-events:none; transition:box-shadow 0.15s;
+}
+.mc-swatch-input:hover .mc-swatch-dot { box-shadow:0 0 0 4px color-mix(in srgb, var(--mc-preview) 28%, transparent); }
+.mc-swatch-meta { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.mc-swatch-label { font-size:0.82rem; font-weight:600; color:var(--text); }
+.mc-swatch-hint { font-size:0.7rem; color:var(--text-3); }
+.mc-swatch-chip {
+  font-size:0.72rem; font-weight:600; padding:0.3rem 0.7rem; border-radius:999px;
+  background:color-mix(in srgb, var(--mc-preview) 14%, transparent);
+  color:var(--mc-preview); border:1px solid color-mix(in srgb, var(--mc-preview) 40%, transparent);
+  white-space:nowrap; transition:background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+/* ── Day Schedule (Settings > Day Schedule) ──────────────────────────────
+   One row per block: kind dot, name, start/end time, an on/off toggle, and
+   a per-row save (the API edits one block at a time, so there's no single
+   global save for this section). */
+.sched-list { display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.4rem; }
+.sched-row {
+  display:flex; align-items:center; gap:0.55rem; padding:0.4rem 0.55rem;
+  border-radius:var(--r-md); background:var(--bg-raised); border:1px solid var(--border);
+  transition:border-color 0.15s;
+}
+.sched-row:hover { border-color:var(--border-mid); }
+.sched-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.sched-name { flex:1 1 160px; min-width:0; font-size:0.82rem; }
+.sched-time { width:6.5rem; flex-shrink:0; font-size:0.78rem; font-family:var(--font-mono); }
+.sched-dash { color:var(--text-3); flex-shrink:0; }
+.sched-active {
+  display:flex; align-items:center; gap:0.3rem; font-size:0.72rem; color:var(--text-3);
+  flex-shrink:0; cursor:pointer; user-select:none;
+}
+
 .settings-actions { display:flex; gap:0.5rem; flex-wrap:wrap; }
 
 .settings-result {
@@ -1348,17 +1434,23 @@ pre.code-block {
 .ctx-net { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:0; }
 .ctx-net-layer { transform-origin:50% 50%; animation:ctx-drift 44s linear infinite; }
 .ctx-net-layer.b { animation-duration:67s; animation-direction:reverse; }
+/* Same color as the circular progress indicator it sits behind (17 Aug,
+   Architect: "I want it to be... adapt to its color") - --ctx-rgb is set
+   inline on .ctx-net from the same `rgb` value renderRailContext/ctxTick
+   already compute for the ring (timeLeftColor()'s urgency tier), so the
+   network recolors the instant the block's remaining time crosses a
+   tier, same as the ring and the center number. Replaces the old
+   isCritical-driven .hot variant, which tracked a different, unrelated
+   signal (an open critical-priority task) than what's on screen now. */
 .ctx-net line {
-  stroke:rgba(63,185,80,0.11); stroke-width:0.4;
+  stroke:rgba(var(--ctx-rgb, 63,185,80),0.11); stroke-width:0.4;
   animation:ctx-link 13s ease-in-out infinite;
 }
 .ctx-net circle {
-  fill:rgba(63,185,80,0.26);
+  fill:rgba(var(--ctx-rgb, 63,185,80),0.26);
   transform-box:fill-box; transform-origin:center;
   animation:ctx-node 9s ease-in-out infinite;
 }
-.ctx-net.hot line { stroke:rgba(248,81,73,0.11); }
-.ctx-net.hot circle { fill:rgba(248,81,73,0.26); }
 @keyframes ctx-drift { to { transform:rotate(360deg); } }
 @keyframes ctx-link { 0%,100% { opacity:0.45; } 50% { opacity:1; } }
 @keyframes ctx-node {
@@ -3299,10 +3391,10 @@ body[data-callout-theme="muted"] .lesson-body {
    ══════════════════════════════════════════════════════════════════════════ */
 
 .space-shell { --axis: var(--text-3); }
-.space-shell.axis-visionary { --axis: var(--violet, #a371f7); }
-.space-shell.axis-innovator { --axis: var(--cyan,   #39c5cf); }
-.space-shell.axis-creator   { --axis: var(--amber,  #d29922); }
-.space-shell.axis-writer    { --axis: var(--green,  #3fb950); }
+.space-shell.axis-visionary { --axis: var(--mc-visionary); }
+.space-shell.axis-innovator { --axis: var(--mc-innovator); }
+.space-shell.axis-creator   { --axis: var(--mc-creator); }
+.space-shell.axis-writer    { --axis: var(--mc-writer); }
 
 .space-crumbs {
   display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;
@@ -3339,36 +3431,39 @@ body[data-callout-theme="muted"] .lesson-body {
 }
 .space-card:hover { background:var(--wash-hover); border-color:var(--border-mid); transform:translateY(-1px); }
 .space-card:focus-visible { outline:2px solid var(--axis); outline-offset:2px; }
-.space-card.axis-visionary { --axis:var(--violet,#a371f7); --wash:rgba(188,140,255,0.045); --wash-hover:rgba(188,140,255,0.09); }
-.space-card.axis-innovator { --axis:var(--cyan,#39c5cf);   --wash:rgba(57,197,207,0.045);  --wash-hover:rgba(57,197,207,0.09); }
-.space-card.axis-creator   { --axis:var(--amber,#d29922);  --wash:rgba(210,153,34,0.045);  --wash-hover:rgba(210,153,34,0.09); }
-.space-card.axis-writer    { --axis:var(--green,#3fb950);  --wash:rgba(63,185,80,0.045);   --wash-hover:rgba(63,185,80,0.09); }
+.space-card.axis-visionary { --axis:var(--mc-visionary); --wash:color-mix(in srgb, var(--mc-visionary) 5%, transparent); --wash-hover:color-mix(in srgb, var(--mc-visionary) 10%, transparent); }
+.space-card.axis-innovator { --axis:var(--mc-innovator); --wash:color-mix(in srgb, var(--mc-innovator) 5%, transparent); --wash-hover:color-mix(in srgb, var(--mc-innovator) 10%, transparent); }
+.space-card.axis-creator   { --axis:var(--mc-creator);   --wash:color-mix(in srgb, var(--mc-creator) 5%, transparent);   --wash-hover:color-mix(in srgb, var(--mc-creator) 10%, transparent); }
+.space-card.axis-writer    { --axis:var(--mc-writer);    --wash:color-mix(in srgb, var(--mc-writer) 5%, transparent);    --wash-hover:color-mix(in srgb, var(--mc-writer) 10%, transparent); }
 .space-card.leaf    { border-style:dashed; }
 .space-card.is-view { border-color:var(--border-mid); }
 
-/* Axis buttons in the sidebar take their own colour when active, so the rail
-   tells you which axis you are standing in at a glance. */
-.nav-item.nav-axis[data-axis="AX-VIS"].active { background:rgba(188,140,255,0.10); color:var(--violet); border-left-color:var(--violet); }
-.nav-item.nav-axis[data-axis="AX-VIS"].active .nav-icon { color:var(--violet); opacity:1; }
-.nav-item.nav-axis[data-axis="AX-INN"].active { background:rgba(57,197,207,0.10); color:var(--cyan); border-left-color:var(--cyan); }
-.nav-item.nav-axis[data-axis="AX-INN"].active .nav-icon { color:var(--cyan); opacity:1; }
-.nav-item.nav-axis[data-axis="AX-CRE"].active { background:var(--amber-bg); color:var(--amber); border-left-color:var(--amber); }
-.nav-item.nav-axis[data-axis="AX-CRE"].active .nav-icon { color:var(--amber); opacity:1; }
-.nav-item.nav-axis[data-axis="AX-WRI"].active { background:rgba(63,185,80,0.10); color:var(--green); border-left-color:var(--green); }
-.nav-item.nav-axis[data-axis="AX-WRI"].active .nav-icon { color:var(--green); opacity:1; }
+/* Axis buttons in the sidebar take their own colour on hover AND active, so
+   the rail tells you which axis you are standing in (or about to enter) at
+   a glance -- hover used to fall through to a flat neutral no matter which
+   axis, the mismatch Architect flagged 17 Aug ("if the color for a space is
+   blue, I don't want the hover to be green"). Colors come from the --mc-*
+   custom properties (Settings > Menu Colors), same as the nav-group rules
+   above, not a literal hex/var per axis. */
+.nav-item.nav-axis[data-axis="AX-VIS"].active { background:color-mix(in srgb, var(--mc-visionary) 10%, transparent); color:var(--mc-visionary); border-left-color:var(--mc-visionary); }
+.nav-item.nav-axis[data-axis="AX-VIS"].active .nav-icon { color:var(--mc-visionary); opacity:1; }
+.nav-item.nav-axis[data-axis="AX-VIS"]:hover { background:color-mix(in srgb, var(--mc-visionary) 7%, transparent); color:var(--mc-visionary); }
+.nav-item.nav-axis[data-axis="AX-VIS"]:hover .nav-icon { color:var(--mc-visionary); }
 
-/* Every other nav group tints its icon on hover to match its own accent
-   (see "NAV GROUP ICON ACCENT COLORS" above) -- the Spaces axis buttons
-   were missing that entirely, so hovering (not yet clicked) Visionary/
-   Innovator/Creator/Writer fell through to the base .nav-item:hover's flat
-   neutral color no matter which axis it was, the one Architect flagged 17 Aug
-   ("if the color for a space is blue, I don't want the hover to be
-   green"). Same per-axis color each button's .active rule already uses,
-   just also applied on :hover. */
-.nav-item.nav-axis[data-axis="AX-VIS"]:hover .nav-icon { color:var(--violet); }
-.nav-item.nav-axis[data-axis="AX-INN"]:hover .nav-icon { color:var(--cyan); }
-.nav-item.nav-axis[data-axis="AX-CRE"]:hover .nav-icon { color:var(--amber); }
-.nav-item.nav-axis[data-axis="AX-WRI"]:hover .nav-icon { color:var(--green); }
+.nav-item.nav-axis[data-axis="AX-INN"].active { background:color-mix(in srgb, var(--mc-innovator) 10%, transparent); color:var(--mc-innovator); border-left-color:var(--mc-innovator); }
+.nav-item.nav-axis[data-axis="AX-INN"].active .nav-icon { color:var(--mc-innovator); opacity:1; }
+.nav-item.nav-axis[data-axis="AX-INN"]:hover { background:color-mix(in srgb, var(--mc-innovator) 7%, transparent); color:var(--mc-innovator); }
+.nav-item.nav-axis[data-axis="AX-INN"]:hover .nav-icon { color:var(--mc-innovator); }
+
+.nav-item.nav-axis[data-axis="AX-CRE"].active { background:color-mix(in srgb, var(--mc-creator) 10%, transparent); color:var(--mc-creator); border-left-color:var(--mc-creator); }
+.nav-item.nav-axis[data-axis="AX-CRE"].active .nav-icon { color:var(--mc-creator); opacity:1; }
+.nav-item.nav-axis[data-axis="AX-CRE"]:hover { background:color-mix(in srgb, var(--mc-creator) 7%, transparent); color:var(--mc-creator); }
+.nav-item.nav-axis[data-axis="AX-CRE"]:hover .nav-icon { color:var(--mc-creator); }
+
+.nav-item.nav-axis[data-axis="AX-WRI"].active { background:color-mix(in srgb, var(--mc-writer) 10%, transparent); color:var(--mc-writer); border-left-color:var(--mc-writer); }
+.nav-item.nav-axis[data-axis="AX-WRI"].active .nav-icon { color:var(--mc-writer); opacity:1; }
+.nav-item.nav-axis[data-axis="AX-WRI"]:hover { background:color-mix(in srgb, var(--mc-writer) 7%, transparent); color:var(--mc-writer); }
+.nav-item.nav-axis[data-axis="AX-WRI"]:hover .nav-icon { color:var(--mc-writer); }
 
 .space-card-top { display:flex; align-items:baseline; justify-content:space-between; gap:0.4rem; }
 .space-card-label { font-size:0.86rem; font-weight:700; color:var(--text); }
@@ -5059,7 +5154,7 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 .day-card .day-title {
   font-size: 2rem;
   font-weight: 800;
-  letter-spacing: -0.035em;
+  letter-spacing: 0.07em;
   text-transform: none;
   color: var(--text);
   line-height: 1.15;

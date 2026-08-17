@@ -3369,6 +3369,79 @@ function renderSettings() {
         <div id="branding-result" class="settings-result hidden"></div>
       </div>
 
+      <!-- Menu Colors -- Architect 17 Aug: "the coloring of the hover is
+           determined by the main menus... have these colors configurable
+           in the settings space." One swatch per nav group + per Spaces
+           axis, live-previewed as an actual nav-style chip so what you see
+           here is what the sidebar will look like, not just a bare <input
+           type=color>. Saved to the same device-local pattern as Branding
+           above (localStorage) -- see applyMenuColors() for how a save
+           reaches the sidebar with no reload. -->
+      <div class="settings-section" id="menu-colors-section">
+        <div class="settings-section-title">Menu Colors</div>
+        <p class="settings-hint">Each menu section keeps its own color across hover and active states, everywhere it appears. Saved on this device only for now.</p>
+        <div class="mc-swatch-grid">
+          ${MENU_COLOR_GROUPS.map(g => `
+            <div class="mc-swatch-row">
+              <label class="mc-swatch-input" for="s-mc-${g.key}" style="--mc-preview:${escAttr(menuColorFor(g.key))}">
+                <input id="s-mc-${g.key}" type="color" value="${escAttr(menuColorFor(g.key))}"
+                       oninput="document.getElementById('mc-chip-${g.key}').style.setProperty('--mc-preview', this.value); this.closest('.mc-swatch-input').style.setProperty('--mc-preview', this.value)"/>
+                <span class="mc-swatch-dot"></span>
+              </label>
+              <div class="mc-swatch-meta">
+                <span class="mc-swatch-label">${escHtml(g.label)}</span>
+                <span class="mc-swatch-hint">${escHtml(g.hint)}</span>
+              </div>
+              <div class="mc-swatch-chip" id="mc-chip-${g.key}" style="--mc-preview:${escAttr(menuColorFor(g.key))}">${escHtml(g.label)}</div>
+            </div>`).join('')}
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-primary" onclick="saveMenuColors()">Save Menu Colors</button>
+          <button class="btn btn-ghost" onclick="resetMenuColors()">Reset to Defaults</button>
+        </div>
+        <div id="menu-colors-result" class="settings-result hidden"></div>
+      </div>
+
+      <!-- Day Schedule -- Architect 17 Aug: "the blocks and the hours for the
+           day configurable there, and even their colors." Blocks/hours
+           edit through GET+POST /api/blocks (vault/lib/blocks.js's own
+           save()), which only edits an EXISTING block's name/hours/active
+           -- it can't create, delete, or re-kind a block, so this is a
+           schedule editor, not a block builder. Colors are configured per
+           KIND (Protected/Learning/.../Rest) below the list, not per row,
+           since several rows legitimately share a kind and always shared
+           its color (toneOf() in app.js). -->
+      <div class="settings-section" id="day-schedule-section">
+        <div class="settings-section-title">Day Schedule</div>
+        <p class="settings-hint">Your day, in blocks. Edit a block's name or hours, or turn it off. Colors are set once per kind, just below.</p>
+        ${renderScheduleBlockList()}
+      </div>
+
+      <div class="settings-section" id="block-colors-section">
+        <div class="settings-section-title">Block Colors</div>
+        <p class="settings-hint">One color per kind, shared by every block of that kind. Saved on this device only for now.</p>
+        <div class="mc-swatch-grid">
+          ${BLOCK_COLOR_GROUPS.map(g => `
+            <div class="mc-swatch-row">
+              <label class="mc-swatch-input" for="s-bc-${g.key}" style="--mc-preview:${escAttr(blockColorFor(g.key))}">
+                <input id="s-bc-${g.key}" type="color" value="${escAttr(blockColorFor(g.key))}"
+                       oninput="document.getElementById('bc-chip-${g.key}').style.setProperty('--mc-preview', this.value); this.closest('.mc-swatch-input').style.setProperty('--mc-preview', this.value)"/>
+                <span class="mc-swatch-dot"></span>
+              </label>
+              <div class="mc-swatch-meta">
+                <span class="mc-swatch-label">${escHtml(g.label)}</span>
+                <span class="mc-swatch-hint">${escHtml(g.hint)}</span>
+              </div>
+              <div class="mc-swatch-chip" id="bc-chip-${g.key}" style="--mc-preview:${escAttr(blockColorFor(g.key))}">${escHtml(g.label)}</div>
+            </div>`).join('')}
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-primary" onclick="saveBlockColors()">Save Block Colors</button>
+          <button class="btn btn-ghost" onclick="resetBlockColors()">Reset to Defaults</button>
+        </div>
+        <div id="block-colors-result" class="settings-result hidden"></div>
+      </div>
+
       <!-- Integrations folded in here, 29 Jul. It was its own destination in
            SYSTEM showing the same service state this page already configures -
            two places to look at one truth. Settings owns the connections now. -->
@@ -3468,6 +3541,80 @@ function renderBrandmarkHorizontal(size = '1.45rem') {
 }
 function renderBrandmarkIcon(sizePx = 40) {
   return `<img src="/static/favicon.svg" alt="iSconlHub" style="width:${sizePx}px;height:${sizePx}px"/>`;
+}
+
+// ── MENU COLORS ──────────────────────────────────────────────────────────────
+// Architect (17 Aug): "the coloring of the hover is determined by the main
+// menus, like all hub ones would be green, personal ones yellow... etc and
+// have these colors configurable in the settings space." Each entry here is
+// one --mc-* custom property defined in style.css's :root (with its
+// existing default) - saving a new value just overrides that same
+// property on :root's inline style, so every rule already written against
+// var(--mc-x) (nav-group hover/active, Spaces axis hover/active) picks it
+// up with no other code path involved.
+const MENU_COLOR_GROUPS = [
+  { key: 'command',   label: 'Command',    hint: 'Today, Kanban, Calendar' },
+  { key: 'flow',      label: 'Channels',   hint: 'Inbox, GitHub, Notifications' },
+  { key: 'life',      label: 'Personal',   hint: 'Rhythm, Learning, Ideas' },
+  { key: 'circle',    label: 'Circle',     hint: 'People, Contacts' },
+  { key: 'projects',  label: 'Projects',   hint: 'Ventures, deployments' },
+  { key: 'writer',    label: 'Writer',     hint: 'Spaces axis' },
+  { key: 'visionary', label: 'Visionary',  hint: 'Spaces axis' },
+  { key: 'innovator', label: 'Innovator',  hint: 'Spaces axis' },
+  { key: 'creator',   label: 'Creator',    hint: 'Spaces axis' },
+];
+const MENU_COLORS_KEY = 'isconl.menuColors';
+
+function getMenuColors() {
+  try { return JSON.parse(localStorage.getItem(MENU_COLORS_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+/** The color actually in effect for one group: a saved override, or
+ *  whatever style.css's :root already defaults --mc-<key> to. Reads the
+ *  computed value rather than hardcoding the defaults a second time here,
+ *  so this file and style.css can never drift apart. */
+function menuColorFor(key) {
+  const saved = getMenuColors()[key];
+  if (saved) return saved;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(`--mc-${key}`).trim();
+  // A var() default resolves to a color already; a raw custom property
+  // that itself points at another var() (e.g. --mc-command: var(--green-
+  // bright)) still resolves fully here since getComputedStyle returns the
+  // final used value, not the raw declaration.
+  return v || '#3fb950';
+}
+
+/** Apply every saved override to :root as an inline style -- called once at
+ *  script load (so first paint already has them, no flash of defaults) and
+ *  again immediately after Settings saves a change. */
+function applyMenuColors() {
+  const saved = getMenuColors();
+  const root = document.documentElement.style;
+  for (const g of MENU_COLOR_GROUPS) {
+    if (saved[g.key]) root.setProperty(`--mc-${g.key}`, saved[g.key]);
+  }
+}
+applyMenuColors();
+
+function saveMenuColors() {
+  const next = {};
+  for (const g of MENU_COLOR_GROUPS) {
+    const input = document.getElementById(`s-mc-${g.key}`);
+    if (input) next[g.key] = input.value;
+  }
+  try { localStorage.setItem(MENU_COLORS_KEY, JSON.stringify(next)); } catch {}
+  applyMenuColors();
+  const el = document.getElementById('menu-colors-result');
+  if (el) { el.classList.remove('hidden'); el.className = 'settings-result success'; el.textContent = 'Menu colors saved and applied.'; }
+  showToast('Menu colors updated', 'success');
+}
+
+function resetMenuColors() {
+  try { localStorage.removeItem(MENU_COLORS_KEY); } catch {}
+  for (const g of MENU_COLOR_GROUPS) document.documentElement.style.removeProperty(`--mc-${g.key}`);
+  repaintView('settings');
+  showToast('Menu colors reset to defaults', 'info');
 }
 function saveBranding() {
   const name = (document.getElementById('s-brand-name')?.value || '').trim() || 'iSconl';
@@ -5705,21 +5852,75 @@ async function runAiArticleAction(action, btn) {
 }
 
 // ── WRITER (document-generation studio) ─────────────────────────────────────────
-// SPACES > Visionary > Career Copilot > Writer (memory/space/spaces.tsv row
-// DM-VIS-COP-WRITER). Front end for scope's lib/generate/ engine: archetype
-// (a document shape) + content (what THIS document says) -> docx/md/pdf.
-// No AI anywhere in this path, by design (document-generation-canon.md §1) --
-// this is a form-to-document tool, not a drafting assistant.
+// SPACES > Writer > Document Studio (memory/space/spaces.tsv row
+// DM-WRI-STU-WRITER; Writer promoted to its own top-level axis 17 Aug).
+// Front end for scope's lib/generate/ engine: archetype (a document shape)
+// + content (what THIS document says) -> docx/md/pdf. No AI anywhere in
+// this path, by design (document-generation-canon.md §1) -- this is a
+// form-to-document tool, not a drafting assistant.
+//
+// GUIDED TARGET SELECTION (17 Aug, Architect: "documents may be drafted for
+// any of the existing corporate engagements, or any projects, enable for
+// this guided selection"): before picking an archetype, Writer asks WHO
+// this document is for -- a Corporate Engagement (GET /api/corporate),
+// a Project (GET /api/projects), or General (no target, _common only).
+// The choice does two things: (1) resolves the archetype namespace (an
+// engagement's own id, so any engagement-specific archetypes appear
+// alongside _common; projects/general always use _common, since no
+// project-scoped archetypes exist yet), and (2) once an archetype is
+// opened, pre-fills its filenameFields.primary/secondary slots from the
+// target's own slug/kind -- "intelligent file naming... by the selection
+// of options" rather than free-typing the two slots naming.js turns into
+// the actual filename. Pre-filled, not locked: still plain text inputs,
+// editable like any other field.
 
 let writerTab = 'registry';           // 'registry' | 'studio'
 let writerNamespace = '_common';      // which archetype namespace is loaded
-let writerNamespaceInput = '_common'; // the (possibly unsaved) text in the namespace box
 let WRITER_ARCHETYPES = null;         // cached list for writerNamespace
 let writerActiveArchetype = null;     // the full archetype object (id, title, fields, filenameFields)
 let writerContent = {};               // fieldName -> raw form value (string)
 let writerPreviewMd = '';
 let writerLastResult = null;          // {archetype, files:{ext:{filename,base64,bytes}}} from the last generate
 let writerFormats = { docx: true, md: false, pdf: false };
+
+let writerTargetKind = 'general';     // 'engagement' | 'project' | 'general'
+let writerTargetId = '';
+let writerTargetLabel = '';
+let WRITER_ENGAGEMENTS = null;        // cached /api/corporate engagements list
+let WRITER_PROJECTS = null;           // cached /api/projects list
+
+async function loadWriterEngagements(force = false) {
+  if (WRITER_ENGAGEMENTS && !force) return;
+  try {
+    const r = await fetch('/api/corporate');
+    const d = await r.json();
+    WRITER_ENGAGEMENTS = d.engagements || [];
+  } catch (e) { WRITER_ENGAGEMENTS = []; }
+  if (currentView === 'writer') repaintView('writer');
+}
+async function loadWriterProjects(force = false) {
+  if (WRITER_PROJECTS && !force) return;
+  try {
+    const r = await fetch('/api/projects');
+    const d = await r.json();
+    WRITER_PROJECTS = d.projects || [];
+  } catch (e) { WRITER_PROJECTS = []; }
+  if (currentView === 'writer') repaintView('writer');
+}
+
+/** kind: 'engagement' | 'project' | 'general'. id/label identify the
+ *  chosen target within that kind (empty for 'general'). Resolves the
+ *  archetype namespace and reloads the archetype list for it. */
+function setWriterTarget(kind, id, label) {
+  writerTargetKind = kind;
+  writerTargetId = id || '';
+  writerTargetLabel = label || '';
+  writerNamespace = (kind === 'engagement' && id) ? id : '_common';
+  WRITER_ARCHETYPES = null;
+  writerActiveArchetype = null;
+  repaintView('writer');
+  loadWriterArchetypes(true);
+}
 
 async function loadWriterArchetypes(force = false) {
   if (WRITER_ARCHETYPES && !force) return;
@@ -5734,14 +5935,14 @@ async function loadWriterArchetypes(force = false) {
 function renderWriter() {
   if (!WRITER_ARCHETYPES) {
     loadWriterArchetypes();
-    return `<div class="view-head"><h1>Writer</h1><div class="view-head-meta">Visionary · Career Copilot</div></div>
+    return `<div class="view-head"><h1>Writer</h1><div class="view-head-meta">Document Studio</div></div>
             <div class="card"><div class="reader-loading"><div class="spinner-inline"></div><div>Reading the archetype registry…</div></div></div>`;
   }
 
   return `
     <div class="view-head">
       <h1>Writer</h1>
-      <div class="view-head-meta">Visionary · Career Copilot · governed documents from reusable archetypes, no AI in the render path</div>
+      <div class="view-head-meta">Document Studio · automated drafting with guided, intelligent naming · no AI in the render path</div>
     </div>
 
     <div class="card">
@@ -5761,14 +5962,7 @@ function renderWriter() {
 
 function renderWriterRegistry() {
   return `
-    <div style="display:flex;gap:0.6rem;align-items:center;margin-bottom:0.8rem;flex-wrap:wrap">
-      <label style="font-size:0.72rem;color:var(--text-3)">Namespace</label>
-      <input type="text" class="input" style="font-size:0.78rem;padding:4px 10px;width:220px"
-             value="${escAttr(writerNamespaceInput)}" oninput="writerNamespaceInput=this.value"
-             placeholder="_common, viva-valentia, ..."/>
-      <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="setWriterNamespace(writerNamespaceInput)">Load</button>
-      <span style="font-size:0.7rem;color:var(--text-3)">Every namespace also sees <code>_common</code> archetypes.</span>
-    </div>
+    ${renderWriterTargetPicker()}
 
     ${!WRITER_ARCHETYPES.length ? `<div class="empty-state" style="text-align:left;padding:1rem 0">No archetypes in "${escHtml(writerNamespace)}" (or _common). Add one under scope/lib/generate/archetypes/.</div>` : `
       <div class="art-list" style="display:flex;flex-direction:column;gap:0.6rem">
@@ -5789,15 +5983,77 @@ function renderWriterRegistry() {
   `;
 }
 
+/** "Draft for" - the guided target picker. Three tabs (Corporate
+ *  Engagement / Project / General); the active one's own dropdown loads
+ *  lazily on first use rather than fetching both lists up front. */
+function renderWriterTargetPicker() {
+  const kindBtn = (kind, label) => `
+    <button class="task-tab${writerTargetKind === kind ? ' on' : ''}" onclick="switchWriterTargetKind('${kind}')">${escHtml(label)}</button>`;
+
+  let picker = '';
+  if (writerTargetKind === 'engagement') {
+    if (!WRITER_ENGAGEMENTS) { loadWriterEngagements(); picker = `<span style="font-size:0.76rem;color:var(--text-3)">Reading engagements…</span>`; }
+    else if (!WRITER_ENGAGEMENTS.length) picker = `<span style="font-size:0.76rem;color:var(--text-3)">No engagements on record yet (Corporate space).</span>`;
+    else picker = `
+      <select class="input" style="font-size:0.78rem;padding:4px 10px;width:260px" onchange="onWriterTargetPick(this.value)">
+        <option value="">Select an engagement…</option>
+        ${WRITER_ENGAGEMENTS.map(e => `<option value="${escAttr(e.id)}" ${writerTargetId === e.id ? 'selected' : ''}>${escHtml(e.name || e.id)}</option>`).join('')}
+      </select>`;
+  } else if (writerTargetKind === 'project') {
+    if (!WRITER_PROJECTS) { loadWriterProjects(); picker = `<span style="font-size:0.76rem;color:var(--text-3)">Reading projects…</span>`; }
+    else if (!WRITER_PROJECTS.length) picker = `<span style="font-size:0.76rem;color:var(--text-3)">No projects on record yet.</span>`;
+    else picker = `
+      <select class="input" style="font-size:0.78rem;padding:4px 10px;width:260px" onchange="onWriterTargetPick(this.value)">
+        <option value="">Select a project…</option>
+        ${WRITER_PROJECTS.map(p => `<option value="${escAttr(p.ID)}" ${writerTargetId === p.ID ? 'selected' : ''}>${escHtml(p.NAME || p.ID)}</option>`).join('')}
+      </select>`;
+  } else {
+    picker = `<span style="font-size:0.76rem;color:var(--text-3)">No target - drafts go straight to the general (<code>_common</code>) archetype set.</span>`;
+  }
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:0.8rem">
+      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+        <label style="font-size:0.72rem;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Draft for</label>
+        <div class="task-tabs">
+          ${kindBtn('engagement', 'Corporate Engagement')}
+          ${kindBtn('project', 'Project')}
+          ${kindBtn('general', 'General')}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">${picker}</div>
+      ${writerTargetLabel ? `<div style="font-size:0.72rem;color:var(--text-2)">Drafting for <strong>${escHtml(writerTargetLabel)}</strong> · namespace <code>${escHtml(writerNamespace)}</code></div>` : ''}
+    </div>`;
+}
+
+function switchWriterTargetKind(kind) {
+  if (kind === 'general') { setWriterTarget('general', '', ''); return; }
+  writerTargetKind = kind;
+  repaintView('writer');
+  if (kind === 'engagement') loadWriterEngagements();
+  if (kind === 'project') loadWriterProjects();
+}
+
+function onWriterTargetPick(id) {
+  if (!id) { setWriterTarget(writerTargetKind, '', ''); return; }
+  if (writerTargetKind === 'engagement') {
+    const e = (WRITER_ENGAGEMENTS || []).find(x => x.id === id);
+    setWriterTarget('engagement', id, e ? (e.name || e.id) : id);
+  } else if (writerTargetKind === 'project') {
+    const p = (WRITER_PROJECTS || []).find(x => x.ID === id);
+    setWriterTarget('project', id, p ? (p.NAME || p.ID) : id);
+  }
+}
+
 function setWriterTab(tab) { writerTab = tab; repaintView('writer'); }
 
-function setWriterNamespace(ns) {
-  writerNamespace = (ns || '_common').trim() || '_common';
-  writerNamespaceInput = writerNamespace;
-  WRITER_ARCHETYPES = null;
-  writerActiveArchetype = null;
-  repaintView('writer');
-  loadWriterArchetypes(true);
+/** Mirrors scope/lib/generate/naming.js's slugify() exactly (lowercase,
+ *  non-alphanumeric runs -> one hyphen, trimmed) - the prefill has to
+ *  slugify client-side the same way naming.js will slugify server-side at
+ *  generate time, or the filename preview here would lie about what
+ *  actually gets written. */
+function writerSlug(s) {
+  return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
 function openWriterStudio(archetypeId) {
@@ -5805,6 +6061,16 @@ function openWriterStudio(archetypeId) {
   if (!a) return;
   writerActiveArchetype = a;
   writerContent = {};
+  // Intelligent naming, guided by the target picked in the Registry tab
+  // (17 Aug ask) rather than free-typed: the archetype's own two filename
+  // slots are pre-filled from the target's slug + kind. Still plain,
+  // editable text fields - a starting point, not a lock.
+  if (a.filenameFields && writerTargetId) {
+    const targetSlug = writerSlug(writerTargetId);
+    const kindSlug = writerTargetKind === 'engagement' ? 'engagement' : writerTargetKind === 'project' ? 'project' : '';
+    if (a.filenameFields.primary) writerContent[a.filenameFields.primary] = targetSlug;
+    if (a.filenameFields.secondary && kindSlug) writerContent[a.filenameFields.secondary] = kindSlug;
+  }
   writerPreviewMd = '';
   writerLastResult = null;
   writerTab = 'studio';
@@ -5877,6 +6143,7 @@ function renderWriterStudio() {
         <div style="flex:1;min-width:200px">
           <div style="font-size:0.95rem;font-weight:600;color:var(--text)">${escHtml(a.title)}</div>
           <div style="font-size:0.7rem;color:var(--text-3);font-family:var(--font-mono)">${escHtml(writerNamespace)} / ${escHtml(a.id)}</div>
+          ${writerTargetLabel ? `<div style="font-size:0.72rem;color:var(--text-2);margin-top:2px">Drafting for <strong>${escHtml(writerTargetLabel)}</strong></div>` : ''}
         </div>
         <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="setWriterTab('registry')">← Back to Archetypes</button>
       </div>
@@ -7613,6 +7880,140 @@ const BLOCK_TONE = {
 };
 const toneOf = (b) => BLOCK_TONE[b?.axis] || 'var(--text-3)';
 
+// ── BLOCK COLORS ─────────────────────────────────────────────────────────────
+// Architect (17 Aug): "the blocks and the hours for the day configurable [in
+// Settings], and even their colors." Colors are configured per AXIS/kind
+// (Protected, Learning, ... Rest), not per individual block row - several
+// blocks legitimately share a kind (two Flex hours, for instance) and were
+// always meant to share a color; BLOCK_TONE above already points every
+// kind at a --wx-<key> custom property with a literal fallback, so this
+// works exactly like MENU_COLOR_GROUPS/applyMenuColors() above: saving an
+// override just sets that same custom property on :root, and toneOf()
+// (used everywhere a block's color is read) picks it up automatically.
+const BLOCK_COLOR_GROUPS = [
+  { key: 'protected',  cssVar: 'wx-protected', label: 'Protected',  hint: '05:00-06:00 · no phone' },
+  { key: 'learning',   cssVar: 'wx-learn',     label: 'Learning',   hint: 'Before the engagement day' },
+  { key: 'flex',       cssVar: 'wx-flex',      label: 'Flex',       hint: 'Commute, unallocated' },
+  { key: 'innovator',  cssVar: 'wx-inn',       label: 'Innovator',  hint: 'Systems built and engineered' },
+  { key: 'visionary',  cssVar: 'wx-lead',      label: 'Visionary',  hint: 'People, decisions, the record' },
+  { key: 'lunch',      cssVar: 'wx-lunch',     label: 'Lunch',      hint: '13:00-14:00' },
+  { key: 'creator',    cssVar: 'wx-create',    label: 'Creator',    hint: 'Work made to be seen and used' },
+  { key: 'connection', cssVar: 'wx-connect',   label: 'Connection', hint: 'Teammates, friends, family' },
+  { key: 'home',       cssVar: 'wx-home',      label: 'Home',       hint: 'House and home life' },
+  { key: 'rest',       cssVar: 'wx-rest',      label: 'Rest',       hint: 'Sleep - wraps midnight' },
+];
+const BLOCK_COLORS_KEY = 'isconl.blockColors';
+
+function getBlockColors() {
+  try { return JSON.parse(localStorage.getItem(BLOCK_COLORS_KEY) || '{}'); }
+  catch { return {}; }
+}
+function blockColorFor(key) {
+  const g = BLOCK_COLOR_GROUPS.find(x => x.key === key);
+  const saved = getBlockColors()[key];
+  if (saved) return saved;
+  if (!g) return '#7d8590';
+  const v = getComputedStyle(document.documentElement).getPropertyValue(`--${g.cssVar}`).trim();
+  return v || '#7d8590';
+}
+function applyBlockColors() {
+  const saved = getBlockColors();
+  const root = document.documentElement.style;
+  for (const g of BLOCK_COLOR_GROUPS) {
+    if (saved[g.key]) root.setProperty(`--${g.cssVar}`, saved[g.key]);
+  }
+}
+applyBlockColors();
+function saveBlockColors() {
+  const next = {};
+  for (const g of BLOCK_COLOR_GROUPS) {
+    const input = document.getElementById(`s-bc-${g.key}`);
+    if (input) next[g.key] = input.value;
+  }
+  try { localStorage.setItem(BLOCK_COLORS_KEY, JSON.stringify(next)); } catch {}
+  applyBlockColors();
+  const el = document.getElementById('block-colors-result');
+  if (el) { el.classList.remove('hidden'); el.className = 'settings-result success'; el.textContent = 'Block colors saved and applied.'; }
+  showToast('Block colors updated', 'success');
+  const slot = document.getElementById('day-card-slot');
+  if (slot) slot.innerHTML = renderDayBlocks();
+}
+function resetBlockColors() {
+  try { localStorage.removeItem(BLOCK_COLORS_KEY); } catch {}
+  for (const g of BLOCK_COLOR_GROUPS) document.documentElement.style.removeProperty(`--${g.cssVar}`);
+  repaintView('settings');
+  showToast('Block colors reset to defaults', 'info');
+}
+
+// ── DAY SCHEDULE (Settings) ──────────────────────────────────────────────────
+// The same GET /api/blocks the Hub's day card and Context ring already read
+// (vault/lib/blocks.js's blocks()/plan()) - editable here via POST /api/blocks
+// (blocks.js's save(), one block at a time: name/start/end/active only, see
+// that function's own header comment for why create/delete/re-kind aren't
+// supported). ACTIVE:no blocks are filtered out server-side before this ever
+// sees them, so turning a block off here is one-way from this screen - a
+// real, flagged limitation, not an oversight (see task-backlog.md).
+let SETTINGS_BLOCKS = null;
+async function loadSettingsBlocks(force = false) {
+  if (SETTINGS_BLOCKS && !force) return;
+  try {
+    const r = await fetch('/api/blocks');
+    const d = await r.json();
+    SETTINGS_BLOCKS = (d.blocks || []).slice().sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
+  } catch (e) { SETTINGS_BLOCKS = []; }
+  if (currentView === 'settings') repaintView('settings');
+}
+
+function renderScheduleBlockList() {
+  if (!SETTINGS_BLOCKS) {
+    loadSettingsBlocks();
+    return `<div class="empty-state" style="text-align:left;padding:0.6rem 0">Reading today's blocks…</div>`;
+  }
+  if (!SETTINGS_BLOCKS.length) {
+    return `<div class="empty-state" style="text-align:left;padding:0.6rem 0">No blocks on record.</div>`;
+  }
+  return `
+    <div class="sched-list">
+      ${SETTINGS_BLOCKS.map(b => `
+        <div class="sched-row" id="sched-row-${escAttr(b.id)}">
+          <span class="sched-dot" style="background:${toneOf(b)}" title="${escAttr(b.axis)}"></span>
+          <input id="blk-name-${escAttr(b.id)}" type="text" class="input sched-name" value="${escAttr(b.name)}" maxlength="40"/>
+          <input id="blk-start-${escAttr(b.id)}" type="time" class="input sched-time" value="${escAttr(b.startClock)}"/>
+          <span class="sched-dash">&ndash;</span>
+          <input id="blk-end-${escAttr(b.id)}" type="time" class="input sched-time" value="${escAttr(b.endClock)}"/>
+          <label class="sched-active" title="Turn this block off (cannot be turned back on from here yet)">
+            <input id="blk-active-${escAttr(b.id)}" type="checkbox" checked onchange="if(!this.checked && !confirm('Turn off '+${JSON.stringify(b.name)}+'? This screen can\\'t turn it back on yet.')) this.checked=true;"/>
+            <span>on</span>
+          </label>
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:3px 9px" onclick="saveScheduleBlock('${escAttr(b.id)}', this)">Save</button>
+        </div>`).join('')}
+    </div>`;
+}
+
+async function saveScheduleBlock(id, btn) {
+  const name = document.getElementById(`blk-name-${id}`)?.value?.trim();
+  const start = document.getElementById(`blk-start-${id}`)?.value;
+  const end = document.getElementById(`blk-end-${id}`)?.value;
+  const active = document.getElementById(`blk-active-${id}`)?.checked;
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await fetch('/api/blocks', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, name, start, end, active }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.ok === false) throw new Error(d.error || 'Could not save this block');
+    showToast(`${d.block?.NAME || name} saved`, 'success');
+    await loadSettingsBlocks(true);
+    await fetchDay();   // the Hub day card and Context ring read the same blocks
+  } catch (e) {
+    showToast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = was; }
+  }
+}
+
 /** Color a countdown by how much time is actually left, not by an unrelated
  *  signal (this used to just be "is there a critical task", which had
  *  nothing to do with the block on screen - fixed per Architect 17 Aug: "the
@@ -7825,7 +8226,11 @@ const CTX_FIELD = [
   { nodes: [[80,150],[130,186],[92,224],[136,236],[64,196],[112,268],[86,102]],
     edges: [[0,1],[1,2],[2,3],[0,4],[4,2],[2,5],[3,5],[0,6]] },
 ];
-function ctxField(isCritical) {
+/** `rgb` is the same "R,G,B" string timeLeftColor() gives the ring/number
+ *  (see renderRailContext) - the network is a decoration behind that ring,
+ *  so it adapts to whatever color the countdown itself is showing, not an
+ *  independent signal. */
+function ctxField(rgb) {
   const layer = (g, cls) => `
     <g class="ctx-net-layer ${cls}">
       ${g.edges.map(([a, b], i) =>
@@ -7837,7 +8242,7 @@ function ctxField(isCritical) {
                        animation-duration:${(7 + (i % 4) * 2.5).toFixed(1)}s"/>`).join('')}
     </g>`;
   return `
-    <svg class="ctx-net${isCritical ? ' hot' : ''}" viewBox="0 0 200 400"
+    <svg class="ctx-net" id="ctx-net" style="--ctx-rgb:${rgb}" viewBox="0 0 200 400"
          preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       ${layer(CTX_FIELD[0], 'a')}${layer(CTX_FIELD[1], 'b')}
     </svg>`;
@@ -8089,7 +8494,7 @@ function renderRailContext() {
   const rgb = urgency.rgb;
 
   container.innerHTML = `
-    ${ctxField(isCritical)}
+    ${ctxField(rgb)}
     <div class="ctx">
       <div class="ctx-viz${isCritical ? ' ctx-critical' : ''}">
         <div class="ctx-viz-tag">
@@ -8181,6 +8586,8 @@ function ctxTick() {
       const g1 = document.getElementById('ctx-day-grad-1');
       if (g0) g0.style.stopColor = u.dim;
       if (g1) g1.style.stopColor = u.bright;
+      const net = document.getElementById('ctx-net');
+      if (net) net.style.setProperty('--ctx-rgb', u.rgb);
     }
 
     const cornerElapsed = document.getElementById('ctx-corner-elapsed');
