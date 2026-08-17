@@ -1083,12 +1083,11 @@ function renderToday() {
       <div class="command-left">
         <div id="day-card-slot">${renderDayBlocks()}</div>
 
-        <!-- ── EXECUTIVE MORNING BRIEF ── -->
+        <!-- ── EXECUTIVE BRIEF ── -->
         <div class="morning-brief">
           <div class="morning-brief-head">
             <div class="morning-brief-title-wrap">
-              <span class="morning-brief-tag">${svgIcon('zap', 12)} Daily Brief</span>
-              <h2 class="morning-brief-title">${greeting}</h2>
+              <h2 class="morning-brief-title">${svgIcon('zap', 14, 'icon-green')} ${greeting}</h2>
             </div>
             <div class="morning-brief-meta-pills">
               <span class="brief-pill ${STATE.services.msgraph==='connected'?'connected':'idle'}" onclick="navigate('settings')" title="Microsoft 365 Sync">
