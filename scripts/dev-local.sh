@@ -22,6 +22,20 @@ if [ -f "$HOME/.bashrc.d/bitwarden.sh" ]; then
   # shellcheck source=/dev/null
   source "$HOME/.bashrc.d/bitwarden.sh"
 fi
+# Fallback: persistent token file written by iSconl tooling (chmod 600).
+# This ensures vault boots with credentials even in spawned sub-shells or
+# post-restart scenarios where the shell profile has not been sourced.
+# Incident 2026-08-17: vault restarted without this → secrets count=0 →
+# PIN_HASH unresolved → /auth/methods returned pin:false → login impossible.
+if [ -z "${BWS_ACCESS_TOKEN:-}" ] && [ -f "$HOME/.isconl/bws-access-token" ]; then
+  BWS_ACCESS_TOKEN="$(cat "$HOME/.isconl/bws-access-token")"
+  export BWS_ACCESS_TOKEN
+fi
+if [ -z "${BWS_ACCESS_TOKEN:-}" ]; then
+  echo "ERROR: BWS_ACCESS_TOKEN is not set. Cannot start fleet — vault will boot without secrets, breaking PIN login." >&2
+  echo "  Fix: set BWS_ACCESS_TOKEN in the environment, ~/.bashrc.d/bitwarden.sh, or ~/.isconl/bws-access-token" >&2
+  exit 1
+fi
 export BWS_ORGANIZATION_ID="${BWS_ORGANIZATION_ID:-2d82abe1-cb42-45a0-b1cd-b438013b3f4b}"
 export BWS_API_URL="${BWS_API_URL:-https://api.bitwarden.eu}"
 export BWS_IDENTITY_URL="${BWS_IDENTITY_URL:-https://identity.bitwarden.eu}"
