@@ -157,8 +157,11 @@ async function showTokenGate(isRetry = false) {
       onmouseover="this.style.background='#2ea043'" onmouseout="this.style.background='#238636'">${label}</button>`;
 
   el.innerHTML = `
-    <div style="max-width:380px;width:100%;padding:2rem">
-      <div id="gate-wordmark" style="font-size:1.25rem;font-weight:600;margin-bottom:.35rem;cursor:default;user-select:none">iSconl</div>
+    <div style="max-width:380px;width:100%;padding:2rem;text-align:center">
+      <div id="gate-wordmark" style="display:flex;flex-direction:column;align-items:center;gap:.5rem;margin-bottom:.9rem;cursor:default;user-select:none">
+        ${renderBrandmarkIcon(40)}
+        ${renderBrandmarkHorizontal('1.35rem')}
+      </div>
       <div id="gate-msg" style="opacity:.6;font-size:.875rem;line-height:1.6;margin-bottom:1.25rem">
         ${isRetry ? 'That did not work. Try again.' : 'This console is private.'}
       </div>
@@ -3443,8 +3446,28 @@ const BRANDING_KEY = 'isconl.branding';
 function getBrandingConfig() {
   try {
     const raw = JSON.parse(localStorage.getItem(BRANDING_KEY) || '{}');
-    return { name: raw.name || 'iSconl', color: raw.color || '#7c5cff' };
-  } catch { return { name: 'iSconl', color: '#7c5cff' }; }
+    return { name: raw.name || 'iSconlHub', color: raw.color || '#7c5cff' };
+  } catch { return { name: 'iSconlHub', color: '#7c5cff' }; }
+}
+
+/**
+ * The one horizontal brandmark component - bold "i" + light "Architect" + bold
+ * "Hub" (capital H, per Architect 17 Aug), same 3-part split and colors as the
+ * sidebar's static markup (index.html's .wordmark), but built here so it
+ * can be reused anywhere else a brandmark is needed (the auth/login gate
+ * is the first of those) without copy-pasting the split across files.
+ * Deliberately does NOT read the "Console Name" Settings field into this
+ * split - an arbitrary typed name can't be divided into this 3-part
+ * bold/light treatment automatically, so that field drives plain-text
+ * brand references elsewhere instead, not this stylized mark.
+ */
+function renderBrandmarkHorizontal(size = '1.45rem') {
+  return `<div class="wordmark" style="font-size:${size}">
+    <span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">Hub</span>
+  </div>`;
+}
+function renderBrandmarkIcon(sizePx = 40) {
+  return `<img src="/static/favicon.svg" alt="iSconlHub" style="width:${sizePx}px;height:${sizePx}px"/>`;
 }
 function saveBranding() {
   const name = (document.getElementById('s-brand-name')?.value || '').trim() || 'iSconl';
@@ -7548,9 +7571,8 @@ function workingDayLeft(now = trustedNow()) {
       : `${Math.max(0, Math.round(m * 60))}s`);
     if (d.current) {
       const b = d.current;
-      const elapsed = Math.max(0, b.minutes - b.leftMins);
       return { big: say(b.leftMins), label: b.name.toUpperCase(),
-        sub: `${b.startClock} - ${b.endClock} · ${say(elapsed)} in` };
+        sub: `${b.startClock} - ${b.endClock}` };
     }
     if (d.next) return { big: say(d.next.inMins), label: d.next.name.toUpperCase(),
       sub: `starts ${d.next.startClock}` };
@@ -7590,6 +7612,19 @@ const BLOCK_TONE = {
   rest:       'var(--wx-rest, #43458f)',
 };
 const toneOf = (b) => BLOCK_TONE[b?.axis] || 'var(--text-3)';
+
+/** Color a countdown by how much time is actually left, not by an unrelated
+ *  signal (this used to just be "is there a critical task", which had
+ *  nothing to do with the block on screen - fixed per Architect 17 Aug: "the
+ *  color of it as an indicator of how much time is left, even the color of
+ *  the progress bar"). `frac` is remaining/total for the current block,
+ *  1 = just started, 0 = ending now. Same three-tier language as the rest
+ *  of the UI (green/amber/red), not a bespoke palette. */
+function timeLeftColor(frac) {
+  if (frac > 0.5) return { bright: 'var(--green-bright)', dim: 'var(--green-dim)', rgb: '63,185,80' };
+  if (frac > 0.2) return { bright: 'var(--amber)', dim: 'var(--amber-dim)', rgb: '210,153,34' };
+  return { bright: 'var(--red)', dim: '#8b1e17', rgb: '248,81,73' };
+}
 
 /** The three blocks the Hub shows: previous, current, next - wraps at both ends of the day. */
 function dayWindow(bs, currentId, live) {
@@ -8026,10 +8061,6 @@ function renderRailContext() {
   const activity = Math.min(1, (unseen * 0.12) + (tasks.length * 0.04));
   const spin = (base) => (isCritical ? base * 0.3 : base * (1 - activity * 0.55)).toFixed(1);
 
-  const accentBright = isCritical ? '#ff7b72' : 'var(--green-bright)';
-  const rgb = isCritical ? '248,81,73' : '63,185,80';
-
-  const dayFrac = workingDayFraction();
   const day = workingDayLeft();
   const REST = -36.869898;   // the brand mark's own rest angle - a still frame of this ring IS the logo
 
@@ -8043,23 +8074,34 @@ function renderRailContext() {
   const cornerLength = curBlock ? `${Math.round(curBlock.minutes / 60 * 10) / 10}h · ${curBlock.third || ''}` : '';
   const cornerLoad = curBlock ? (curBlock.placeable ? `${curBlock.tasks?.length ?? 0}/${curBlock.slots} slots` : 'personal') : '';
 
+  // The ring is an accurate countdown of the CURRENT BLOCK (17 Aug, was the
+  // whole working-day span instead, which didn't match the center number
+  // that already read the block's own time left) - elapsed fraction of
+  // curBlock.minutes when a block is active, falling back to the day-wide
+  // fraction only when there's no current block to show (before/after the
+  // working day, or nothing scheduled). Color follows the same source:
+  // how much of the CURRENT BLOCK is left, not an unrelated critical-task
+  // flag.
+  const blockLeftFrac = curBlock ? Math.max(0, Math.min(1, curBlock.leftMins / curBlock.minutes)) : null;
+  const ringFrac = curBlock ? (1 - blockLeftFrac) : workingDayFraction();
+  const urgency = curBlock ? timeLeftColor(blockLeftFrac) : (isCritical ? timeLeftColor(0) : timeLeftColor(1));
+  const accentBright = urgency.bright;
+  const rgb = urgency.rgb;
+
   container.innerHTML = `
     ${ctxField(isCritical)}
     <div class="ctx">
       <div class="ctx-viz${isCritical ? ' ctx-critical' : ''}">
         <div class="ctx-viz-tag">
-          <span class="badge ${isCritical ? 'badge-high' : 'badge-low'}"
-                style="font-size:0.55rem;font-family:var(--font-mono)">
-            ${live ? 'MEETING LIVE' : isCritical ? 'CRITICAL VECTOR' : 'LIVE'}
-          </span>
+          <span class="badge badge-low" style="font-size:0.55rem;font-family:var(--font-mono)">Console</span>
         </div>
 
-        <svg class="ctx-orb" viewBox="0 0 256 256" aria-label="The working day">
+        <svg class="ctx-orb" viewBox="0 0 256 256" aria-label="Time left in the current block">
           <defs>
             <linearGradient id="ctx-day-grad" gradientUnits="userSpaceOnUse"
                             x1="43" y1="128" x2="213" y2="128">
-              <stop offset="0"  style="stop-color:${isCritical ? '#8b1e17' : 'var(--green-dim)'}"/>
-              <stop offset="1"  style="stop-color:${isCritical ? 'var(--red)' : 'var(--green)'}"/>
+              <stop offset="0" id="ctx-day-grad-0" style="stop-color:${urgency.dim}"/>
+              <stop offset="1" id="ctx-day-grad-1" style="stop-color:${urgency.bright}"/>
             </linearGradient>
           </defs>
 
@@ -8070,11 +8112,11 @@ function renderRailContext() {
           <circle cx="128" cy="128" r="85" fill="none" stroke="var(--border)" stroke-width="6"/>
           <circle cx="128" cy="128" r="85" fill="none" stroke="url(#ctx-day-grad)" stroke-width="6"
                   stroke-linecap="round" stroke-dasharray="534.0708" id="ctx-day-arc"
-                  stroke-dashoffset="${(534.0708 * (1 - dayFrac)).toFixed(2)}"
+                  stroke-dashoffset="${(534.0708 * (1 - ringFrac)).toFixed(2)}"
                   transform="rotate(${REST} 128 128)"
                   style="transition:stroke-dashoffset 900ms cubic-bezier(.65,0,.35,1)"/>
 
-          <circle cx="128" cy="128" r="56" fill="rgba(${rgb},0.08)"/>
+          <circle cx="128" cy="128" r="56" fill="rgba(${rgb},0.08)" id="ctx-core-halo"/>
           <text x="128" y="124" text-anchor="middle" class="ctx-core-num" id="ctx-core-num"
                 fill="${accentBright}">${day.big}</text>
           <text x="128" y="142" text-anchor="middle" class="ctx-core-lbl" id="ctx-core-lbl">${day.label}</text>
@@ -8121,7 +8163,25 @@ function ctxTick() {
         ? `Synced to the agent${CLOCK.driftMs != null ? `; this device was ${CLOCK.driftMs > 0 ? 'behind' : 'ahead'} by ${Math.abs(CLOCK.driftMs)} ms` : ''}${CLOCK.rttMs != null ? `, round trip ${CLOCK.rttMs} ms` : ''}`
         : 'The agent has not answered, so this is the device clock and may be wrong.');
     }
-    if (arc) arc.setAttribute('stroke-dashoffset', (534.0708 * (1 - workingDayFraction())).toFixed(2));
+    // Ring + color track the CURRENT BLOCK's own remaining time each tick
+    // (see renderRailContext's matching comment) - falls back to the
+    // whole-day fraction only when nothing is currently scheduled, same
+    // condition the initial render uses.
+    const tickDay = localDayNow();
+    const tickBlock = tickDay?.current || null;
+    const tickLeftFrac = tickBlock ? Math.max(0, Math.min(1, tickBlock.leftMins / tickBlock.minutes)) : null;
+    const tickRingFrac = tickBlock ? (1 - tickLeftFrac) : workingDayFraction();
+    if (arc) arc.setAttribute('stroke-dashoffset', (534.0708 * (1 - tickRingFrac)).toFixed(2));
+    if (tickBlock) {
+      const u = timeLeftColor(tickLeftFrac);
+      if (num) num.setAttribute('fill', u.bright);
+      const halo = document.getElementById('ctx-core-halo');
+      if (halo) halo.setAttribute('fill', `rgba(${u.rgb},0.08)`);
+      const g0 = document.getElementById('ctx-day-grad-0');
+      const g1 = document.getElementById('ctx-day-grad-1');
+      if (g0) g0.style.stopColor = u.dim;
+      if (g1) g1.style.stopColor = u.bright;
+    }
 
     const cornerElapsed = document.getElementById('ctx-corner-elapsed');
     if (cornerElapsed) {

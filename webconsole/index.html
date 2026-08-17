@@ -79,13 +79,17 @@
         <div class="brand">
           <img src="/static/favicon.svg" class="brand-icon" alt="iSconl">
           <div class="brand-text">
-            <!-- Horizontal wordmark: bold "i" + light "Architect" + bold "hub",
-                 reading as one word "iSconlhub" - same bold/light wordmark-
-                 split pattern as QSpace's _BrandLogoTypographic, adapted from
-                 a 2-part split to this brand's 3-part one. Fully typographic,
-                 no extra glyph styling. -->
-            <div class="wordmark" aria-label="iSconlhub">
-              <span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">hub</span>
+            <!-- Horizontal wordmark: bold "i" + light "Architect" + bold "Hub"
+                 (capital H, per Architect 17 Aug), reading as one word
+                 "iSconlHub" - same bold/light wordmark-split pattern as
+                 QSpace's _BrandLogoTypographic, adapted from a 2-part split
+                 to this brand's 3-part one. Fully typographic, no extra
+                 glyph styling. Same markup as renderBrandmarkHorizontal()
+                 in app.js (used on the auth/login screen) - kept as static
+                 HTML here rather than JS-rendered since the sidebar exists
+                 before app.js's login-gate code path ever runs. -->
+            <div class="wordmark" aria-label="iSconlHub">
+              <span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">Hub</span>
             </div>
           </div>
         </div>
@@ -337,14 +341,14 @@
         </button>
         <button class="task-tab" id="rail-tab-reader" onclick="setRailMode('reader')" style="font-size:0.75rem;padding:4px 10px;display:inline-flex;align-items:center;gap:0.4rem">
           <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 1 4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">media</span></span>
+          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">Context</span></span>
         </button>
       </div>
 
       <div class="chat-rail-header">
         <div class="chat-rail-title">
           <div class="brand-dot"></div>
-          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">assistant</span></span>
+          <span class="wordmark-suffix">Console</span>
         </div>
         <!-- Conversation controls. The transcript is vault data now, so these
              act on something real: history reopens a stored thread, export
