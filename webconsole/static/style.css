@@ -594,6 +594,12 @@ select option { background:var(--panel); color:var(--text); }
   font-size:0.85rem; font-weight:700; color:var(--text);
   display:flex; align-items:center; gap:0.5rem;
 }
+/* Per-mode header (17 Aug) - title row reuses .chat-rail-title/.chat-tools
+   above unchanged; this is just the wrapper + the new subtext line each
+   mode gets underneath its title. */
+.chat-rail-header-dynamic { display:flex; flex-direction:column; gap:0.3rem; flex:1; min-width:0; }
+.chat-rail-header-dynamic .chat-rail-title { justify-content:space-between; }
+.chat-rail-subtext { font-size:0.72rem; color:var(--text-3); line-height:1.4; }
 .chat-chips {
   display:flex; gap:0.35rem; padding:0.5rem 0.75rem;
   border-bottom:1px solid var(--border); overflow-x:auto; flex-shrink:0;
@@ -5151,10 +5157,15 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
   border-radius: 0;
 }
 .day-card .card-header { padding-left: 0; padding-right: 0; }
+/* Same family as every other card header (.card-title: 700 weight, normal
+   tracking) -- "Today" had picked up its own one-off weight/tracking over
+   several edits; reset to match "Alerts"/"Planning" etc, just at double
+   the size (2 * .card-title's 0.8rem) for the contrast Architect wanted on
+   this one specifically, 17 Aug. */
 .day-card .day-title {
-  font-size: 2rem;
-  font-weight: 800;
-  letter-spacing: 0.07em;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: normal;
   text-transform: none;
   color: var(--text);
   line-height: 1.15;

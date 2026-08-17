@@ -2135,20 +2135,16 @@ function renderFileManager() {
         </div>
       </div>
 
-      <!-- MAIN CONTENT SPLIT -->
+      <!-- MAIN CONTENT: no inline preview drawer here anymore (17 Aug,
+           Architect: "the file preview in the file manager, remove it, all
+           previews are now handled by the context plane") -- clicking a
+           file opens it in the right rail's Context mode (#reader-dock)
+           exclusively, via fmPreviewInReader(). Was previously duplicated:
+           fmPreviewItem() populated BOTH this drawer AND the reader dock
+           on every click. -->
       <div class="fm-layout" id="fm-layout">
-        <div class="fm-body" id="fm-body">
+        <div class="fm-body fm-body-full" id="fm-body">
           <div class="empty-state">Loading files…</div>
-        </div>
-        <!-- PREVIEW DRAWER (hidden by default) -->
-        <div class="fm-preview-drawer hidden" id="fm-preview">
-          <div class="fm-preview-header">
-            <span id="fm-preview-name" class="fm-preview-title">File Preview</span>
-            <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="fmClosePreview()">✕</button>
-          </div>
-          <div id="fm-preview-body" class="fm-preview-body">
-            <div class="empty-state">Select a file to preview</div>
-          </div>
         </div>
       </div>
     </div>`;
@@ -2355,76 +2351,18 @@ function fmPreviewItemById(id) {
   if (item) fmPreviewItem(item);
 }
 
-async function fmPreviewItem(itemInput) {
+/** Opens a file exclusively in the right rail's Context mode
+ *  (#reader-dock, fmPreviewInReader()) -- 17 Aug, Architect: "all previews are
+ *  now handled by the context plane." File Manager itself no longer has
+ *  its own inline preview UI; this just selects the row and switches the
+ *  rail. */
+function fmPreviewItem(itemInput) {
   const item = typeof itemInput === 'string' ? JSON.parse(itemInput) : itemInput;
   if (!item) return;
   fmSelectedItem = item;
   renderFmItems(fileManagerItems); // re-render to show selection
-
-  // Always open in the dedicated document preview dock (rail space)
+  setRailMode('reader');
   fmPreviewInReader(item);
-
-  const drawer = document.getElementById('fm-preview');
-  const previewBody = document.getElementById('fm-preview-body');
-  const previewName = document.getElementById('fm-preview-name');
-  if (!drawer || !previewBody) return;
-
-  drawer.classList.remove('hidden');
-  if (previewName) previewName.textContent = item.name;
-  previewBody.innerHTML = '<div class="empty-state fm-loading"><span class="spinner"></span> Loading file preview…</div>';
-
-  try {
-    const r = await fetch(`/api/onedrive/preview?id=${encodeURIComponent(item.id)}`);
-    const data = await r.json();
-    if (data.error) { previewBody.innerHTML = `<div style="color:var(--red)">${escHtml(data.error)}</div>`; return; }
-
-    const ext = '.' + (item.name || '').split('.').pop()?.toLowerCase();
-    const isImage = ['.jpg','.jpeg','.png','.gif','.webp','.svg','.bmp'].includes(ext);
-    const isPdf = ext === '.pdf';
-    const isText = data.isText && data.textContent;
-    const isMd = /\.(md|markdown|mdown|mkd)$/i.test(ext);
-    const modDate = data.lastModifiedDateTime ? new Date(data.lastModifiedDateTime).toLocaleString() : '-';
-
-    previewBody.innerHTML = `
-      <div class="fm-preview-meta">
-        <div class="fm-preview-icon">${fmIcon(item, 38)}</div>
-        <div class="fm-preview-info">
-          <div class="fm-preview-fname">${escHtml(item.name)}</div>
-          <div class="fm-preview-detail">Size: <strong>${formatBytes(item.size)}</strong></div>
-          <div class="fm-preview-detail">Modified: <strong>${modDate}</strong></div>
-          ${data.webUrl ? `<a href="${data.webUrl}" target="_blank" class="btn btn-ghost" style="font-size:0.68rem;padding:2px 7px;margin-top:0.3rem;display:inline-block">↗ Open in OneDrive</a>` : ''}
-        </div>
-      </div>
-      <div class="fm-preview-actions" style="gap:0.35rem">
-        <button class="btn btn-primary" style="font-size:0.72rem;padding:3px 9px" onclick="fmDownload('${escHtml(item.id)}','${escHtml(item.name)}')">⬇ Download</button>
-        <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="fmPreviewInReader(fmSelectedItem)">↗ Full Reader</button>
-        <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="fmDeleteItem('${escHtml(item.id)}','${escHtml(item.name)}',this)">Delete</button>
-      </div>
-      ${isText ? `
-        <div class="fm-preview-content">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3rem">
-            <span class="fm-preview-content-label">${ext.toUpperCase().replace('.','')} Content Preview</span>
-          </div>
-          ${isMd && window.marked ? `
-            <div class="lesson-body" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:0.7rem;max-height:420px;overflow-y:auto;font-size:0.8rem">
-              ${marked.parse(data.textContent)}
-            </div>` : `
-            <pre class="fm-code-preview">${escHtml(data.textContent)}</pre>`}
-        </div>` : isImage ? `
-        <div class="fm-preview-content">
-          <img src="${item.downloadUrl ? escHtml(item.downloadUrl) : `/api/onedrive/download?id=${encodeURIComponent(item.id)}&name=${encodeURIComponent(item.name)}`}"
-               style="max-width:100%;max-height:380px;border-radius:var(--r-md);margin-top:0.4rem;cursor:zoom-in;object-fit:contain"
-               onclick="fmZoomImage(this.src, '${escHtml(item.name)}')" alt="${escHtml(item.name)}">
-        </div>` : isPdf && item.downloadUrl ? `
-        <div class="fm-preview-content">
-          <iframe src="${escAttr(item.downloadUrl)}" title="${escAttr(item.name)}" style="width:100%;height:380px;border:1px solid var(--border);border-radius:var(--r-md)"></iframe>
-        </div>` : `
-        <div class="fm-preview-content">
-          <div class="empty-state" style="padding:1.5rem 0;font-size:0.8rem">Binary or Office file format.<br>Click Download or Open in OneDrive above to view.</div>
-        </div>`}`;
-  } catch(e) {
-    previewBody.innerHTML = `<div style="color:var(--red)">Preview error: ${escHtml(e.message)}</div>`;
-  }
 }
 
 /**
@@ -2496,9 +2434,15 @@ function fmZoomImage(src, name) {
   document.body.appendChild(overlay);
 }
 
+/** Called after a delete/rename/move clears the selection -- also closes
+ *  the Context-mode reader dock if it's the thing showing the file that
+ *  just changed underneath it, since File Manager has no preview drawer
+ *  of its own left to hide (17 Aug: previews moved there entirely). */
 function fmClosePreview() {
   fmSelectedItem = null;
-  document.getElementById('fm-preview')?.classList.add('hidden');
+  if (currentRailMode === 'reader' && !document.getElementById('reader-dock')?.classList.contains('hidden')) {
+    readerClose();
+  }
 }
 
 async function fmRefresh() {
@@ -7657,6 +7601,12 @@ let readerBlobUrl = null;   // revoked on every close/replace so blobs never pil
 let currentRailMode = 'context';
 let prevRailMode = 'context';
 
+/** view name -> the rail mode that view's own content naturally belongs
+ *  in. Only views with a real, obvious counterpart get an entry -- every
+ *  other view leaves the rail exactly as it was (see navigate()'s own
+ *  comment for the full reasoning). */
+const RAIL_MODE_FOR_VIEW = { files: 'reader' };
+
 function setRailMode(mode) {
   prevRailMode = currentRailMode;
   currentRailMode = mode;
@@ -7692,6 +7642,63 @@ function setRailMode(mode) {
   } else { // chat
     if (readerDock) readerDock.classList.add('hidden');
     if (contextDock) contextDock.classList.add('hidden');
+  }
+
+  renderRailSubheader();
+}
+
+/**
+ * The per-mode header (title, one-line subtext, up to 5 controls) that
+ * replaced the old single static "Console" block (17 Aug). 'reader' mode
+ * (labeled Context) deliberately keeps its OWN header minimal here -- the
+ * per-file name/size/modified/actions already live inside #reader-dock's
+ * own .reader-head (populated by fmPreviewInReader()/readerShell()), which
+ * is the thing Architect pointed at as the model for this whole redesign in
+ * the first place, so duplicating that detail up here would just be two
+ * headers disagreeing when a file's actually open.
+ */
+function renderRailSubheader() {
+  const el = document.getElementById('chat-rail-header-dynamic');
+  if (!el) return;
+
+  if (currentRailMode === 'chat') {
+    el.innerHTML = `
+      <div class="chat-rail-title">
+        <span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div>Chat</span>
+        <div class="chat-tools">
+          <button class="chat-tool" onclick="chatToggleSelect()" id="chat-select-btn" title="Select messages" aria-label="Select messages">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 20 6"/><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9"/></svg>
+          </button>
+          <button class="chat-tool" onclick="chatToggleHistory()" title="History" aria-label="History">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+          </button>
+          <button class="chat-tool" onclick="chatNewThread()" title="Clear (the current thread is saved first)" aria-label="Clear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button class="chat-tool" onclick="chatExport()" title="Export" aria-label="Export">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="chat-rail-subtext">Every message is kept, per thread. Select lifts specific messages out; Clear saves this thread and starts fresh.</div>`;
+  } else if (currentRailMode === 'reader') {
+    el.innerHTML = `
+      <div class="chat-rail-title"><span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div>Context</span></div>
+      <div class="chat-rail-subtext">Files and documents, opened from anywhere in the console, read here.</div>`;
+  } else { // context (dashboard/orb) = Console
+    el.innerHTML = `
+      <div class="chat-rail-title">
+        <span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div>Console</span>
+        <div class="chat-tools">
+          <button class="chat-tool" onclick="renderRailContext()" title="Refresh" aria-label="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+          <button class="chat-tool" onclick="navigate('settings')" title="Day Schedule settings" aria-label="Day Schedule settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="chat-rail-subtext">Where the day stands right now - the current block's countdown, and the two things most worth your attention.</div>`;
   }
 }
 
@@ -10965,6 +10972,17 @@ function navigate(viewName, params = {}, opts = {}) {
   }
   currentView = viewName;
   document.body.dataset.view = viewName;
+  // The right rail's active mode follows the space you're in when that
+  // space has an obvious counterpart (17 Aug, Architect: "the active one
+  // intelligently selected depending on the space that i currently have
+  // open, the default view to still remain as the console one") -- File
+  // Manager's own preview drawer is gone (previews live in Context/reader
+  // mode now), so opening it should land you looking at that plane
+  // already. Deliberately does NOT fight an active chat: if you're mid-
+  // conversation and click around the app, clicking a mapped view still
+  // won't yank you out of Chat. Every other view keeps whatever mode was
+  // already showing, which defaults to Console at boot.
+  if (RAIL_MODE_FOR_VIEW[viewName] && currentRailMode !== 'chat') setRailMode(RAIL_MODE_FOR_VIEW[viewName]);
   markBadgeSeen(viewName);   // opening the view clears its notification badge
   setPanelFocus('main');
   clearCardFocus();      // the view is about to re-render; any card focus is stale
