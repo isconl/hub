@@ -50,8 +50,8 @@ SERVICES=(
   "pulse:8082:pulse"
   "scope:8083:scope"
   "circle:8084:circle"
-  "spark:8085:spark",
-  "hub:8888:hub",
+  "spark:8085:spark"
+  "hub:8888:hub"
   "tts:5001:vault/scripts/tts_service.py"
 )
 
