@@ -8481,14 +8481,18 @@ function renderRailContext() {
 
   // The ring is an accurate countdown of the CURRENT BLOCK (17 Aug, was the
   // whole working-day span instead, which didn't match the center number
-  // that already read the block's own time left) - elapsed fraction of
+  // that already read the block's own time left) - remaining fraction of
   // curBlock.minutes when a block is active, falling back to the day-wide
-  // fraction only when there's no current block to show (before/after the
-  // working day, or nothing scheduled). Color follows the same source:
-  // how much of the CURRENT BLOCK is left, not an unrelated critical-task
-  // flag.
+  // remaining fraction only when there's no current block to show (before/
+  // after the working day, or nothing scheduled). ringFrac is how much of
+  // the ring is drawn (see the dashoffset formula below), so it tracks
+  // TIME LEFT directly, not elapsed - a full ring at the start of a block,
+  // shrinking to nothing as it ends (Architect, 17 Aug: "I want it counting
+  // downwards instead of filling up as time goes, I want it reducing").
+  // Color follows the same source: how much of the CURRENT BLOCK is left,
+  // not an unrelated critical-task flag.
   const blockLeftFrac = curBlock ? Math.max(0, Math.min(1, curBlock.leftMins / curBlock.minutes)) : null;
-  const ringFrac = curBlock ? (1 - blockLeftFrac) : workingDayFraction();
+  const ringFrac = curBlock ? blockLeftFrac : (1 - workingDayFraction());
   const urgency = curBlock ? timeLeftColor(blockLeftFrac) : (isCritical ? timeLeftColor(0) : timeLeftColor(1));
   const accentBright = urgency.bright;
   const rgb = urgency.rgb;
@@ -8575,7 +8579,7 @@ function ctxTick() {
     const tickDay = localDayNow();
     const tickBlock = tickDay?.current || null;
     const tickLeftFrac = tickBlock ? Math.max(0, Math.min(1, tickBlock.leftMins / tickBlock.minutes)) : null;
-    const tickRingFrac = tickBlock ? (1 - tickLeftFrac) : workingDayFraction();
+    const tickRingFrac = tickBlock ? tickLeftFrac : (1 - workingDayFraction());
     if (arc) arc.setAttribute('stroke-dashoffset', (534.0708 * (1 - tickRingFrac)).toFixed(2));
     if (tickBlock) {
       const u = timeLeftColor(tickLeftFrac);
