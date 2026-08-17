@@ -47,7 +47,8 @@ const SVG_ICONS = {
   grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
   list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
   eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
-  audio: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>'
+  audio: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>',
+  pin: '<path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6z"/><circle cx="12" cy="8" r="2"/>'
 };
 
 function svgIcon(name, size=15, cls='', extra='') {
@@ -3348,6 +3349,23 @@ function renderSettings() {
         <div id="inject-result" class="settings-result hidden"></div>
       </div>
 
+      <!-- Branding. Client-side only for now (localStorage, key isconl.branding) -
+           deliberately not wired to /api/settings yet since that endpoint only
+           knows fixed service keys server-side. Good enough to unblock U1's
+           Settings-section requirement; promote to a real server-persisted
+           field (mirrored to .env or a config file) once something downstream
+           actually needs to read it. -->
+      <div class="settings-section" id="branding-section">
+        <div class="settings-section-title">Branding</div>
+        <p class="settings-hint">Personalize how this console refers to itself. Saved on this device only for now.</p>
+        <div class="settings-grid">
+          <div class="settings-field"><label>Console Name</label><input id="s-brand-name" type="text" value="${escHtml(getBrandingConfig().name)}" placeholder="iSconl"/></div>
+          <div class="settings-field"><label>Accent Color</label><input id="s-brand-color" type="color" value="${escHtml(getBrandingConfig().color)}"/></div>
+        </div>
+        <div class="settings-actions"><button class="btn btn-primary" onclick="saveBranding()">Save Branding</button></div>
+        <div id="branding-result" class="settings-result hidden"></div>
+      </div>
+
       <!-- Integrations folded in here, 29 Jul. It was its own destination in
            SYSTEM showing the same service state this page already configures -
            two places to look at one truth. Settings owns the connections now. -->
@@ -3419,6 +3437,22 @@ async function updatePin() {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Set / Reset PIN'; }
   }
+}
+
+const BRANDING_KEY = 'isconl.branding';
+function getBrandingConfig() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(BRANDING_KEY) || '{}');
+    return { name: raw.name || 'iSconl', color: raw.color || '#7c5cff' };
+  } catch { return { name: 'iSconl', color: '#7c5cff' }; }
+}
+function saveBranding() {
+  const name = (document.getElementById('s-brand-name')?.value || '').trim() || 'iSconl';
+  const color = document.getElementById('s-brand-color')?.value || '#7c5cff';
+  try { localStorage.setItem(BRANDING_KEY, JSON.stringify({ name, color })); } catch {}
+  const el = document.getElementById('branding-result');
+  if (el) { el.classList.remove('hidden'); el.className = 'settings-result success'; el.textContent = 'Branding saved on this device.'; }
+  showToast('Branding saved', 'success');
 }
 
 /* ── THE APK DOWNLOAD CARD ─────────────────────────────────────────────────
@@ -3845,12 +3879,16 @@ function getChannelBadgeClass(ch) {
  */
 let inboxChannel = null;   // click a channel chip to filter; click again to clear
 let inboxOpen = {};        // ID -> expanded
+let inboxSelected = new Set(); // ID -> selected for bulk actions
 
 function renderInbox() {
   const feed = STATE.feed || [];
   const channels = [...new Set(feed.map(i => i.CHANNEL).filter(c => c && c !== '-'))];
   const rows = inboxChannel ? feed.filter(i => i.CHANNEL === inboxChannel) : feed;
   const tags = STATE.tags || [];
+  const visibleIds = rows.map(m => m.ID);
+  const selectedVisible = visibleIds.filter(id => inboxSelected.has(id));
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
 
   return `
     <div class="view-head">
@@ -3870,16 +3908,31 @@ function renderInbox() {
             </button>`).join('')}
           ${inboxChannel ? `<button class="inbox-chan clear" onclick="inboxFilter(null)">all</button>` : ''}
         </div>` : ''}
+      ${rows.length ? `
+        <div class="inbox-bulk-bar">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.78rem;color:var(--text-2)">
+            <input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="inboxSelectAll(this.checked)"/>
+            ${selectedVisible.length ? `${selectedVisible.length} selected` : 'Select all'}
+          </label>
+          ${selectedVisible.length ? `
+            <div style="display:flex;gap:0.4rem;margin-left:auto">
+              <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 10px" onclick="inboxBulkMarkSeen()">${svgIcon('check', 12)} Mark as seen</button>
+              <button class="btn btn-ghost danger-btn" style="font-size:0.72rem;padding:3px 10px" onclick="inboxBulkDelete()">${svgIcon('trash', 12)} Delete</button>
+            </div>` : ''}
+        </div>` : ''}
       ${rows.length ? rows.map(m => {
         const open = inboxOpen[m.ID];
+        const checked = inboxSelected.has(m.ID);
         return `
         <div class="inbox-item ${m.STATUS === 'new' ? 'unread' : ''}">
-          <div class="inbox-head" onclick="inboxToggle('${escHtml(m.ID)}')">
-            <span class="inbox-chan-dot" data-ch="${escHtml(m.CHANNEL)}"></span>
-            <span class="inbox-sender">${escHtml(m.SENDER !== '-' ? m.SENDER : m.SOURCE)}</span>
-            <span class="inbox-title">${escHtml(m.TITLE)}</span>
+          <div class="inbox-head">
+            <input type="checkbox" class="inbox-select-cb" ${checked ? 'checked' : ''}
+                   onclick="event.stopPropagation();inboxToggleSelect('${escHtml(m.ID)}')"/>
+            <span class="inbox-chan-dot" data-ch="${escHtml(m.CHANNEL)}" onclick="inboxToggle('${escHtml(m.ID)}')"></span>
+            <span class="inbox-sender" onclick="inboxToggle('${escHtml(m.ID)}')">${escHtml(m.SENDER !== '-' ? m.SENDER : m.SOURCE)}</span>
+            <span class="inbox-title" onclick="inboxToggle('${escHtml(m.ID)}')">${escHtml(m.TITLE)}</span>
             ${m.TAG && m.TAG !== '-' ? `<span class="inbox-tag">${escHtml(m.TAG)}</span>` : ''}
-            <span class="inbox-date">${escHtml(m.RECEIVED_AT)}</span>
+            <span class="inbox-date" onclick="inboxToggle('${escHtml(m.ID)}')">${escHtml(m.RECEIVED_AT)}</span>
           </div>
           ${open ? `
             <div class="inbox-body">${escHtml(m.BODY)}</div>
@@ -3975,6 +4028,38 @@ async function inboxSave(btn) {
 }
 
 function inboxFilter(c) { inboxChannel = c; repaintView('inbox'); }
+function inboxToggleSelect(id) {
+  if (inboxSelected.has(id)) inboxSelected.delete(id); else inboxSelected.add(id);
+  repaintView('inbox');
+}
+function inboxSelectAll(checked) {
+  const feed = STATE.feed || [];
+  const rows = inboxChannel ? feed.filter(i => i.CHANNEL === inboxChannel) : feed;
+  if (checked) rows.forEach(m => inboxSelected.add(m.ID));
+  else rows.forEach(m => inboxSelected.delete(m.ID));
+  repaintView('inbox');
+}
+async function inboxBulkMarkSeen() {
+  const ids = [...inboxSelected];
+  if (!ids.length) return;
+  await Promise.all(ids.map(id => inboxSet(id, { status: 'seen' }, true)));
+  showToast(`Marked ${ids.length} as seen`, 'success');
+  inboxSelected.clear();
+  await fetchState(); repaintView('inbox');
+}
+async function inboxBulkDelete() {
+  const ids = [...inboxSelected];
+  if (!ids.length) return;
+  if (!await uiConfirm({ title: `Delete ${ids.length} message${ids.length > 1 ? 's' : ''} from the inbox?`,
+    body: 'The captured messages are removed. Anything already distilled from them stays.',
+    confirmLabel: 'Delete', danger: true })) return;
+  const results = await Promise.all(ids.map(id => fetch('/api/inbox/delete', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).then(r => r.json())));
+  const ok = results.filter(d => d.success).length;
+  showToast(`Deleted ${ok} of ${ids.length}`, ok === ids.length ? 'success' : 'error');
+  inboxSelected.clear();
+  await fetchState(); repaintView('inbox');
+}
 function inboxToggle(id) {
   inboxOpen[id] = !inboxOpen[id];
   const item = (STATE.feed || []).find(m => m.ID === id);
@@ -13741,7 +13826,7 @@ function openHabitDetailModal(habitId) {
   openModal(`
     <div style="padding:0.4rem">
       <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem">
-        <span style="font-size:1.8rem">${h.icon || '📌'}</span>
+        <span style="font-size:1.8rem;display:inline-flex">${h.icon ? h.icon : svgIcon('pin', 26)}</span>
         <div>
           <h2 style="margin:0;font-size:1.2rem">${escHtml(h.title)}</h2>
           <div style="font-size:0.75rem;color:var(--text-3)">${h.auto ? `Automated from ${h.auto}` : 'Manual check-in habit'}</div>
@@ -13825,7 +13910,7 @@ function renderRhythm() {
             <div class="b-card ${isDone ? 'done' : ''}" style="cursor:pointer;background:${isDone ? 'var(--green-bg)' : 'var(--panel)'}"
                  onclick="openHabitDetailModal('${escAttr(h.id)}')">
               <div class="b-head">
-                <span>${h.icon || '📌'} ${escHtml(h.title)}</span>
+                <span style="display:inline-flex;align-items:center;gap:0.35rem">${h.icon ? h.icon : svgIcon('pin', 14)} ${escHtml(h.title)}</span>
                 ${h.auto ? `<span class="badge badge-low" style="font-size:0.6rem">Auto: ${escHtml(h.auto)}</span>` : ''}
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.6rem">
