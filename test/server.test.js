@@ -400,3 +400,43 @@ test('GET /services requires auth, same as every other non-public route', async 
     assert.equal(res.status, 404);
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
+
+// api-compat.js used to mark GET /api/spaces `legacy: true` -- a confirmed
+// dead 501 (the legacy monolith it pointed at was deleted 2026-08-15) --
+// which meant webconsole/static/app.js's fetchSpaces() silently failed on
+// every load and the whole Spaces/Axial-tree view (Innovator/Visionary/
+// Creator, Decision Log, Risk Register, and now Writer) never rendered.
+// Fixed 17 Aug by building the tree natively in server.js instead.
+test('GET /api/spaces builds a nested tree from vault\'s flat space/spaces.tsv rows', async () => {
+  const rows = [
+    { ID: 'AX-VIS', PARENT_ID: '-', NAME: 'Visionary', LABEL: 'Visionary', AXIS: 'visionary' },
+    { ID: 'FC-VIS-COPILOT', PARENT_ID: 'AX-VIS', NAME: 'career-copilot', LABEL: 'Career Copilot', AXIS: 'visionary' },
+    { ID: 'DM-VIS-COP-DECISIONS', PARENT_ID: 'FC-VIS-COPILOT', NAME: 'decisions', LABEL: 'Decision Log', AXIS: 'visionary', VIEW: 'decisions' },
+  ];
+  const vault = await startFakeEngine({ name: 'vault',
+    manifestCapabilities: [{ name: 'vault.read', method: 'GET', path: '/vault/:collection' }],
+    routes: { 'GET /vault/space%2Fspaces.tsv': () => [200, { rows }] } });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/spaces`, { headers: { Authorization: 'Bearer test-static-token' } });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.spaces.length, 3);           // flat list, untouched
+    assert.equal(body.tree.length, 1);               // one root: Visionary
+    assert.equal(body.tree[0].ID, 'AX-VIS');
+    assert.equal(body.tree[0].descendantCount, 2);
+    assert.equal(body.tree[0].children[0].children[0].ID, 'DM-VIS-COP-DECISIONS');
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('GET /api/spaces degrades to empty rather than throwing when vault is unreachable', async () => {
+  const vault = await startFakeEngine({ name: 'vault',
+    manifestCapabilities: [{ name: 'vault.read', method: 'GET', path: '/vault/:collection' }] });
+  // No route registered for GET /vault/space%2Fspaces.tsv -> the fake 404s, same as a real outage.
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/spaces`, { headers: { Authorization: 'Bearer test-static-token' } });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { tree: [], spaces: [] });
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});

@@ -87,6 +87,31 @@ function shapeServices(keys) {
   };
 }
 
+/** Flat space/spaces.tsv rows (ID, PARENT_ID, ...) -> the nested tree
+ *  webconsole/static/app.js's renderSpaces() walks. A row with no PARENT_ID
+ *  or an unresolvable one becomes a root -- degrades gracefully rather than
+ *  dropping the row, since a dangling PARENT_ID (a typo, or a parent
+ *  deleted without reparenting its children) shouldn't make a whole
+ *  sub-tree vanish from the UI silently. */
+function buildSpacesTree(rows) {
+  const byId = new Map();
+  for (const r of rows) byId.set(r.ID, { ...r, children: [] });
+  const roots = [];
+  for (const node of byId.values()) {
+    const parent = node.PARENT_ID && node.PARENT_ID !== '-' ? byId.get(node.PARENT_ID) : null;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  }
+  function countDescendants(node) {
+    let count = node.children.length;
+    for (const child of node.children) count += countDescendants(child);
+    node.descendantCount = count;
+    return count;
+  }
+  for (const root of roots) countDescendants(root);
+  return roots;
+}
+
 /** Every non-public route needs EITHER the static HUB_TOKEN (service-to-service/admin) OR a real vault session (an end user, via authProxy.verify). */
 async function checkAuth(req, authProxy) {
   const token = bearerToken(req);
@@ -336,6 +361,22 @@ async function main() {
         const title = words.length > 10 ? words.slice(0, 10).join(' ') + '…' : eventFull;
         const text = words.length > 10 ? [eventFull, c.explain].filter(Boolean).join(' ') : c.explain;
         return sendJson(res, 200, { insights: { calendar: { title, category: c.category, text, tone: c.tone } } });
+      }
+
+      // Spaces (axial tree): api-compat.js used to mark this `legacy: true`,
+      // meaning it always 501'd -- the legacy monolith it pointed at was
+      // deleted 2026-08-15, so webconsole/static/app.js's fetchSpaces() has
+      // been failing silently (caught in its own try/catch) ever since,
+      // leaving renderSpaces() stuck on "Loading spaces…" forever. Found
+      // and fixed 17 Aug while wiring the Writer space in under it. Same
+      // data source /api/state already reads (vault's flat space/spaces.tsv
+      // collection, PARENT_ID-linked rows) -- this route is the missing
+      // piece that turns those flat rows into the nested tree
+      // STATE.spacesTree/renderSpaces() actually expects.
+      if (pathname === '/api/spaces' && req.method === 'GET') {
+        const r = await router.route('vault.read', { params: { collection: 'space/spaces.tsv' } });
+        const rows = r.ok ? (r.data.rows || []) : [];
+        return sendJson(res, 200, { tree: buildSpacesTree(rows), spaces: rows });
       }
 
       if (pathname === '/api/state' && req.method === 'GET') {

@@ -5681,6 +5681,283 @@ async function runAiArticleAction(action, btn) {
   }
 }
 
+// ── WRITER (document-generation studio) ─────────────────────────────────────────
+// SPACES > Visionary > Career Copilot > Writer (memory/space/spaces.tsv row
+// DM-VIS-COP-WRITER). Front end for scope's lib/generate/ engine: archetype
+// (a document shape) + content (what THIS document says) -> docx/md/pdf.
+// No AI anywhere in this path, by design (document-generation-canon.md §1) --
+// this is a form-to-document tool, not a drafting assistant.
+
+let writerTab = 'registry';           // 'registry' | 'studio'
+let writerNamespace = '_common';      // which archetype namespace is loaded
+let writerNamespaceInput = '_common'; // the (possibly unsaved) text in the namespace box
+let WRITER_ARCHETYPES = null;         // cached list for writerNamespace
+let writerActiveArchetype = null;     // the full archetype object (id, title, fields, filenameFields)
+let writerContent = {};               // fieldName -> raw form value (string)
+let writerPreviewMd = '';
+let writerLastResult = null;          // {archetype, files:{ext:{filename,base64,bytes}}} from the last generate
+let writerFormats = { docx: true, md: false, pdf: false };
+
+async function loadWriterArchetypes(force = false) {
+  if (WRITER_ARCHETYPES && !force) return;
+  try {
+    const r = await fetch(`/api/generate/archetypes?namespace=${encodeURIComponent(writerNamespace)}`);
+    const d = await r.json();
+    WRITER_ARCHETYPES = d.archetypes || [];
+  } catch (e) { WRITER_ARCHETYPES = []; }
+  if (currentView === 'writer') repaintView('writer');
+}
+
+function renderWriter() {
+  if (!WRITER_ARCHETYPES) {
+    loadWriterArchetypes();
+    return `<div class="view-head"><h1>Writer</h1><div class="view-head-meta">Visionary · Career Copilot</div></div>
+            <div class="card"><div class="reader-loading"><div class="spinner-inline"></div><div>Reading the archetype registry…</div></div></div>`;
+  }
+
+  return `
+    <div class="view-head">
+      <h1>Writer</h1>
+      <div class="view-head-meta">Visionary · Career Copilot · governed documents from reusable archetypes, no AI in the render path</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" style="flex-wrap:wrap;gap:0.6rem">
+        <div class="task-tabs">
+          <button class="task-tab${writerTab === 'registry' ? ' on' : ''}" onclick="setWriterTab('registry')">Archetypes <span>${WRITER_ARCHETYPES.length}</span></button>
+          <button class="task-tab${writerTab === 'studio' ? ' on' : ''}" onclick="setWriterTab('studio')">Studio <span>${writerActiveArchetype ? escHtml(writerActiveArchetype.title) : 'None selected'}</span></button>
+        </div>
+        <div style="display:flex;gap:0.4rem;align-items:center;margin-left:auto">
+          <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="loadWriterArchetypes(true)">Refresh</button>
+        </div>
+      </div>
+
+      ${writerTab === 'registry' ? renderWriterRegistry() : renderWriterStudio()}
+    </div>`;
+}
+
+function renderWriterRegistry() {
+  return `
+    <div style="display:flex;gap:0.6rem;align-items:center;margin-bottom:0.8rem;flex-wrap:wrap">
+      <label style="font-size:0.72rem;color:var(--text-3)">Namespace</label>
+      <input type="text" class="input" style="font-size:0.78rem;padding:4px 10px;width:220px"
+             value="${escAttr(writerNamespaceInput)}" oninput="writerNamespaceInput=this.value"
+             placeholder="_common, viva-valentia, ..."/>
+      <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="setWriterNamespace(writerNamespaceInput)">Load</button>
+      <span style="font-size:0.7rem;color:var(--text-3)">Every namespace also sees <code>_common</code> archetypes.</span>
+    </div>
+
+    ${!WRITER_ARCHETYPES.length ? `<div class="empty-state" style="text-align:left;padding:1rem 0">No archetypes in "${escHtml(writerNamespace)}" (or _common). Add one under scope/lib/generate/archetypes/.</div>` : `
+      <div class="art-list" style="display:flex;flex-direction:column;gap:0.6rem">
+        ${WRITER_ARCHETYPES.map(a => `
+          <div class="art-item" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-raised);border:1px solid var(--border);padding:0.7rem 0.9rem;border-radius:var(--r-md)">
+            <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+              <div style="display:flex;align-items:center;gap:0.5rem">
+                <span style="font-size:0.88rem;font-weight:600;color:var(--text)">${escHtml(a.title)}</span>
+                ${a.governance ? `<span class="sd-tag" style="text-transform:uppercase;font-size:0.58rem">governed</span>` : ''}
+              </div>
+              <div style="font-size:0.7rem;color:var(--text-3);font-family:var(--font-mono)">
+                ${escHtml(a.id)} · ${a.fields.length} field${a.fields.length === 1 ? '' : 's'}
+              </div>
+            </div>
+            <button class="btn btn-primary" style="font-size:0.75rem;padding:3px 10px" onclick="openWriterStudio('${escAttr(a.id)}')">Open in Studio</button>
+          </div>`).join('')}
+      </div>`}
+  `;
+}
+
+function setWriterTab(tab) { writerTab = tab; repaintView('writer'); }
+
+function setWriterNamespace(ns) {
+  writerNamespace = (ns || '_common').trim() || '_common';
+  writerNamespaceInput = writerNamespace;
+  WRITER_ARCHETYPES = null;
+  writerActiveArchetype = null;
+  repaintView('writer');
+  loadWriterArchetypes(true);
+}
+
+function openWriterStudio(archetypeId) {
+  const a = (WRITER_ARCHETYPES || []).find(x => x.id === archetypeId);
+  if (!a) return;
+  writerActiveArchetype = a;
+  writerContent = {};
+  writerPreviewMd = '';
+  writerLastResult = null;
+  writerTab = 'studio';
+  repaintView('writer');
+}
+
+/** Raw form-field text -> the value shape doc-builder.js's archetype.build() expects.
+ *  Mirrors the `type`/`keys` convention each archetype's `fields` schema declares
+ *  (scope/lib/generate/archetypes/*.js) -- kept in exactly one place so a new field
+ *  type only ever needs to be taught to this function once. */
+function parseWriterFieldValue(field, raw) {
+  const text = raw || '';
+  if (field.type === 'list') {
+    return text.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+  if (field.type === 'reasoned-list' || field.type === 'table-list') {
+    const keys = field.keys || ['a', 'b'];
+    return text.split('\n').map(s => s.trim()).filter(Boolean).map(line => {
+      const parts = line.split('|').map(s => s.trim());
+      const obj = {};
+      keys.forEach((k, i) => { obj[k] = parts[i] || ''; });
+      return obj;
+    });
+  }
+  return text; // text, textarea, select
+}
+
+function buildWriterContentPayload() {
+  const content = {};
+  for (const field of writerActiveArchetype.fields) {
+    content[field.name] = parseWriterFieldValue(field, writerContent[field.name]);
+  }
+  return content;
+}
+
+function renderWriterField(field) {
+  const val = writerContent[field.name] || '';
+  const label = `${escHtml(field.label || field.name)}${field.required ? ' <span style="color:var(--red,#e5534b)">*</span>' : ''}`;
+  const common = `oninput="writerContent['${escAttr(field.name)}']=this.value"`;
+
+  let control;
+  if (field.type === 'select') {
+    control = `<select class="input" style="font-size:0.8rem" onchange="writerContent['${escAttr(field.name)}']=this.value">
+      <option value="">Select…</option>
+      ${(field.options || []).map(o => `<option value="${escAttr(o)}" ${val === o ? 'selected' : ''}>${escHtml(o)}</option>`).join('')}
+    </select>`;
+  } else if (field.type === 'textarea' || field.type === 'list' || field.type === 'reasoned-list' || field.type === 'table-list') {
+    const rows = field.type === 'textarea' ? 3 : 4;
+    control = `<textarea class="input" style="font-size:0.8rem;font-family:var(--font-mono)" rows="${rows}" ${common}>${escHtml(val)}</textarea>`;
+  } else {
+    control = `<input type="text" class="input" style="font-size:0.8rem" value="${escAttr(val)}" ${common}/>`;
+  }
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:0.3rem">
+      <label style="font-size:0.72rem;color:var(--text-3)">${label}</label>
+      ${control}
+    </div>`;
+}
+
+function renderWriterStudio() {
+  if (!writerActiveArchetype) {
+    return `<div class="empty-state" style="text-align:left;padding:1rem 0">Pick an archetype from the Archetypes tab to start a document.</div>`;
+  }
+  const a = writerActiveArchetype;
+
+  return `
+    <div class="art-studio-shell">
+      <div class="art-studio-toolbar" style="display:flex;gap:0.6rem;align-items:center;margin-bottom:0.8rem;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:0.95rem;font-weight:600;color:var(--text)">${escHtml(a.title)}</div>
+          <div style="font-size:0.7rem;color:var(--text-3);font-family:var(--font-mono)">${escHtml(writerNamespace)} / ${escHtml(a.id)}</div>
+        </div>
+        <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="setWriterTab('registry')">← Back to Archetypes</button>
+      </div>
+
+      <div class="art-studio-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:0.85rem">
+        <!-- Content form -->
+        <div style="display:flex;flex-direction:column;gap:0.6rem;max-height:600px;overflow-y:auto;padding-right:0.4rem">
+          ${a.fields.map(renderWriterField).join('')}
+        </div>
+
+        <!-- Preview + generate -->
+        <div style="display:flex;flex-direction:column;gap:0.5rem">
+          <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="previewWriterDoc(this)">Live Preview</button>
+            <span style="font-size:0.72rem;color:var(--text-3);margin-left:0.4rem">Formats:</span>
+            ${['docx', 'md', 'pdf'].map(fmt => `
+              <label style="font-size:0.72rem;color:var(--text-2);display:flex;align-items:center;gap:0.25rem">
+                <input type="checkbox" ${writerFormats[fmt] ? 'checked' : ''} onchange="writerFormats['${fmt}']=this.checked"/>${fmt}
+              </label>`).join('')}
+            <button class="btn btn-primary" style="font-size:0.75rem;padding:4px 12px;margin-left:auto" onclick="generateWriterDoc(this)">Generate</button>
+          </div>
+
+          <div id="writer-preview" class="lesson-body" style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-md);padding:1rem;height:520px;overflow-y:auto">
+            ${writerPreviewMd
+              ? (window.marked ? marked.parse(writerPreviewMd) : escHtml(writerPreviewMd))
+              : `<span style="color:var(--text-3)">Click "Live Preview" to see the rendered document before generating files.</span>`}
+          </div>
+
+          ${writerLastResult ? `
+            <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-md);padding:0.7rem;display:flex;flex-direction:column;gap:0.4rem">
+              <div style="font-size:0.75rem;font-weight:600;color:var(--text)">Generated files</div>
+              ${Object.entries(writerLastResult.files).map(([ext, f]) => `
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
+                  <span style="font-size:0.75rem;color:var(--text-2);font-family:var(--font-mono)">${escHtml(f.filename)} · ${(f.bytes/1024).toFixed(1)} KB</span>
+                  <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="downloadWriterFile('${ext}')">Download</button>
+                </div>`).join('')}
+            </div>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+async function previewWriterDoc(btn) {
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Rendering…'; }
+  try {
+    const r = await fetch('/api/generate/preview', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ namespace: writerNamespace, archetypeId: writerActiveArchetype.id, content: buildWriterContentPayload() }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Preview failed');
+    writerPreviewMd = d.markdown || '';
+    const host = document.getElementById('writer-preview');
+    if (host) host.innerHTML = window.marked ? marked.parse(writerPreviewMd) : escHtml(writerPreviewMd);
+  } catch (e) {
+    showToast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = was; }
+  }
+}
+
+async function generateWriterDoc(btn) {
+  const formats = Object.entries(writerFormats).filter(([, on]) => on).map(([f]) => f);
+  if (!formats.length) { showToast('Pick at least one format to generate', 'error'); return; }
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  try {
+    const r = await fetch('/api/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ namespace: writerNamespace, archetypeId: writerActiveArchetype.id, content: buildWriterContentPayload(), formats }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Generate failed');
+    writerLastResult = d;
+    repaintView('writer');
+    showToast('Document generated', 'success');
+  } catch (e) {
+    showToast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = was; }
+  }
+}
+
+/** Files come back as base64 (generate-client.js never assumes a shared
+ *  filesystem with the caller, see its own header comment) -- decode client-
+ *  side into a Blob and trigger a normal browser download. No server round-
+ *  trip needed once /api/generate has already returned the bytes. */
+function downloadWriterFile(ext) {
+  const f = writerLastResult && writerLastResult.files[ext];
+  if (!f) return;
+  const bytes = atob(f.base64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  const mime = ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+             : ext === 'pdf' ? 'application/pdf' : 'text/markdown';
+  const blob = new Blob([arr], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = f.filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ── CHAT GREETING ─────────────────────────────────────────────────────────────
 /**
  * Built from live service state, never hardcoded.
@@ -8541,7 +8818,7 @@ const viewFns = {
   journal:renderJournal, learning:renderLearning, circle:renderCircle, ideas:renderIdeas,
   projects:renderProjects, corporate:renderCorporate, 'corporate-detail':renderCorporateDetail, notifications:renderNotifications, articles:renderArticles,
   rhythm:renderRhythm, personal:renderRhythm, teams:renderTeams,
-  contacts:renderContacts,
+  contacts:renderContacts, writer:renderWriter,
 };
 
 /* ── THE NOTIFICATION CENTRE ──────────────────────────────────────────────────
@@ -8875,7 +9152,7 @@ const VIEW_LABELS = {
   journal:'Journal', learning:'Learning', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
   decisions:'Decision Log', risks:'Risk Register', social:'Buffer',
   integrations:'Integrations Hub', audit:'Audit Chain', settings:'Settings',
-  task:'Task', 'whatsapp-guide':'WhatsApp',
+  task:'Task', 'whatsapp-guide':'WhatsApp', writer:'Writer',
 };
 let NAV_TRAIL = [];
 const TRAIL_MAX = 8;
