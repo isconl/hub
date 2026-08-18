@@ -3913,18 +3913,29 @@ function contribGridHtml(contrib) {
   // contributions" -- callers that only pass {days} (Rhythm, and now
   // Journal/Circle via datesToContribDays()) never set this field.
   const total = contrib.totalContributions != null ? contrib.totalContributions : days.reduce((a, d) => a + (d.count || 0), 0);
+  // AM1 (18 Aug): the "Less -> More" color-calibration legend is gone --
+  // the five shades are self-evident from the grid itself, the strip was
+  // pure chrome. In its place, the two numbers every caller already had
+  // (active/total) are baked into the shared component as real stat
+  // tiles instead of being reassembled as inline text per caller, so
+  // every Activity Map instance gets the same enhanced treatment for
+  // free rather than each caller styling its own header text differently.
+  const streak = (() => {
+    let s = 0;
+    for (let i = days.length - 1; i >= 0 && days[i].count > 0; i--) s++;
+    return s;
+  })();
   return {
     active, total,
     html: `
       <div class="ct-wrap">
+        <div class="ct-stats">
+          <div class="ct-stat"><b>${total}</b>contribution${total === 1 ? '' : 's'}</div>
+          <div class="ct-stat"><b>${active}</b>active day${active === 1 ? '' : 's'}</div>
+          <div class="ct-stat${streak ? ' warm' : ''}"><b>${streak}</b>day streak</div>
+        </div>
         <div class="ct-months" style="grid-template-columns:repeat(${weeks.length},1fr)">${monthRow}</div>
         <div class="ct-grid">${grid}</div>
-        <div class="ct-legend">
-          <span>Less</span>
-          <div class="ct-day ct-l0"></div><div class="ct-day ct-l1"></div>
-          <div class="ct-day ct-l2"></div><div class="ct-day ct-l3"></div><div class="ct-day ct-l4"></div>
-          <span>More</span>
-        </div>
       </div>`,
   };
 }
@@ -3935,9 +3946,9 @@ function contribGridHtml(contrib) {
 function renderContributionMap(contrib) {
   const g = contribGridHtml(contrib);
   const body = typeof g === 'string' ? g : g.html;
-  const meta = typeof g === 'string' ? '' :
-    `<strong>${g.total}</strong> contributions · <strong>${g.active}</strong> active days
-     <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px;margin-left:.5rem"
+  // The active/total numbers now render as stat tiles inside the grid
+  // itself (see contribGridHtml) - the header only needs the Refresh action.
+  const meta = `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px"
              onclick="refreshContributions()">Refresh</button>`;
   return `
     <div class="card">
@@ -10060,6 +10071,12 @@ function renderFinance() {
               <span class="fin-tx-amt">${t.TYPE === 'expense' ? '−' : '+'}${money(t.AMOUNT, t.CURRENCY)}</span>
             </div>`).join('')}
         </div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">Activity</span>
+        <span class="card-meta">last 26 weeks</span></div>
+      ${contribGridHtml({ days: datesToContribDays((f.recent || []).map(t => t.DATE)) }).html}
     </div>
 
     <div class="card">
@@ -16392,6 +16409,12 @@ function renderIdeas() {
         <input id="idea-tags" class="jira-input" placeholder="tags, comma separated" style="flex:1;min-width:120px"/>
         <button class="btn btn-primary" style="padding:6px 16px" onclick="ideaCapture(this)">Capture</button>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">Activity</span>
+        <span class="card-meta">last 26 weeks</span></div>
+      ${contribGridHtml({ days: datesToContribDays(all.map(i => i.CREATED_AT)) }).html}
     </div>
 
     <div class="card">

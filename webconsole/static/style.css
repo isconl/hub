@@ -3680,12 +3680,26 @@ body.focus-mode-off .view-container[data-card-focus] .card {
 .ct-l3 { background:#26a641; }
 .ct-l4 { background:#39d353; }
 .ct-day:hover { outline:1px solid var(--text-3); outline-offset:1px; }
-.ct-legend {
-  display:flex; align-items:center; gap:3px; margin-top:8px;
-  font-size:0.62rem; color:var(--text-3);
+
+/* AM1 (18 Aug): the Less->More legend strip is gone (the five shades read
+   fine on their own) - replaced with real stat tiles, same pattern as
+   Teams' .tm-stat, so "Activity" cards read with the same weight as every
+   other stat-bearing card in the app instead of a plain text line. */
+.ct-stats { display:flex; flex-wrap:wrap; gap:6px 22px; margin-bottom:0.7rem; }
+.ct-stat { font-size:0.68rem; color:var(--text-3); }
+.ct-stat b { display:block; font-size:1.1rem; color:var(--text); font-variant-numeric:tabular-nums; font-weight:600; }
+.ct-stat.warm b { color:var(--amber); }
+
+/* Responsive down to a small-laptop panel (Architect's Lenovo X260, ~1366px
+   wide, card column narrower still once the sidebar+rail are open) -
+   cells already shrink fluidly (fractional width, see header comment
+   above), this just keeps the month labels and stat tiles from crowding
+   or truncating at that width instead of just the grid. */
+@media (max-width: 900px) {
+  .ct-stats { gap: 4px 14px; }
+  .ct-stat b { font-size: 0.95rem; }
+  .ct-months { font-size: 0.56rem; }
 }
-.ct-legend span:first-child { margin-right:2px; }
-.ct-legend span:last-child { margin-left:2px; }
 
 /* ══════════════════════════════════════════════════════════════════════════
    HARMONY PASS
