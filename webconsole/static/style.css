@@ -64,10 +64,23 @@
   --mc-life:      var(--amber);
   --mc-circle:    var(--violet);
   --mc-projects:  var(--cyan);
+  /* One accent for the whole SPACES menu (18 Aug, Architect: every other group
+     is one color throughout, SPACES showing four broke that pattern) - the
+     four --mc-visionary/innovator/creator/writer vars below stay in place
+     for the space-card content grid, which still wants axis cards to read
+     apart at a glance; only the sidebar switched to this single color. */
+  --mc-spaces:    #f778ba;
   --mc-visionary: var(--violet);
   --mc-innovator: var(--cyan);
   --mc-creator:   var(--amber);
   --mc-writer:    var(--green);
+
+  /* Right-rail tab family (18 Aug) - Console/Chat/Context each get their
+     own accent, same --mc-* pattern as the sidebar groups, configurable
+     from the same Settings > Menu Colors list. */
+  --mc-console: var(--cyan);
+  --mc-chat:    var(--amber);
+  --mc-context: var(--violet);
 }
 
 /* ── SPACE-SPECIFIC PALETTES & TAILORED HOVER STATES ── */
@@ -318,6 +331,11 @@ select option { background:var(--panel); color:var(--text); }
 #nav-group-projects .nav-item.active .nav-icon { color:var(--mc-projects); }
 #nav-group-projects .nav-item:hover { background:color-mix(in srgb, var(--mc-projects) 7%, transparent); color:var(--mc-projects); }
 #nav-group-projects .nav-item:hover .nav-icon { color:var(--mc-projects); }
+
+#nav-group-spaces .nav-item.active { background:color-mix(in srgb, var(--mc-spaces) 10%, transparent); color:var(--mc-spaces); border-left-color:var(--mc-spaces); }
+#nav-group-spaces .nav-item.active .nav-icon { color:var(--mc-spaces); }
+#nav-group-spaces .nav-item:hover { background:color-mix(in srgb, var(--mc-spaces) 7%, transparent); color:var(--mc-spaces); }
+#nav-group-spaces .nav-item:hover .nav-icon { color:var(--mc-spaces); }
 
 .nav-badge {
   margin-left:auto; font-size:0.62rem; font-family:var(--font-mono);
@@ -3261,6 +3279,21 @@ body[data-callout-theme="muted"] .lesson-body {
 .task-tab.on { color:var(--text); background:var(--surface); font-weight:600; }
 .task-tab.on span { color:var(--green-bright); }
 
+/* Right-rail Console/Chat/Context tabs - each carries its own accent (18
+   Aug, Architect: "assign the right panel menus a color"). .task-tab is reused
+   by a dozen unrelated tab groups elsewhere (Tasks' Open/Deliver/Archive,
+   Calendar's Gregorian/Equicycle, Writer, Article Studio, ...) - scoped to
+   .chat-rail-mode-bar so none of that is touched, per Architect's own caution
+   the same message: "only affect the menus, not other UI elements." Icons
+   use stroke="currentColor", so tinting the button's own color tints text
+   and icon together - no hover-one-color/text-another mismatch. */
+.chat-rail-mode-bar #rail-tab-context { --tab-accent: var(--mc-console); }
+.chat-rail-mode-bar #rail-tab-chat    { --tab-accent: var(--mc-chat); }
+.chat-rail-mode-bar #rail-tab-reader  { --tab-accent: var(--mc-context); }
+.chat-rail-mode-bar .task-tab:hover { color:var(--tab-accent); background:color-mix(in srgb, var(--tab-accent) 10%, transparent); }
+.chat-rail-mode-bar .task-tab.on { color:var(--tab-accent); background:color-mix(in srgb, var(--tab-accent) 16%, var(--surface)); }
+.chat-rail-mode-bar .task-tab.on span { color:var(--tab-accent); }
+
 /* The chase overlay - the pre-written follow-up, one click from the Watch line. */
 .chase-overlay {
   position:fixed; inset:0; z-index:9990; background:rgba(0,0,0,0.55);
@@ -3444,32 +3477,14 @@ body[data-callout-theme="muted"] .lesson-body {
 .space-card.leaf    { border-style:dashed; }
 .space-card.is-view { border-color:var(--border-mid); }
 
-/* Axis buttons in the sidebar take their own colour on hover AND active, so
-   the rail tells you which axis you are standing in (or about to enter) at
-   a glance -- hover used to fall through to a flat neutral no matter which
-   axis, the mismatch Architect flagged 17 Aug ("if the color for a space is
-   blue, I don't want the hover to be green"). Colors come from the --mc-*
-   custom properties (Settings > Menu Colors), same as the nav-group rules
-   above, not a literal hex/var per axis. */
-.nav-item.nav-axis[data-axis="AX-VIS"].active { background:color-mix(in srgb, var(--mc-visionary) 10%, transparent); color:var(--mc-visionary); border-left-color:var(--mc-visionary); }
-.nav-item.nav-axis[data-axis="AX-VIS"].active .nav-icon { color:var(--mc-visionary); opacity:1; }
-.nav-item.nav-axis[data-axis="AX-VIS"]:hover { background:color-mix(in srgb, var(--mc-visionary) 7%, transparent); color:var(--mc-visionary); }
-.nav-item.nav-axis[data-axis="AX-VIS"]:hover .nav-icon { color:var(--mc-visionary); }
-
-.nav-item.nav-axis[data-axis="AX-INN"].active { background:color-mix(in srgb, var(--mc-innovator) 10%, transparent); color:var(--mc-innovator); border-left-color:var(--mc-innovator); }
-.nav-item.nav-axis[data-axis="AX-INN"].active .nav-icon { color:var(--mc-innovator); opacity:1; }
-.nav-item.nav-axis[data-axis="AX-INN"]:hover { background:color-mix(in srgb, var(--mc-innovator) 7%, transparent); color:var(--mc-innovator); }
-.nav-item.nav-axis[data-axis="AX-INN"]:hover .nav-icon { color:var(--mc-innovator); }
-
-.nav-item.nav-axis[data-axis="AX-CRE"].active { background:color-mix(in srgb, var(--mc-creator) 10%, transparent); color:var(--mc-creator); border-left-color:var(--mc-creator); }
-.nav-item.nav-axis[data-axis="AX-CRE"].active .nav-icon { color:var(--mc-creator); opacity:1; }
-.nav-item.nav-axis[data-axis="AX-CRE"]:hover { background:color-mix(in srgb, var(--mc-creator) 7%, transparent); color:var(--mc-creator); }
-.nav-item.nav-axis[data-axis="AX-CRE"]:hover .nav-icon { color:var(--mc-creator); }
-
-.nav-item.nav-axis[data-axis="AX-WRI"].active { background:color-mix(in srgb, var(--mc-writer) 10%, transparent); color:var(--mc-writer); border-left-color:var(--mc-writer); }
-.nav-item.nav-axis[data-axis="AX-WRI"].active .nav-icon { color:var(--mc-writer); opacity:1; }
-.nav-item.nav-axis[data-axis="AX-WRI"]:hover { background:color-mix(in srgb, var(--mc-writer) 7%, transparent); color:var(--mc-writer); }
-.nav-item.nav-axis[data-axis="AX-WRI"]:hover .nav-icon { color:var(--mc-writer); }
+/* Axis buttons in the sidebar used to each take their own colour (violet/
+   cyan/amber/green) on hover AND active - reverted 18 Aug per Architect: every
+   other nav group is one accent throughout, so SPACES showing four broke
+   that pattern instead of fixing it. #nav-group-spaces above now carries a
+   single --mc-spaces accent, same treatment as every other group. The
+   --mc-visionary/innovator/creator/writer variables themselves are untouched
+   and still drive the space-card content grid (.space-shell.axis-*, further
+   down), which still wants axis cards to read apart at a glance. */
 
 .space-card-top { display:flex; align-items:baseline; justify-content:space-between; gap:0.4rem; }
 .space-card-label { font-size:0.86rem; font-weight:700; color:var(--text); }
@@ -5018,27 +5033,29 @@ textarea.draft-message:focus, textarea.ro-body:focus {
 }
 
 .chat-rail { position:relative; }
+/* A normal flex sibling of #chat-rail-messages/#chat-rail-context now (18
+   Aug) - was position:absolute;inset:0;z-index:30, an overlay that covered
+   the tab strip and shared header too, so switching to Context felt like
+   popping a dialog rather than switching tabs. flex:1;min-height:0 is the
+   same sizing rule the other two content panes use. */
 .reader-dock {
-  position:absolute; inset:0; z-index:30;
+  flex:1; min-height:0;
   background:var(--panel);
   display:flex; flex-direction:column;
 }
 .reader-dock.hidden { display:none; }
-.reader-head {
-  padding:0.7rem 0.9rem;
-  border-bottom:1px solid var(--border);
-  background:var(--bg-raised);
-  display:flex; align-items:flex-start; justify-content:space-between; gap:0.6rem;
-  flex-shrink:0;
-}
-.reader-title { min-width:0; }
+/* Layout/spacing/typography now come from .chat-rail-header/.chat-rail-title/
+   .chat-rail-subtext (shared with the Console and Chat tab headers, 18 Aug -
+   see index.html's own comment on #reader-dock). Only what's genuinely
+   reader-specific is left here: the filename gets a mono face and truncates
+   instead of wrapping, same as it always did. */
+.reader-head .chat-rail-title > span:first-child { min-width:0; overflow:hidden; }
 .reader-name {
   font-family:'JetBrains Mono', ui-monospace, monospace;
-  font-size:0.74rem; color:var(--text-1);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;
+  display:inline-block; vertical-align:middle;
 }
-.reader-meta { font-size:0.66rem; color:var(--text-3); margin-top:0.2rem; }
-.reader-tools { display:flex; gap:0.3rem; flex-shrink:0; }
+.reader-tools { flex-shrink:0; }
 
 .reader-body { flex:1; overflow-y:auto; overflow-x:hidden; padding:1rem 1.1rem 2rem; }
 .reader-body .lesson-body { font-size:0.84rem; }           /* the lesson look, slightly compacted for the rail */
@@ -5047,7 +5064,7 @@ textarea.draft-message:focus, textarea.ro-body:focus {
 .reader-pre {
   white-space:pre-wrap; word-break:break-word;
   font-family:'JetBrains Mono', ui-monospace, monospace;
-  font-size:0.74rem; line-height:1.65; color:var(--text-1); margin:0;
+  font-size:0.74rem; line-height:1.65; color:var(--text); margin:0;
 }
 .reader-tablewrap { overflow-x:auto; }
 .reader-table { border-collapse:collapse; font-size:0.72rem; }
@@ -5074,7 +5091,7 @@ textarea.draft-message:focus, textarea.ro-body:focus {
 .reader-edit-area {
   width:100%; min-height:26rem; resize:vertical;
   border:1px solid var(--green-dim); border-radius:var(--r-md);
-  background:var(--bg-raised); color:var(--text-1);
+  background:var(--bg-raised); color:var(--text);
   font-family:'JetBrains Mono', ui-monospace, monospace;
   font-size:0.74rem; line-height:1.7; padding:0.65rem 0.7rem;
 }

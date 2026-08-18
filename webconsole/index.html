@@ -342,25 +342,23 @@
     <!-- ═══ RIGHT PANEL - PERMANENT DEDICATED ASSISTANT CHAT ═══ -->
     <aside class="chat-rail">
       <div class="chat-rail-mode-bar" style="display:flex;gap:4px;padding:6px 12px;background:var(--bg-raised);border-bottom:1px solid var(--border);align-items:center">
-        <!-- Order + labels per Architect, 17 Aug: "the right plane menus, i
-             want them as just context, chat and console" -- Context
-             (id=rail-tab-reader, the file/document preview surface) first,
-             Chat second, Console (id=rail-tab-context, the orbital day
-             dashboard) third. Internal mode ids are unchanged (context=
-             dashboard, reader=document preview) to avoid touching every
-             setRailMode()/currentRailMode call site -- only the DOM order
-             and labels moved. -->
-        <button class="task-tab" id="rail-tab-reader" onclick="setRailMode('reader')" style="font-size:0.75rem;padding:4px 10px;display:inline-flex;align-items:center;gap:0.4rem">
-          <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 1 4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">Context</span></span>
+        <!-- Order + labels per Architect, 18 Aug: Console first, Chat second,
+             Context last -- and drop the "iSconl" wordmark prefix from each
+             tab label, just the plain name. Internal mode ids are unchanged
+             (context=dashboard, reader=document preview) to avoid touching
+             every setRailMode()/currentRailMode call site -- only the DOM
+             order and labels moved. -->
+        <button class="task-tab on" id="rail-tab-context" onclick="setRailMode('context')" style="font-size:0.75rem;padding:4px 10px;display:inline-flex;align-items:center;gap:0.4rem">
+          <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <span class="wordmark-inline"><span class="wordmark-suffix">Console</span></span>
         </button>
         <button class="task-tab" id="rail-tab-chat" onclick="setRailMode('chat')" style="font-size:0.75rem;padding:4px 10px;display:inline-flex;align-items:center;gap:0.4rem">
           <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">chat</span></span>
+          <span class="wordmark-inline"><span class="wordmark-suffix">Chat</span></span>
         </button>
-        <button class="task-tab on" id="rail-tab-context" onclick="setRailMode('context')" style="font-size:0.75rem;padding:4px 10px;display:inline-flex;align-items:center;gap:0.4rem">
-          <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          <span class="wordmark-inline"><span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">Console</span></span>
+        <button class="task-tab" id="rail-tab-reader" onclick="setRailMode('reader')" style="font-size:0.75rem;padding:4px 10px;display:inline-flex;align-items:center;gap:0.4rem">
+          <svg style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 1 4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span class="wordmark-inline"><span class="wordmark-suffix">Context</span></span>
         </button>
       </div>
 
@@ -368,7 +366,14 @@
            controls), rendered by renderRailSubheader() in app.js instead
            of a single static block that always said "Console" regardless
            of which mode was actually showing (17 Aug). -->
-      <div class="chat-rail-header">
+      <!-- Shared by Console and Chat; hidden (not removed) in Context/reader
+           mode, which carries its own copy of this exact header inside
+           #reader-dock below (18 Aug: Context used to overlay the WHOLE
+           rail including this bar and the tab strip above it, which is why
+           it felt like a bolted-on dialog instead of the third sibling of
+           one tab family - see #reader-dock's own comment for the other
+           half of that fix). setRailMode() toggles the hidden class. -->
+      <div class="chat-rail-header" id="chat-rail-header-shared">
         <div class="chat-rail-header-dynamic" id="chat-rail-header-dynamic"></div>
         <!-- Only exists on a phone, where the assistant is a sheet, not a rail. -->
         <button class="chat-rail-close" onclick="mChatClose()" aria-label="Close assistant">✕</button>
@@ -408,24 +413,38 @@
         <button class="chat-rail-send" id="chat-rail-send-btn" onclick="sendRailChat()">Send</button>
       </div>
 
-      <!-- ═══ THE READER - the rail doubles as a document preview space ═══
+      <!-- ═══ THE READER - the Context tab's own content pane ═══
            Opened by any document reference (a deliverable row, a filename
-           mentioned in a lesson or a brief). It sits OVER the chat, never
-           inside it: the conversation underneath is untouched, and Close (or
-           Esc) returns to it exactly as it was. The rail widens slightly
-           while reading. Read-only by design - name, meta, Download, Close,
-           and the document itself. Nothing else. -->
-      <div class="reader-dock hidden" id="reader-dock" role="dialog" aria-label="Document preview">
-        <div class="reader-head">
-          <div class="reader-title">
-            <div class="reader-name" id="reader-name">document</div>
-            <div class="reader-meta" id="reader-meta"></div>
-          </div>
-          <div class="reader-tools">
-            <button class="chat-tool" id="reader-download" title="Download a copy" aria-label="Download">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            </button>
-            <button class="chat-tool" onclick="readerClose()" title="Close (Esc)" aria-label="Close preview">✕</button>
+           mentioned in a lesson or a brief) via setRailMode('reader'), or by
+           clicking the Context tab itself. Used to be an absolute-position
+           overlay covering the ENTIRE rail - tab strip and shared header
+           included - so switching to it felt like popping a modal dialog
+           over the app instead of switching tabs (18 Aug, Architect: "the
+           context tab feels out of place... have it behave the same" as
+           Console/Chat). It's a normal flex sibling of #chat-rail-messages/
+           #chat-rail-context now, sized by the same rules, sitting below
+           the tab strip and #chat-rail-header-shared (hidden while this tab
+           is open, since this block carries its own copy of that same
+           header - see that div's own comment). Read-only by design - name,
+           meta, Download, Close, and the document itself. Nothing else.
+           Header reuses .chat-rail-header/.chat-rail-title/.chat-rail-subtext
+           verbatim so it's pixel-identical to the other two tabs' headers
+           rather than a hand-tuned lookalike - only the content (name/meta/
+           tools) is reader-specific, via the same #reader-name/#reader-meta/
+           .reader-tools ids/classes the rest of app.js already targets. -->
+      <div class="reader-dock hidden" id="reader-dock" role="region" aria-label="Document preview">
+        <div class="reader-head chat-rail-header">
+          <div class="chat-rail-header-dynamic">
+            <div class="chat-rail-title">
+              <span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div><span id="reader-name">document</span></span>
+              <div class="chat-tools reader-tools">
+                <button class="chat-tool" id="reader-download" title="Download a copy" aria-label="Download">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </button>
+                <button class="chat-tool" onclick="readerClose()" title="Close (Esc)" aria-label="Close preview">✕</button>
+              </div>
+            </div>
+            <div class="chat-rail-subtext" id="reader-meta"></div>
           </div>
         </div>
         <div class="reader-body" id="reader-body"></div>

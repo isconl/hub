@@ -758,7 +758,7 @@ function renderEqHeader() {
 let STATE = {
   time: null, tasks: [], inbox_count: 0, ideas_count: 0, spaces: [],
   services: {
-    anthropic:'connected', elevenlabs:'connected', groq:'disconnected',
+    anthropic:'connected', groq:'disconnected',
     github:'connected', jira:'disconnected', whatsapp:'disconnected',
     msgraph:'disconnected', buffer:'disconnected',
     jiraConfig: { host:'', email:'', projectKey:'', hasToken:false },
@@ -2685,7 +2685,7 @@ function renderIntegrationsBody() {
         <div style="font-size:0.82rem;color:var(--text-2);margin-bottom:0.75rem">
           <div><strong>Primary:</strong> Anthropic Claude 3.5 Sonnet</div>
           <div><strong>Fallback:</strong> Groq Llama 3.1 70B (${gc.hasKey?'Armed':'<a href=\"https://console.groq.com\" target=\"_blank\" style=\"color:var(--green)\">Get free key</a>'})</div>
-          <div><strong>Voice:</strong> ElevenLabs (Connected)</div>
+          <div><strong>Voice:</strong> Chatterbox (local)</div>
         </div>
         <div style="display:flex;gap:0.4rem"><button class="btn btn-ghost" onclick="navigate('settings')">Configure AI</button></div>
       </div>
@@ -3093,7 +3093,7 @@ function renderSettings() {
   const bf = svc.bufferConfig || {};
   const statusRows = [
     {name:'Anthropic Claude 3.5',key:'anthropic'},{name:'Groq AI Engine',key:'groq'},
-    {name:'ElevenLabs Voice',key:'elevenlabs'},{name:'GitHub CLI',key:'github'},
+    {name:'GitHub CLI',key:'github'},
     {name:'Jira Cloud',key:'jira'},{name:'WhatsApp',key:'whatsapp'},
     {name:'Microsoft 365 / OneDrive',key:'msgraph'},{name:'Buffer Social',key:'buffer'},
   ];
@@ -3502,10 +3502,14 @@ const MENU_COLOR_GROUPS = [
   { key: 'life',      label: 'Personal',   hint: 'Rhythm, Learning, Ideas' },
   { key: 'circle',    label: 'Circle',     hint: 'People, Contacts' },
   { key: 'projects',  label: 'Projects',   hint: 'Ventures, deployments' },
-  { key: 'writer',    label: 'Writer',     hint: 'Spaces axis' },
-  { key: 'visionary', label: 'Visionary',  hint: 'Spaces axis' },
-  { key: 'innovator', label: 'Innovator',  hint: 'Spaces axis' },
-  { key: 'creator',   label: 'Creator',    hint: 'Spaces axis' },
+  { key: 'spaces',    label: 'Spaces',     hint: 'Sidebar menu' },
+  { key: 'writer',    label: 'Writer',     hint: 'Space cards' },
+  { key: 'visionary', label: 'Visionary',  hint: 'Space cards' },
+  { key: 'innovator', label: 'Innovator',  hint: 'Space cards' },
+  { key: 'creator',   label: 'Creator',    hint: 'Space cards' },
+  { key: 'console',   label: 'Console',    hint: 'Right-panel tab' },
+  { key: 'chat',      label: 'Chat',       hint: 'Right-panel tab' },
+  { key: 'context',   label: 'Context',    hint: 'Right-panel tab' },
 ];
 const MENU_COLORS_KEY = 'isconl.menuColors';
 
@@ -7624,11 +7628,16 @@ function setRailMode(mode) {
   const inputWrap = document.querySelector('.chat-rail-input-wrap');
   const chipsWrap = document.querySelector('.chat-chips');
   const msgsWrap = document.getElementById('chat-rail-messages');
+  const sharedHeader = document.getElementById('chat-rail-header-shared');
 
   // Input wrap, action chips, and chat messages are ONLY visible in chat mode!
   if (inputWrap) inputWrap.style.display = (mode === 'chat' ? 'flex' : 'none');
   if (chipsWrap) chipsWrap.style.display = (mode === 'chat' ? 'flex' : 'none');
   if (msgsWrap) msgsWrap.style.display = (mode === 'chat' ? 'block' : 'none');
+  // Context/reader carries its own copy of this exact header inside
+  // #reader-dock (same classes, so it looks identical) - showing both at
+  // once would stack two headers, so the shared one hides for that tab only.
+  if (sharedHeader) sharedHeader.classList.toggle('hidden', mode === 'reader');
 
   if (mode === 'reader') {
     if (readerDock) readerDock.classList.remove('hidden');
@@ -15891,7 +15900,7 @@ function learnResetListenBtn() {
   if (btn) btn.innerHTML = `${LESSON_ICONS.listen}<span>Listen</span>`;
 }
 
-/** Real narration (ElevenLabs, generated per module - see vault's
+/** Real narration (Chatterbox, generated per module - see vault's
  *  /learning/audio route) plays through an <audio> element when a version
  *  exists; otherwise falls back to the browser's own speech engine, exactly
  *  as before. Checked fresh every open rather than cached - a module can
