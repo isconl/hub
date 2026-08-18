@@ -12651,6 +12651,9 @@ async function fetchCircle() {
   }
 }
 
+let circleRing = 'all';   // the sidebar menu selection: all / family / professional / social
+let circleOpenPerson = null;
+
 function renderCircle() {
   if (!CIRCLE) { fetchCircle(); return `<div class="card"><div class="empty-state">Gathering the circle…</div></div>`; }
   const people = CIRCLE.people || [];
