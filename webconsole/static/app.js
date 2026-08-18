@@ -6364,6 +6364,7 @@ function renderChatGreeting() {
   if (engine) bits.push(`answered by ${engine}`);
 
   host.innerHTML = `
+    ${ctxField(ctxFieldRgb())}
     <div class="chat-msg agent">
       <div class="msg-role">iSconl</div>
       <div class="greet-line">${part}, Architect. ${escHtml(headline)}</div>
@@ -8386,10 +8387,31 @@ function ctxField(rgb) {
                        animation-duration:${(7 + (i % 4) * 2.5).toFixed(1)}s"/>`).join('')}
     </g>`;
   return `
-    <svg class="ctx-net" id="ctx-net" style="--ctx-rgb:${rgb}" viewBox="0 0 200 400"
+    <svg class="ctx-net" style="--ctx-rgb:${rgb}" viewBox="0 0 200 400"
          preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       ${layer(CTX_FIELD[0], 'a')}${layer(CTX_FIELD[1], 'b')}
     </svg>`;
+}
+/* id="ctx-net" used to be hardcoded above and unique because only Console
+ * ever mounted this SVG. BR26081802 (18 Aug) mounts the same background in
+ * Chat and Context/reader too, so three copies now coexist in the DOM at
+ * once (hidden tabs stay mounted, not removed) - a shared id would be
+ * invalid HTML and getElementById would only ever find the first. Dropped
+ * the id; ctxTick() below now recolors every `.ctx-net` it finds instead.
+ */
+
+/** The same "time left in the current block" signal Console's own ring
+ *  uses (timeLeftColor(), see renderRailContext below) - factored out so
+ *  Chat's and Context/reader's copies of the network (BR26081802) start on
+ *  the exact same color instead of a second computation that could drift
+ *  from it. Ticked in sync afterwards by ctxTick(), same as Console's. */
+function ctxFieldRgb() {
+  const tasks = (STATE.tasks || []).filter(t => t.STATUS !== 'done');
+  const isCritical = tasks.some(t => t.PRIORITY === 'critical');
+  const curBlock = localDayNow()?.current || null;
+  const blockLeftFrac = curBlock ? Math.max(0, Math.min(1, curBlock.leftMins / curBlock.minutes)) : null;
+  const urgency = curBlock ? timeLeftColor(blockLeftFrac) : (isCritical ? timeLeftColor(0) : timeLeftColor(1));
+  return urgency.rgb;
 }
 
 /**
@@ -8734,8 +8756,10 @@ function ctxTick() {
       const g1 = document.getElementById('ctx-day-grad-1');
       if (g0) g0.style.stopColor = u.dim;
       if (g1) g1.style.stopColor = u.bright;
-      const net = document.getElementById('ctx-net');
-      if (net) net.style.setProperty('--ctx-rgb', u.rgb);
+      // BR26081802 (18 Aug): up to three copies of the field can be mounted
+      // at once (Console/Chat/Context-reader) - was getElementById('ctx-net')
+      // when only Console had one; all three now recolor together each tick.
+      document.querySelectorAll('.ctx-net').forEach(net => net.style.setProperty('--ctx-rgb', u.rgb));
     }
 
     const cornerElapsed = document.getElementById('ctx-corner-elapsed');
@@ -11136,8 +11160,15 @@ function navigate(viewName, params = {}, opts = {}) {
   // the axis actually being viewed rather than lighting up all three.
   if (viewName === 'spaces') {
     const axisId = spacesPath[0] || '';
+    // Mirrored onto body the same way data-view already is, just above -
+    // lets style.css key the Visionary/Innovator/Creator content-hover
+    // accent (BR26081801) off the axis actually open, same as data-view
+    // does for every other space.
+    document.body.dataset.axis = axisId;
     document.querySelectorAll('.nav-item[data-axis]').forEach(el =>
       el.classList.toggle('active', el.dataset.axis === axisId));
+  } else {
+    delete document.body.dataset.axis;
   }
   // Same narrowing for the Circle rings and the Project categories - all
   // their items share one data-view, so only the selected one stays lit.
@@ -11667,7 +11698,11 @@ async function chatOpenThread(id) {
       headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) })).json();
     if (!d.success) throw new Error(d.error || 'could not open it');
     const box = chatBox();
-    box.innerHTML = '';
+    // BR26081802: this wipe would otherwise drop the particle-network
+    // background too (it's a real DOM child, not CSS) - put it straight
+    // back as the reset content instead of an empty string, same as
+    // renderChatGreeting()'s own reset already does.
+    box.innerHTML = ctxField(ctxFieldRgb());
     (d.messages || []).forEach(m => chatAppend(m.role === 'user' ? 'user' : 'agent', chatFormat(m.content)));
     document.getElementById('chat-history')?.classList.add('hidden');
     chatScrollToEnd();
@@ -17428,6 +17463,13 @@ async function init() {
 
   initPanelFocus();
   renderChatGreeting();
+  // BR26081802 (18 Aug): the same particle-network background Console
+  // already had, extended to Context/reader (Architect's "Context" tab,
+  // #reader-dock). Unlike #chat-rail-context/#chat-rail-messages,
+  // #reader-dock is never innerHTML-replaced wholesale (its name/meta/body
+  // are patched in place by readerShell()/readerRender()), so this mounts
+  // once here rather than inside a render function.
+  document.getElementById('reader-dock')?.insertAdjacentHTML('afterbegin', ctxField(ctxFieldRgb()));
   startPolling();
   setRailMode('context'); // Boot into Context HUD as default
 

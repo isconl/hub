@@ -153,6 +153,95 @@ body[data-view="calendar"] {
   --green-glow: rgba(63, 185, 80, 0.35);
 }
 
+/* ── SPACE-ACCENT CONTENT HOVER (BR26081801, 18 Aug) ───────────────────────
+   Content hover inside a space's own content area should read as that
+   space's accent - the same --mc-* token its sidebar nav group already
+   wears (--mc-flow etc., defined at :root above) - instead of the fixed
+   green --hover-border/--hover-bg tokens everywhere. Scoped resolution of
+   the row's open question: app.js's navigate() already sets
+   document.body.dataset.view = viewName for EVERY view (no new wrapper
+   markup needed), and #view-container (index.html) is the one element
+   every view's content renders into, as a sibling of - not an ancestor of
+   - .sidebar and .chat-rail. Keying off `body[data-view] #view-container`
+   therefore reaches exactly "this space's own content", leaves the
+   sidebar's own separate per-group coloring alone (it never reads these
+   tokens), and never touches the right rail (.chat-rail isn't a descendant
+   of #view-container at all). Redefining --hover-border/--hover-bg directly
+   (rather than rewriting every hover rule to add a --space-accent fallback)
+   means every existing and future rule built on those two tokens - .card:hover,
+   .inbox-item:hover, leaf items - picks this up automatically. */
+body[data-view="today"] #view-container,
+body[data-view="tasks"] #view-container,
+body[data-view="task"] #view-container,
+body[data-view="planning"] #view-container,
+body[data-view="calendar"] #view-container,
+body[data-view="notifications"] #view-container {
+  --space-accent: var(--mc-command);
+  --hover-border: var(--mc-command);
+  --hover-bg: color-mix(in srgb, var(--mc-command) 8%, transparent);
+}
+body[data-view="teams"] #view-container,
+body[data-view="inbox"] #view-container,
+body[data-view="social"] #view-container,
+body[data-view="jira"] #view-container,
+body[data-view="github"] #view-container {
+  --space-accent: var(--mc-flow);
+  --hover-border: var(--mc-flow);
+  --hover-bg: color-mix(in srgb, var(--mc-flow) 8%, transparent);
+}
+body[data-view="rhythm"] #view-container,
+body[data-view="finance"] #view-container,
+body[data-view="ideas"] #view-container,
+body[data-view="journal"] #view-container,
+body[data-view="learning"] #view-container {
+  --space-accent: var(--mc-life);
+  --hover-border: var(--mc-life);
+  --hover-bg: color-mix(in srgb, var(--mc-life) 8%, transparent);
+}
+body[data-view="circle"] #view-container,
+body[data-view="contacts"] #view-container {
+  --space-accent: var(--mc-circle);
+  --hover-border: var(--mc-circle);
+  --hover-bg: color-mix(in srgb, var(--mc-circle) 8%, transparent);
+}
+body[data-view="projects"] #view-container,
+body[data-view="corporate"] #view-container {
+  --space-accent: var(--mc-projects);
+  --hover-border: var(--mc-projects);
+  --hover-bg: color-mix(in srgb, var(--mc-projects) 8%, transparent);
+}
+body[data-view="writer"] #view-container {
+  --space-accent: var(--mc-writer);
+  --hover-border: var(--mc-writer);
+  --hover-bg: color-mix(in srgb, var(--mc-writer) 8%, transparent);
+}
+/* The three Spaces axis facets (Visionary/Innovator/Creator) share one view
+   (data-view="spaces") but differ by data-axis - navigate() (app.js) now
+   also mirrors that onto body, so content hover reads apart the same way
+   their own nav-items already do (--mc-visionary etc., :root above).
+   data-view="spaces" gets no rule of its own here on purpose: without a
+   selected axis, nothing but the axis rules below should ever apply, so
+   there is no risk of a stale accent showing before one is picked. */
+body[data-axis="AX-VIS"] #view-container {
+  --space-accent: var(--mc-visionary);
+  --hover-border: var(--mc-visionary);
+  --hover-bg: color-mix(in srgb, var(--mc-visionary) 8%, transparent);
+}
+body[data-axis="AX-INN"] #view-container {
+  --space-accent: var(--mc-innovator);
+  --hover-border: var(--mc-innovator);
+  --hover-bg: color-mix(in srgb, var(--mc-innovator) 8%, transparent);
+}
+body[data-axis="AX-CRE"] #view-container {
+  --space-accent: var(--mc-creator);
+  --hover-border: var(--mc-creator);
+  --hover-bg: color-mix(in srgb, var(--mc-creator) 8%, transparent);
+}
+/* System (File Manager, Audit Chain) and Settings have no --mc-* home of
+   their own (System is explicitly "exempt from the rule of three" per
+   index.html's own comment) - left off this list on purpose, so they keep
+   the fixed green default rather than inventing an accent nothing else uses. */
+
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
 html { height:100%; }
 body {
@@ -463,7 +552,15 @@ select option { background:var(--panel); color:var(--text); }
   padding:1.1rem 1.25rem; margin-bottom:0.85rem; box-shadow:var(--shadow-card);
   transition:var(--hover-transition);
 }
-.card:hover { border-color:var(--hover-border); background:var(--hover-bg); transform:translateX(var(--hover-shift)); }
+/* Border + shift only, no fill (BR26081801) - :hover cascades to every
+   ancestor of whatever element the pointer is actually over, so a generic
+   fill here used to double up with a leaf item's own hover fill (e.g.
+   .inbox-item:hover below) any time a card was really just a container for
+   child rows: the container visibly tinted too, not just the row under the
+   pointer. Leaf-item rules already supply their own background and are
+   unaffected; standalone cards with no children (Data health, Day counts)
+   still read as hovered via the border + rightward shift alone. */
+.card:hover { border-color:var(--hover-border); transform:translateX(var(--hover-shift)); }
 .card-header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.65rem; }
 .card-title { font-size:0.8rem; font-weight:600; color:var(--green-bright); text-transform:uppercase; letter-spacing:0.05em; }
 .card-meta { font-size:0.7rem; color:var(--text-3); font-family:var(--font-mono); }
@@ -481,12 +578,16 @@ select option { background:var(--panel); color:var(--text); }
    icon inside <h1> (checked), so block display costs nothing. */
 .view-head h1 {
   font-family:'Barlow', var(--font-ui);
-  font-size:1.4rem; font-weight:700; letter-spacing:-0.01em; line-height:1.3;
+  /* Doubled (BR26081803, 18 Aug, Architect: "for more contrast" against the body
+     content below) - was 1.4rem/0.76rem. letter-spacing/line-height/margin
+     left as-is per the row's own instruction unless doubling reads cramped
+     live; not adjusted here. */
+  font-size:2.8rem; font-weight:700; letter-spacing:-0.01em; line-height:1.3;
   color:var(--text); text-transform:lowercase;
   margin:0 0 0.35rem;
 }
 .view-head h1::first-letter { text-transform:uppercase; }
-.view-head-meta { font-size:0.76rem; color:var(--text-3); line-height:1.55; text-transform:lowercase; }
+.view-head-meta { font-size:1.52rem; color:var(--text-3); line-height:1.55; text-transform:lowercase; }
 .view-head-meta::first-letter { text-transform:uppercase; }
 
 .cards-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.85rem; margin-bottom:0.85rem; }
@@ -668,9 +769,21 @@ select option { background:var(--panel); color:var(--text); }
 .chat-rail-messages {
   flex:1; overflow-y:auto; padding:1rem 0.95rem 0.85rem;
   display:flex; flex-direction:column; gap:0.65rem;
+  /* position:relative so the particle network mounted inside it
+     (BR26081802, .ctx-net's position:absolute;inset:0) sizes to THIS box,
+     not whichever further-up ancestor happens to be positioned. */
+  position:relative;
 }
 .chat-rail-messages::-webkit-scrollbar { width:3px; }
 .chat-rail-messages::-webkit-scrollbar-thumb { background:var(--border-mid); }
+/* BR26081802: promotes every message bubble into the same positioned
+   stacking layer as .ctx-net (z-index:0) - without this, plain in-flow
+   boxes paint BEHIND a positioned z-index:0 sibling regardless of DOM
+   order, which would put the network on top of the chat bubbles instead
+   of behind them. Mirrors .ctx's own z-index:1 treatment above .ctx-net
+   in the Console dashboard (style.css:1446), which already relies on
+   exactly this rule. */
+.chat-rail-messages > .chat-msg { position:relative; z-index:1; }
 
 /* Bubbles, ported 1:1 from hub/app/lib/ui/views/chat.dart's _bubble(): a
    filled, bordered, rounded container per turn rather than the transcript-
@@ -5108,6 +5221,10 @@ textarea.draft-message:focus, textarea.ro-body:focus {
   flex:1; min-height:0;
   background:var(--panel);
   display:flex; flex-direction:column;
+  /* Containing block for the particle-network background mounted inside it
+     (BR26081802, .ctx-net's position:absolute;inset:0) - without this it
+     sizes against whatever further-up ancestor is positioned instead. */
+  position:relative;
 }
 .reader-dock.hidden { display:none; }
 /* Layout/spacing/typography now come from .chat-rail-header/.chat-rail-title/
@@ -5123,7 +5240,23 @@ textarea.draft-message:focus, textarea.ro-body:focus {
 }
 .reader-tools { flex-shrink:0; }
 
-.reader-body { flex:1; overflow-y:auto; overflow-x:hidden; padding:1rem 1.1rem 2rem; }
+/* BR26081802 (18 Aug): the network is mounted as #reader-dock's first
+   child now, so .reader-head and .reader-body both need (a) promoting into
+   its positioned z-index:0 stacking layer - same reasoning as
+   .chat-rail-messages > .chat-msg above, mirrors .ctx's z-index:1 over
+   .ctx-net in the Console dashboard - and (b) their own solid background,
+   since correct paint ORDER alone doesn't stop the network showing through
+   any part of the box that isn't itself opaque (the space around/between
+   lines of document text, in particular). Architect's explicit constraint here
+   ("without compromising the document preview feature") is what makes this
+   the one panel of the three where that opacity actually matters - Console
+   and Chat are fine with the network showing through their own gaps. */
+#reader-dock > .reader-head,
+#reader-dock > .reader-body { position:relative; z-index:1; }
+.reader-body {
+  flex:1; overflow-y:auto; overflow-x:hidden; padding:1rem 1.1rem 2rem;
+  background:var(--panel);
+}
 .reader-body .lesson-body { font-size:0.84rem; }           /* the lesson look, slightly compacted for the rail */
 .reader-body img { max-width:100%; border-radius:var(--r-md); display:block; margin:0 auto; }
 .reader-body iframe.reader-pdf { width:100%; height:100%; min-height:70vh; border:0; border-radius:var(--r-md); background:#fff; }
