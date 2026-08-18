@@ -75,12 +75,12 @@
   --mc-creator:   var(--amber);
   --mc-writer:    var(--green);
 
-  /* Right-rail tab family (18 Aug) - Console/Chat/Context each get their
-     own accent, same --mc-* pattern as the sidebar groups, configurable
-     from the same Settings > Menu Colors list. */
-  --mc-console: var(--cyan);
-  --mc-chat:    var(--amber);
-  --mc-context: var(--violet);
+  /* Right-rail tab family (18 Aug, corrected same day) - Console/Chat/
+     Context are three children of ONE menu, same as COMMAND's Hub/Tasks/
+     Planning/.../Alerts all share --mc-command - not three separately
+     colored menus. All three read the same --mc-rail var. Configurable
+     from Settings > Menu Colors ("Right Panel"). */
+  --mc-rail: var(--cyan);
 
   /* ── THE DEFAULT HOVER EFFECT (18 Aug) ──────────────────────────────────
      A subtle green lift: border tints, background washes to the panel-hover
@@ -453,11 +453,17 @@ select option { background:var(--panel); color:var(--text); }
 .view-container::-webkit-scrollbar { width:4px; }
 .view-container::-webkit-scrollbar-thumb { background:var(--border-mid); border-radius:2px; }
 
-/* ── CARDS ── */
+/* ── CARDS ──
+   The default hover effect (see :root's --hover-* tokens) applies here too
+   (18 Aug, broadened per Architect: "applied to all elements in the UI, not
+   just tasks and lists") - every .card in the app picks it up, since none
+   of them had ANY hover feedback before this. */
 .card {
   background:var(--panel); border:1px solid var(--border); border-radius:var(--r-lg);
   padding:1.1rem 1.25rem; margin-bottom:0.85rem; box-shadow:var(--shadow-card);
+  transition:var(--hover-transition);
 }
+.card:hover { border-color:var(--hover-border); background:var(--hover-bg); transform:translateX(var(--hover-shift)); }
 .card-header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.65rem; }
 .card-title { font-size:0.8rem; font-weight:600; color:var(--green-bright); text-transform:uppercase; letter-spacing:0.05em; }
 .card-meta { font-size:0.7rem; color:var(--text-3); font-family:var(--font-mono); }
@@ -3315,12 +3321,9 @@ body[data-callout-theme="muted"] .lesson-body {
    the same message: "only affect the menus, not other UI elements." Icons
    use stroke="currentColor", so tinting the button's own color tints text
    and icon together - no hover-one-color/text-another mismatch. */
-.chat-rail-mode-bar #rail-tab-context { --tab-accent: var(--mc-console); }
-.chat-rail-mode-bar #rail-tab-chat    { --tab-accent: var(--mc-chat); }
-.chat-rail-mode-bar #rail-tab-reader  { --tab-accent: var(--mc-context); }
-.chat-rail-mode-bar .task-tab:hover { color:var(--tab-accent); background:color-mix(in srgb, var(--tab-accent) 10%, transparent); }
-.chat-rail-mode-bar .task-tab.on { color:var(--tab-accent); background:color-mix(in srgb, var(--tab-accent) 16%, var(--surface)); }
-.chat-rail-mode-bar .task-tab.on span { color:var(--tab-accent); }
+.chat-rail-mode-bar .task-tab:hover { color:var(--mc-rail); background:color-mix(in srgb, var(--mc-rail) 10%, transparent); }
+.chat-rail-mode-bar .task-tab.on { color:var(--mc-rail); background:color-mix(in srgb, var(--mc-rail) 16%, var(--surface)); }
+.chat-rail-mode-bar .task-tab.on span { color:var(--mc-rail); }
 
 /* The chase overlay - the pre-written follow-up, one click from the Watch line. */
 .chase-overlay {
@@ -3710,13 +3713,17 @@ body.focus-mode-off .view-container[data-card-focus] .card {
 .btn:disabled { opacity:.45; cursor:not-allowed; transform:none; }
 .btn:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
 
-/* Primary earns its saturation by being the one thing to do next. */
+/* Primary earns its saturation by being the one thing to do next. The
+   default hover shift (see :root's --hover-* tokens) applies here too,
+   broadened 18 Aug to every button in the app - "applied to all elements
+   in the UI, not just tasks and lists" - color stays its own green, only
+   the motion is shared. */
 .btn-primary { background:var(--green-dim); color:#fff; border-color:var(--green-dim); }
-.btn-primary:hover:not(:disabled) { background:var(--green); border-color:var(--green); }
+.btn-primary:hover:not(:disabled) { background:var(--green); border-color:var(--green); transform:translateX(var(--hover-shift)); }
 
 /* Ghost is the default. Most buttons should be this. */
 .btn-ghost { background:transparent; color:var(--text-2); border-color:var(--border); }
-.btn-ghost:hover:not(:disabled) { background:var(--panel-hover); color:var(--text); border-color:var(--border-mid); }
+.btn-ghost:hover:not(:disabled) { background:var(--hover-bg); color:var(--text); border-color:var(--hover-border); transform:translateX(var(--hover-shift)); }
 
 /* Destructive stays quiet until hovered - it should not draw the eye at rest. */
 .btn.danger-btn, .btn-ghost.danger-btn { color:var(--text-3); border-color:var(--border); background:transparent; }
@@ -3740,9 +3747,9 @@ body.focus-mode-off .view-container[data-card-focus] .card {
   background:transparent; border:1px solid var(--border); border-radius:999px;
   color:var(--text-3); font-family:inherit; font-size:0.7rem; font-weight:600;
   padding:3px 11px; cursor:pointer; white-space:nowrap;
-  transition:background .12s ease, border-color .12s ease, color .12s ease;
+  transition:var(--hover-transition);
 }
-.chip:hover { background:var(--panel-hover); color:var(--text); border-color:var(--border-mid); }
+.chip:hover { background:var(--hover-bg); color:var(--text); border-color:var(--hover-border); transform:translateX(var(--hover-shift)); }
 /* The distiller is the one chip that does something irreversible-ish, so it is
    the only one allowed an accent - and only a faint one. */
 .chip-highlight {
@@ -4665,6 +4672,23 @@ input[type="checkbox"]:disabled { opacity:0.45; cursor:not-allowed; }
 .chat-tool:hover { color:var(--green); border-color:var(--border); background:var(--panel-hover); }
 .chat-tool.on { color:var(--green); border-color:var(--green-dim); background:var(--green-bg); }
 .chat-tool:focus-visible { outline:2px solid var(--green); outline-offset:1px; }
+
+/* Labeled control buttons below a rail tab's subtext (18 Aug) - replaced
+   the icon-only .chat-tool row that used to sit inline with the title (no
+   visible label, just a tooltip). Console/Chat/Context all render their
+   per-mode actions through this same row now, so the three tabs read as
+   one coherent family down to the control level, not just the tab strip. */
+.chat-rail-controls { display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.55rem; }
+.chat-rail-control-btn {
+  display:inline-flex; align-items:center; gap:0.4rem;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md);
+  color:var(--text-2); font-size:0.72rem; font-weight:500; font-family:inherit;
+  padding:0.32rem 0.65rem; cursor:pointer; transition:var(--hover-transition);
+}
+.chat-rail-control-btn svg { width:13px; height:13px; flex-shrink:0; }
+.chat-rail-control-btn:hover { color:var(--text); border-color:var(--hover-border); background:var(--hover-bg); transform:translateX(var(--hover-shift)); }
+.chat-rail-control-btn.on { color:var(--green); border-color:var(--green-dim); background:var(--green-bg); }
+.chat-rail-control-btn:focus-visible { outline:2px solid var(--green); outline-offset:1px; }
 
 /* Recent conversations drop in under the header. */
 .chat-history { max-height:min(46vh,340px); overflow-y:auto; border-bottom:1px solid var(--border);

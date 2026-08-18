@@ -9,7 +9,7 @@
   <!-- Versioned asset URLs: a URL the browser has never seen is always fetched
        fresh, which makes stale-cache archaeology impossible regardless of any
        heuristic. Bump the v token whenever a release must land instantly. -->
-  <link rel="stylesheet" href="/static/style.css?v=20260817c">
+  <link rel="stylesheet" href="/static/style.css?v=20260818a">
   <!-- Design-token engine, ported from QSpace Pages' brand_config.dart/app_theme.dart:
        a few seed colors regenerate the derived palette (light/dark/on-color
        variants) instead of every shade being separately hand-picked. Runs
@@ -437,14 +437,18 @@
           <div class="chat-rail-header-dynamic">
             <div class="chat-rail-title">
               <span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div><span id="reader-name">document</span></span>
-              <div class="chat-tools reader-tools">
-                <button class="chat-tool" id="reader-download" title="Download a copy" aria-label="Download">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                </button>
-                <button class="chat-tool" onclick="readerClose()" title="Close (Esc)" aria-label="Close preview">✕</button>
-              </div>
             </div>
             <div class="chat-rail-subtext" id="reader-meta"></div>
+            <div class="chat-rail-controls reader-tools">
+              <button class="chat-rail-control-btn" id="reader-download" title="Download a copy">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download
+              </button>
+              <button class="chat-rail-control-btn" onclick="readerClose()" title="Esc also closes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                Close
+              </button>
+            </div>
           </div>
         </div>
         <div class="reader-body" id="reader-body"></div>
@@ -515,6 +519,28 @@
     </button>
   </nav>
 
-  <script src="/static/app.js?v=20260817c"></script>
+  <script src="/static/app.js?v=20260818a"></script>
+  <!-- LIVE RELOAD (18 Aug) -- this console is meant to stay open for a whole
+       session, so a code change never reached an already-open tab no matter
+       what the HTTP cache headers said (those only govern the NEXT full
+       navigation). Polls /api/dev/assets-version every 4s; reloads the page
+       the first time it moves from what this load started with. A poll
+       failure (server mid-restart) is silently ignored, not treated as a
+       change - next poll just tries again. -->
+  <script>
+    (function () {
+      var startVersion = null;
+      setInterval(function () {
+        fetch('/api/dev/assets-version', { cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) {
+            if (!d || !d.version) return;
+            if (startVersion === null) { startVersion = d.version; return; }
+            if (d.version !== startVersion) location.reload();
+          })
+          .catch(function () { /* server restarting or offline - try again next tick */ });
+      }, 4000);
+    })();
+  </script>
 </body>
 </html>

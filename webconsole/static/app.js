@@ -3522,9 +3522,7 @@ const MENU_COLOR_GROUPS = [
   { key: 'visionary', label: 'Visionary',  hint: 'Space cards' },
   { key: 'innovator', label: 'Innovator',  hint: 'Space cards' },
   { key: 'creator',   label: 'Creator',    hint: 'Space cards' },
-  { key: 'console',   label: 'Console',    hint: 'Right-panel tab' },
-  { key: 'chat',      label: 'Chat',       hint: 'Right-panel tab' },
-  { key: 'context',   label: 'Context',    hint: 'Right-panel tab' },
+  { key: 'rail',      label: 'Right Panel', hint: 'Console, Chat, Context' },
 ];
 const MENU_COLORS_KEY = 'isconl.menuColors';
 
@@ -7702,42 +7700,44 @@ function renderRailSubheader() {
 
   if (currentRailMode === 'chat') {
     el.innerHTML = `
-      <div class="chat-rail-title">
-        <span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div>Chat</span>
-        <div class="chat-tools">
-          <button class="chat-tool" onclick="chatToggleSelect()" id="chat-select-btn" title="Select messages" aria-label="Select messages">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 20 6"/><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9"/></svg>
-          </button>
-          <button class="chat-tool" onclick="chatToggleHistory()" title="History" aria-label="History">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-          </button>
-          <button class="chat-tool" onclick="chatNewThread()" title="Clear (the current thread is saved first)" aria-label="Clear">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <button class="chat-tool" onclick="chatExport()" title="Export" aria-label="Export">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="chat-rail-subtext">Every message is kept, per thread. Select lifts specific messages out; Clear saves this thread and starts fresh.</div>`;
+      <div class="chat-rail-title"><span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div>Chat</span></div>
+      <div class="chat-rail-subtext">Every message is kept, per thread. Select lifts specific messages out; Clear saves this thread and starts fresh.</div>
+      <div class="chat-rail-controls">
+        <button class="chat-rail-control-btn" onclick="chatToggleSelect()" id="chat-select-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 20 6"/><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9"/></svg>
+          Select
+        </button>
+        <button class="chat-rail-control-btn" onclick="chatToggleHistory()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+          History
+        </button>
+        <button class="chat-rail-control-btn" onclick="chatNewThread()" title="The current thread is saved first">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Clear
+        </button>
+        <button class="chat-rail-control-btn" onclick="chatExport()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>`;
   } else if (currentRailMode === 'reader') {
     el.innerHTML = `
       <div class="chat-rail-title"><span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div>Context</span></div>
       <div class="chat-rail-subtext">Files and documents, opened from anywhere in the console, read here.</div>`;
   } else { // context (dashboard/orb) = Console
     el.innerHTML = `
-      <div class="chat-rail-title">
-        <span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div>Console</span>
-        <div class="chat-tools">
-          <button class="chat-tool" onclick="renderRailContext()" title="Refresh" aria-label="Refresh">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-          </button>
-          <button class="chat-tool" onclick="navigate('settings')" title="Day Schedule settings" aria-label="Day Schedule settings">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="chat-rail-subtext">Where the day stands right now - the current block's countdown, and the two things most worth your attention.</div>`;
+      <div class="chat-rail-title"><span><div class="brand-dot" style="display:inline-block;vertical-align:middle;margin-right:0.5rem"></div>Console</span></div>
+      <div class="chat-rail-subtext">Where the day stands right now - the current block's countdown, and the two things most worth your attention.</div>
+      <div class="chat-rail-controls">
+        <button class="chat-rail-control-btn" onclick="renderRailContext()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
+        <button class="chat-rail-control-btn" onclick="navigate('settings')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Day Schedule
+        </button>
+      </div>`;
   }
 }
 
@@ -8782,9 +8782,9 @@ function readerAddEditAffordance() {
   const head = document.querySelector('.reader-tools');
   if (!head || document.getElementById('reader-edit-btn')) return;
   const b = document.createElement('button');
-  b.className = 'chat-tool'; b.id = 'reader-edit-btn';
+  b.className = 'chat-rail-control-btn'; b.id = 'reader-edit-btn';
   b.title = 'Edit this document';
-  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit`;
   b.onclick = readerStartEdit;
   head.insertBefore(b, head.firstChild);
 }

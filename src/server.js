@@ -203,6 +203,12 @@ async function main() {
     if (pathname === '/health' && req.method === 'GET') {
       return sendJson(res, 200, { status: 'ok', engine: 'hub', version: manifest.version });
     }
+    // Polled by index.html's live-reload script (18 Aug) so an already-open
+    // tab picks up a code change without a manual refresh -- see
+    // lib/static.js's watchedAssetsVersion() for what "changed" means here.
+    if (pathname === '/api/dev/assets-version' && req.method === 'GET') {
+      return sendJson(res, 200, { version: staticServer.watchedAssetsVersion() });
+    }
     // The web console's own static assets (index.html, main.dart.js, wasm,
     // fonts...) are public by construction: a browser has to load the page
     // before it can even show a login form to obtain a token. Tried before
