@@ -80,7 +80,7 @@
      Planning/.../Alerts all share --mc-command - not three separately
      colored menus. All three read the same --mc-rail var. Configurable
      from Settings > Menu Colors ("Right Panel"). */
-  --mc-rail: var(--cyan);
+  --mc-rail: var(--green-bright);
 
   /* ── THE DEFAULT HOVER EFFECT (18 Aug) ──────────────────────────────────
      A subtle green lift: border tints, background washes to the panel-hover

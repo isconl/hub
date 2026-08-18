@@ -6371,6 +6371,7 @@ let briefPending = false;
 let draftPending = false;
 let draftChannel = null;   // user override of the inferred channel
 let draftTo      = null;   // user override of the inferred recipient
+let primeState   = null;   // null = idle, 'loading', or the /api/learning/prime response
 
 async function openTask(taskId) {
   taskDetailId = taskId;
@@ -6380,6 +6381,7 @@ async function openTask(taskId) {
   jiraPanel = null;
   taskDocs = null;
   docsOpen = {};
+  primeState = null;
   navigate('task', { taskId });
   try {
     const r = await fetch(`/api/tasks/detail?taskId=${encodeURIComponent(taskId)}`);
@@ -6477,6 +6479,8 @@ function renderTaskView() {
       </div>
       <div id="brief-body">${renderBriefBody(brief)}</div>
     </div>
+
+    ${renderPrimeCard(t)}
 
     ${renderDocsCard()}
     ${renderDraftCard(career, draft)}
@@ -6673,6 +6677,88 @@ function renderJiraCard(t, jk, tags) {
                   onclick="pushJira(true, this)">Push anyway</button>` : ''}
       </div>
     </div>`;
+}
+
+/**
+ * "Prime me" - the most relevant lesson from the vault, so the task screen
+ * teaches the framework before you start, not just the deadline. Pure
+ * keyword overlap on lesson content vs. task title + WHY, no model call
+ * (spark's `learning.prime` capability) - ported from legacy's task view.
+ */
+function renderPrimeCard(t) {
+  const s = primeState;
+
+  if (!s) {
+    return `
+    <div class="card" id="prime-card">
+      <div class="card-header">
+        <span class="card-title">Prime me</span>
+        <span class="card-meta">relevant lesson from the vault, before you start</span>
+        <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 10px"
+                id="prime-btn"
+                onclick="primeTask('${escHtml(t.ID)}', this)">Find the lesson</button>
+      </div>
+      <div class="empty-state" style="font-size:0.8rem;text-align:left;padding:0.5rem 0">
+        Scans the learning vault for the module most relevant to this task
+        and loads it here - so you walk in knowing the framework, not just the deadline.
+      </div>
+    </div>`;
+  }
+
+  if (s === 'loading') {
+    return `
+    <div class="card" id="prime-card">
+      <div class="card-header"><span class="card-title">Prime me</span></div>
+      <div class="brief-pending"><div class="spinner-inline"></div><div>Scanning the vault…</div></div>
+    </div>`;
+  }
+
+  if (!s.ok) {
+    return `
+    <div class="card" id="prime-card">
+      <div class="card-header">
+        <span class="card-title">Prime me</span>
+        <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 10px"
+                onclick="primeTask('${escHtml(t.ID)}', this)">Try again</button>
+      </div>
+      <div class="empty-state" style="color:var(--text-3)">${escHtml(s.error || 'No matching lesson found.')}</div>
+    </div>`;
+  }
+
+  const md = s.content || '';
+  const preview = md.split('\n').slice(0, 40).join('\n');
+
+  return `
+    <div class="card" id="prime-card">
+      <div class="card-header">
+        <span class="card-title">Prime me</span>
+        <span class="card-meta">${escHtml(s.course || '')} · ${escHtml(s.file || '')}</span>
+        <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 10px"
+                onclick="primeTask('${escHtml(t.ID)}', this)">Refresh</button>
+      </div>
+      <div class="lesson-body prime-body">${learnMd(preview)}</div>
+      ${md.split('\n').length > 40 ? `
+      <details style="margin-top:0.5rem">
+        <summary style="cursor:pointer;font-size:0.78rem;color:var(--text-2);padding:4px 0">
+          Show the full lesson
+        </summary>
+        <div class="lesson-body prime-body" style="margin-top:0.5rem">${learnMd(md)}</div>
+      </details>` : ''}
+    </div>`;
+}
+
+async function primeTask(taskId, btn) {
+  primeState = 'loading';
+  repaintTask();
+  try {
+    const t = taskDetail?.task;
+    const q = t ? `${t.TITLE || ''} ${t.WHY || ''}` : taskId;
+    const r = await fetch(`/api/learning/prime?q=${encodeURIComponent(q)}`);
+    primeState = await r.json();
+  } catch (e) {
+    primeState = { ok: false, error: e.message };
+  }
+  repaintTask();
 }
 
 /**
