@@ -81,6 +81,27 @@
   --mc-console: var(--cyan);
   --mc-chat:    var(--amber);
   --mc-context: var(--violet);
+
+  /* ── THE DEFAULT HOVER EFFECT (18 Aug) ──────────────────────────────────
+     A subtle green lift: border tints, background washes to the panel-hover
+     surface, the row nudges right, over one quick ease. First built for the
+     Upcoming Events panel (.hub-event-item) and loved enough on sight to be
+     named the app-wide standard for any clickable row/card that doesn't
+     already carry its own deliberately different hover (the sidebar nav
+     groups and the right-rail tabs are their own family - see the --mc-*
+     block above - and keep their own accent-colored treatment; this is for
+     everything else: list rows, inbox items, task rows, generic cards).
+     Settings > Interface's "Hover motion" toggle flips --hover-shift and
+     --hover-transition to inert values, so anything built on these tokens
+     loses the color/motion but keeps working - no per-rule changes needed. */
+  --hover-border:     var(--green-dim);
+  --hover-bg:         var(--panel-hover);
+  --hover-shift:      2px;
+  --hover-transition: all 0.14s ease;
+}
+body.hover-motion-off {
+  --hover-shift: 0px;
+  --hover-transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 
 /* ── SPACE-SPECIFIC PALETTES & TAILORED HOVER STATES ── */
@@ -1635,12 +1656,12 @@ pre.code-block {
   border:1px solid var(--border);
   background:var(--surface, #161b22);
   margin-bottom:0.4rem;
-  transition:all 0.14s ease;
+  transition:var(--hover-transition);
 }
 .hub-event-item:hover {
-  border-color:var(--green-dim);
-  background:var(--panel-hover);
-  transform:translateX(2px);
+  border-color:var(--hover-border);
+  background:var(--hover-bg);
+  transform:translateX(var(--hover-shift));
 }
 
 /* ── MORNING BRIEF ──
@@ -3164,11 +3185,18 @@ body[data-callout-theme="muted"] .lesson-body {
 /* min-width:0 all the way down: a grid/flex item defaults to min-width:auto, so
    one long nowrap title (Taylor's page-hero subject) forced the Today card - and
    with it the whole dashboard grid - wider than the viewport. */
-.inbox-item { border-bottom:1px solid var(--border); min-width:0; max-width:100%; overflow:hidden; }
+.inbox-item {
+  border-bottom:1px solid var(--border); border-left:2px solid transparent;
+  min-width:0; max-width:100%; overflow:hidden;
+  transition:var(--hover-transition);
+}
 .cards-grid > .card, .grid-2 > .card { min-width:0; }
 .inbox-item:last-of-type { border-bottom:none; }
 .inbox-item.unread .inbox-sender { color:var(--text); font-weight:650; }
-.inbox-item.unread { border-left:2px solid var(--green-dim); }
+.inbox-item.unread { border-left-color:var(--green-dim); }
+/* The default hover effect (see :root), adapted to a flat list row instead
+   of a boxed card - Top Tasks and Inbox both render through this class. */
+.inbox-item:hover { background:var(--hover-bg); border-left-color:var(--hover-border); transform:translateX(var(--hover-shift)); }
 .inbox-head {
   display:flex; align-items:baseline; gap:0.6rem; padding:0.55rem 0.4rem;
   cursor:pointer; min-width:0;

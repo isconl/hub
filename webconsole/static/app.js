@@ -1138,7 +1138,7 @@ function renderToday() {
           <!-- TOP 3 INTELLIGENT TASKS -->
           <div class="card hub-panel-card">
             <div class="card-header">
-              <span class="card-title">${svgIcon('check-square', 13, 'icon-muted')} Top Tasks</span>
+              <span class="card-title">Top Tasks</span>
               <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('tasks')">${tasks.length} open · All →</button>
             </div>
             ${topTasks.length ? topTasks.map(t => taskRowMini(t)).join('') : '<div class="empty-state">Nothing open. Clean slate.</div>'}
@@ -1151,7 +1151,7 @@ function renderToday() {
           <!-- INBOX: top 5 messages -->
           <div class="card hub-panel-card">
             <div class="card-header">
-              <span class="card-title">${svgIcon('inbox', 13, 'icon-muted')} Inbox</span>
+              <span class="card-title">Inbox</span>
               <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('inbox')">Full Inbox →</button>
             </div>
             ${(STATE.feed || []).slice(0, 5).map(m => `
@@ -1178,7 +1178,7 @@ function renderToday() {
         <!-- Upcoming events: fills the remaining square -->
         <div class="card hub-events-panel">
           <div class="card-header">
-            <span class="card-title">${svgIcon('calendar', 13, 'icon-muted')} Upcoming</span>
+            <span class="card-title">Upcoming</span>
             <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('calendar')">Full Calendar →</button>
           </div>
           ${upcomingEvents.length ? upcomingEvents.map(e => `
@@ -3296,6 +3296,21 @@ function renderSettings() {
         <div id="inject-result" class="settings-result hidden"></div>
       </div>
 
+      <!-- Interface. Client-side only (localStorage, key isconl.interface) - the
+           one toggle here so far is the default hover effect (18 Aug): border
+           tint + background wash + a small rightward shift on clickable rows/
+           cards app-wide (see :root's --hover-* tokens in style.css). Off just
+           removes the shift and slows the color transition - not a full
+           reduced-motion mode, since the color feedback itself stays useful. -->
+      <div class="settings-section" id="interface-section">
+        <div class="settings-section-title">Interface</div>
+        <p class="settings-hint">How the console itself behaves, not what it shows. Saved on this device only for now.</p>
+        <label class="settings-checkbox-row" style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;color:var(--text-2)">
+          <input id="s-hover-motion" type="checkbox" ${getInterfaceConfig().hoverMotion ? 'checked' : ''} onchange="saveInterfaceConfig()"/>
+          Hover motion (the green lift on rows and cards you hover)
+        </label>
+      </div>
+
       <!-- Branding. Client-side only for now (localStorage, key isconl.branding) -
            deliberately not wired to /api/settings yet since that endpoint only
            knows fixed service keys server-side. Good enough to unblock U1's
@@ -3563,6 +3578,21 @@ function resetMenuColors() {
   for (const g of MENU_COLOR_GROUPS) document.documentElement.style.removeProperty(`--mc-${g.key}`);
   repaintView('settings');
   showToast('Menu colors reset to defaults', 'info');
+}
+const INTERFACE_CONFIG_KEY = 'isconl.interface';
+function getInterfaceConfig() {
+  try { return { hoverMotion: true, ...JSON.parse(localStorage.getItem(INTERFACE_CONFIG_KEY) || '{}') }; }
+  catch { return { hoverMotion: true }; }
+}
+function applyInterfaceConfig() {
+  document.body.classList.toggle('hover-motion-off', !getInterfaceConfig().hoverMotion);
+}
+applyInterfaceConfig();
+function saveInterfaceConfig() {
+  const hoverMotion = !!document.getElementById('s-hover-motion')?.checked;
+  try { localStorage.setItem(INTERFACE_CONFIG_KEY, JSON.stringify({ hoverMotion })); } catch {}
+  applyInterfaceConfig();
+  showToast(hoverMotion ? 'Hover motion on' : 'Hover motion off', 'info');
 }
 function saveBranding() {
   const name = (document.getElementById('s-brand-name')?.value || '').trim() || 'iSconl';
