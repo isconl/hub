@@ -8078,18 +8078,19 @@ function resetBlockColors() {
 }
 
 // ── DAY SCHEDULE (Settings) ──────────────────────────────────────────────────
-// The same GET /api/blocks the Hub's day card and Context ring already read
-// (vault/lib/blocks.js's blocks()/plan()) - editable here via POST /api/blocks
-// (blocks.js's save(), one block at a time: name/start/end/active only, see
-// that function's own header comment for why create/delete/re-kind aren't
-// supported). ACTIVE:no blocks are filtered out server-side before this ever
-// sees them, so turning a block off here is one-way from this screen - a
-// real, flagged limitation, not an oversight (see task-backlog.md).
+// U8, 18 Aug: reads GET /api/blocks/all (vault's allBlocks(), every block
+// including ACTIVE:no ones) instead of GET /api/blocks (blocks()/plan(),
+// active-only -- still what the Hub day card/Context ring read, untouched).
+// The "off" checkbox can now be re-checked from this screen: save() always
+// accepted an inactive block's ID fine, the only real gap was ever seeing
+// one to act on. Requires a vault restart to pick up /blocks/all -- falls
+// back to /api/blocks (active-only) if that 404s on an older vault process.
 let SETTINGS_BLOCKS = null;
 async function loadSettingsBlocks(force = false) {
   if (SETTINGS_BLOCKS && !force) return;
   try {
-    const r = await fetch('/api/blocks');
+    let r = await fetch('/api/blocks/all');
+    if (r.status === 404) r = await fetch('/api/blocks');   // pre-U8 vault process
     const d = await r.json();
     SETTINGS_BLOCKS = (d.blocks || []).slice().sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
   } catch (e) { SETTINGS_BLOCKS = []; }
@@ -8107,15 +8108,15 @@ function renderScheduleBlockList() {
   return `
     <div class="sched-list">
       ${SETTINGS_BLOCKS.map(b => `
-        <div class="sched-row" id="sched-row-${escAttr(b.id)}">
+        <div class="sched-row" id="sched-row-${escAttr(b.id)}"${b.active === false ? ' style="opacity:0.55"' : ''}>
           <span class="sched-dot" style="background:${toneOf(b)}" title="${escAttr(b.axis)}"></span>
           <input id="blk-name-${escAttr(b.id)}" type="text" class="input sched-name" value="${escAttr(b.name)}" maxlength="40"/>
           <input id="blk-start-${escAttr(b.id)}" type="time" class="input sched-time" value="${escAttr(b.startClock)}"/>
           <span class="sched-dash">&ndash;</span>
           <input id="blk-end-${escAttr(b.id)}" type="time" class="input sched-time" value="${escAttr(b.endClock)}"/>
-          <label class="sched-active" title="Turn this block off (cannot be turned back on from here yet)">
-            <input id="blk-active-${escAttr(b.id)}" type="checkbox" checked onchange="if(!this.checked && !confirm('Turn off '+${JSON.stringify(b.name)}+'? This screen can\\'t turn it back on yet.')) this.checked=true;"/>
-            <span>on</span>
+          <label class="sched-active" title="${b.active === false ? 'Turn this block back on' : 'Turn this block off'}">
+            <input id="blk-active-${escAttr(b.id)}" type="checkbox" ${b.active === false ? '' : 'checked'} onchange="if(!this.checked && !confirm('Turn off '+${JSON.stringify(b.name)}+'? You can turn it back on from this screen any time.')) this.checked=true;"/>
+            <span>${b.active === false ? 'off' : 'on'}</span>
           </label>
           <button class="btn btn-ghost" style="font-size:0.7rem;padding:3px 9px" onclick="saveScheduleBlock('${escAttr(b.id)}', this)">Save</button>
         </div>`).join('')}
