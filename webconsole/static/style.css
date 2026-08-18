@@ -5452,6 +5452,16 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 .tm-chip.on { background: var(--amber-bg); border-color: var(--amber); color: var(--amber); font-weight: 600; }
 .tm-chip-new { border-style: dashed; }
 
+/* Team overview grid (U5, 18 Aug) - each team as a clickable card leading
+   into its own dashboard, replacing the chip row as the entry point.
+   Reuses the app-wide hover tokens (border/bg/shift), same as .card
+   elsewhere. */
+.tm-team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.8rem; margin-top: 0.6rem; }
+.tm-team-card { cursor: pointer; transition: var(--hover-transition); }
+.tm-team-card:hover { border-color: var(--hover-border); background: var(--hover-bg); transform: translateX(var(--hover-shift)); }
+.tm-team-card .tm-strip { margin-bottom: 0; }
+.tm-team-card-new { border-style: dashed; display: flex; flex-direction: column; justify-content: center; min-height: 88px; }
+
 .tm-tabs { display: flex; gap: 2px; margin-top: 0.55rem; border-bottom: 1px solid var(--border); }
 .tm-tab {
   padding: 6px 16px; background: none; border: none; border-bottom: 2px solid transparent;

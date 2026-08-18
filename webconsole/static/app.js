@@ -12167,6 +12167,16 @@ let teamsShowMemberForm = false;
 let teamsEditWork = null;
 let teamsEditMember = null;
 let TEAMS_CIRCLE = null;
+// U5 (18 Aug): Teams used to drop straight into whichever team was picked
+// last time (a horizontal chip row was the only way to see the others).
+// Architect asked for teams to read as clickable cards leading into a team
+// dashboard, so the view now opens on a card grid unless there's only one
+// team to show. `teamsOverview` starts true on every fresh Teams view load,
+// not persisted - going back to the grid is one click either way.
+let teamsOverview = true;
+
+function teamsShowOverview() { teamsOverview = true; repaintView('teams'); }
+function teamsOpen(id) { teamsOverview = false; teamsPick(id); }
 
 async function fetchTeams() {
   TEAMS_STATE = 'loading';
@@ -12252,11 +12262,43 @@ function renderTeams() {
       ${newTeamCard}`;
   }
 
+  // Overview: every team as a clickable card, not a chip row - the entry
+  // point into a specific team's dashboard. Skipped when there's only one
+  // team (nothing to choose between) unless "+ new" was asked for.
+  if (teamsOverview && teams.length > 1) {
+    return `
+      <div class="view-head">
+        <h1>Teams</h1>
+        <div class="view-head-meta">one board · five per leader · three days deep</div>
+      </div>
+      <div class="tm-team-grid">
+        ${teams.map(x => {
+          const xh = x.health || {}, xc = x.counts || {};
+          return `
+          <div class="card tm-team-card" onclick="teamsOpen('${escAttr(x.id)}')">
+            <div class="card-header"><span class="card-title">${escHtml(x.title)}</span></div>
+            <div class="view-head-meta">${escHtml(x.org || '')} · run by <b>${escHtml(x.owner)}</b></div>
+            <div class="tm-strip">
+              <div class="tm-stat"><b>${(x.members || []).length}</b>people</div>
+              <div class="tm-stat"><b>${teamsDepthDot('green')}${xh.green || 0} ${teamsDepthDot('amber')}${xh.amber || 0} ${teamsDepthDot('red')}${xh.red || 0}</b>queue health</div>
+              <div class="tm-stat${xc.blocked ? ' warn' : ''}"><b>${xc.blocked || 0}</b>blocked</div>
+              <div class="tm-stat${xc.slipped ? ' warn' : ''}"><b>${xc.slipped || 0}</b>slipped</div>
+            </div>
+          </div>`;
+        }).join('')}
+        <div class="card tm-team-card tm-team-card-new" onclick="window.__tmNew=true;teamsOverview=false;repaintView('teams')">
+          <div class="card-header"><span class="card-title">+ New team</span></div>
+          <div class="view-head-meta">a team carries its own org, owner and report recipient</div>
+        </div>
+      </div>`;
+  }
+
   const h = t.health, c = t.counts;
   const head = `
     <div class="view-head">
       <h1>Teams</h1>
       <div class="view-head-meta">
+        ${teams.length > 1 ? `<button class="tm-chip" onclick="teamsShowOverview()">← All teams</button>` : ''}
         ${teams.map(x => `<button class="tm-chip${x.id === t.id ? ' on' : ''}" onclick="teamsPick('${escAttr(x.id)}')">${escHtml(x.title)}</button>`).join('')}
         <button class="tm-chip tm-chip-new" onclick="window.__tmNew=!window.__tmNew;repaintView('teams')">+ new</button>
       </div>
