@@ -1,12 +1,26 @@
 # Corporate Engagements — Plan
 
-Status: **plan only, nothing built yet.** Written to survive across Claude
-sessions and machines — lives in the `hub` repo (git-backed, pulled fresh on
-any machine) rather than any one session's memory. Cross-references:
+Status: **partially built — read-only half live, write paths and Gmail
+still open.** Written to survive across Claude sessions and machines —
+lives in the `hub` repo (git-backed, pulled fresh on any machine) rather
+than any one session's memory. Cross-references:
 [[isconl-fleet-layout]] for repo layout, and
 `D:\work\dev\iSconl\scope\docs\document-generation-canon.md` +
 `document-generation-build-plan.md` for the document-generation system
 this plan's toggle also governs.
+
+**Revised 20 Aug 2026 (build-state check, `FC26081807`):** confirmed
+built — `scope/lib/corporate.js` (§6.1/Phase 1); `GET /api/corporate` +
+`GET /api/corporate/detail` (§6.3/Phase 3, **read-only half only** — the
+`POST /api/corporate/status` and `POST /api/corporate/connect` write
+routes are NOT built); both UI implementations, webconsole
+(`renderCorporate`/`renderCorporateDetail`, `hub/webconsole/static/
+app.js:5309,5346`) and Flutter (`hub/app/lib/ui/views/corporate.dart`).
+Confirmed **not** built — `vault/lib/google.js` (§4/Phase 2, Gmail
+OAuth), any `connections.yaml` file anywhere (§1's schema addition), and
+the Phase 5 write paths/cascade wiring. See `PC26081816` (backlog
+`plan.md`) for the newer org-discovery decision this doc's §1 predates —
+cross-referenced there.
 
 **Revised 14 Aug 2026**: §6 replaces an earlier, more speculative build
 sketch after finding this needs far less new infrastructure than first
@@ -73,6 +87,22 @@ jira:
   connected: false
   project_key: null
 ```
+
+**Superseded by `PC26081816` (20 Aug 2026):** the paragraph above assumes
+orgs come from a hand-maintained `orgs:` list in `career/_active.yaml`.
+`PC26081816` (backlog `plan.md`) resolves this differently — orgs are
+instead **auto-discovered** by scanning the OneDrive
+`Sconl/Core/Axial/Visionary/Corporate/` folder for engagement folders
+(`YYYY-org-slug`, e.g. `2026-viva-valentia`), with `_active.yaml` and each
+org's `career/orgs/<id>/*.yaml` auto-stubbed from that scan rather than
+requiring hand-authored seed data. This is not a replacement for the
+schema in this section — `org.yaml`/`doctrine.yaml`/etc. and this
+`connections.yaml` addition still hold the same fields — it changes only
+**how `_active.yaml`'s `orgs:` registry gets populated**: by the folder
+scan first, then enriched by hand over time, instead of being
+hand-maintained from the start. `PC26081816` is still mid-scoping (its
+folder-scan mechanism, auto-stub YAML shape, and a few schema additions —
+see that row) as of this revision.
 
 ---
 

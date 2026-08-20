@@ -788,7 +788,15 @@ async function fetchState() {
   // drives sender/recipient pickers. One call, cached in STATE.
   try {
     const r = await fetch('/api/tags');
-    if (r.ok) { const d = await r.json(); STATE.tags = d.tags || []; STATE.people = d.people || []; }
+    if (r.ok) { const d = await r.json(); STATE.tags = d.tags || []; }
+  } catch {}
+  // The real people roster, for the Inbox per-person thread rebuild
+  // (BM26081807) and the capture panel's sender datalist -- /api/tags
+  // above is a dead legacy route (always 501s), never actually populated
+  // people data.
+  try {
+    const r = await fetch('/api/circle');
+    if (r.ok) { const d = await r.json(); STATE.circlePeople = d.people || []; }
   } catch {}
 }
 
@@ -2394,6 +2402,24 @@ async function fmPreviewInReader(item) {
     } else if (ext === '.pdf') {
       const rawUrl = `/api/onedrive/raw?id=${encodeURIComponent(item.id)}`;
       readerBody(`<object class="reader-pdf" data="${rawUrl}" type="application/pdf" width="100%" height="100%"><iframe class="reader-pdf" src="${rawUrl}" title="${escAttr(item.name)}"></iframe></object>`);
+    } else if (['.mp3', '.wav', '.m4a', '.ogg', '.aac', '.flac'].includes(ext)) {
+      // Narration files already exist per uploadLarge() -- BG26081806's audio tier.
+      const rawUrl = `/api/onedrive/raw?id=${encodeURIComponent(item.id)}`;
+      readerBody(`<div class="reader-audio-wrap"><audio class="reader-audio" controls preload="metadata" src="${escAttr(rawUrl)}">
+        Your browser can't play this audio inline.</audio></div>`);
+    } else if (['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'].includes(ext)) {
+      // BG26081806's Office tier -- data.officePreviewUrl comes from Graph's
+      // own POST /items/{id}/preview action (vault/lib/onedrive-browse.js),
+      // a short-lived pre-authorized embed URL. The file's plain webUrl is
+      // NOT usable here -- confirmed live 20 Aug, view.officeapps.live.com
+      // refuses it as "not publicly accessible" since it needs an
+      // authenticated OneDrive session, not just a valid link.
+      if (data.officePreviewUrl) {
+        readerBody(`<iframe class="reader-office" src="${escAttr(data.officePreviewUrl)}" title="${escAttr(item.name)}"></iframe>`);
+      } else {
+        readerBody(`<div class="reader-note">Couldn't get an embeddable preview for this file.
+          ${data.webUrl ? `<a class="btn btn-ghost doc-act" href="${escAttr(data.webUrl)}" target="_blank" rel="noreferrer" style="margin-top:0.5rem">Open on OneDrive ↗</a>` : ''}</div>`);
+      }
     } else if (data.isText && data.textContent) {
       const isMd = /\.(md|markdown|mdown|mkd)$/i.test(ext) || /\.md$/i.test(item.name || '');
       const filePath = item.path || (fileManagerPath === 'root' ? item.name : `${fileManagerPath}/${item.name}`);
@@ -4037,12 +4063,56 @@ function getChannelBadgeClass(ch) {
 let inboxChannel = null;   // click a channel chip to filter; click again to clear
 let inboxOpen = {};        // ID -> expanded
 let inboxSelected = new Set(); // ID -> selected for bulk actions
+let inboxPersonKey = null; // grouping key of the open thread (person.ID, or 'sender:<name>' for unlinked rows) - null = show the thread list
+
+/**
+ * BM26081807: group the flat inbox feed into one thread per person.
+ * PERSON_ID is the real link (set by circle's chat-import and inbox.js's
+ * own auto-match); a manually-captured row with no match yet falls back to
+ * grouping by SENDER text so it still reads as one thread rather than
+ * scattering across "unknown". Computed on every render, not persisted --
+ * a new WhatsApp import (BM26081801) or inbox capture just shows up next
+ * render, no separate merge/refresh step.
+ */
+function inboxGroups() {
+  const feed = STATE.feed || [];
+  const rows = inboxChannel ? feed.filter(i => i.CHANNEL === inboxChannel) : feed;
+  const peopleById = new Map((STATE.circlePeople || []).map(p => [p.ID, p]));
+  const groups = new Map();
+  for (const m of rows) {
+    const hasPerson = m.PERSON_ID && m.PERSON_ID !== '-';
+    const key = hasPerson ? m.PERSON_ID : `sender:${m.SENDER && m.SENDER !== '-' ? m.SENDER : m.SOURCE}`;
+    if (!groups.has(key)) {
+      const person = hasPerson ? peopleById.get(m.PERSON_ID) : null;
+      groups.set(key, {
+        key, personId: hasPerson ? m.PERSON_ID : null,
+        name: person ? person.NAME : (m.SENDER && m.SENDER !== '-' ? m.SENDER : m.SOURCE),
+        messages: [], unread: 0, channels: new Set(),
+      });
+    }
+    const g = groups.get(key);
+    g.messages.push(m);
+    g.channels.add(m.CHANNEL);
+    if (m.STATUS === 'new') g.unread++;
+  }
+  for (const g of groups.values()) g.messages.sort((a, b) => (a.RECEIVED_AT < b.RECEIVED_AT ? -1 : a.RECEIVED_AT > b.RECEIVED_AT ? 1 : 0));
+  return [...groups.values()].sort((a, b) => {
+    const la = a.messages[a.messages.length - 1]?.RECEIVED_AT || '';
+    const lb = b.messages[b.messages.length - 1]?.RECEIVED_AT || '';
+    return lb < la ? -1 : lb > la ? 1 : 0;
+  });
+}
+
+function inboxSelectPerson(key) { inboxPersonKey = key; inboxSelected.clear(); repaintView('inbox'); }
 
 function renderInbox() {
   const feed = STATE.feed || [];
   const channels = [...new Set(feed.map(i => i.CHANNEL).filter(c => c && c !== '-'))];
-  const rows = inboxChannel ? feed.filter(i => i.CHANNEL === inboxChannel) : feed;
   const tags = STATE.tags || [];
+  const groups = inboxGroups();
+  const active = groups.find(g => g.key === inboxPersonKey) || groups[0] || null;
+  if (active && inboxPersonKey === null) inboxPersonKey = active.key;
+  const rows = active ? active.messages : [];
   const visibleIds = rows.map(m => m.ID);
   const selectedVisible = visibleIds.filter(id => inboxSelected.has(id));
   const allVisibleSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
@@ -4050,12 +4120,12 @@ function renderInbox() {
   return `
     <div class="view-head">
       <h1>Inbox</h1>
-      <div class="view-head-meta">every source in one place, verbatim - exactly as sent</div>
+      <div class="view-head-meta">one thread per person, every source - verbatim, exactly as sent</div>
     </div>
     <div class="card">
       <div class="card-header">
         <span class="card-title">Inbox</span>
-        <span class="card-meta">${rows.length}${inboxChannel ? ` of ${feed.length} · ${escHtml(inboxChannel)}` : ' messages'} · verbatim … exactly as sent</span>
+        <span class="card-meta">${groups.length} thread${groups.length === 1 ? '' : 's'}${inboxChannel ? ` · ${escHtml(inboxChannel)}` : ''} · ${feed.length} messages</span>
       </div>
       ${channels.length ? `
         <div class="inbox-channels">
@@ -4065,53 +4135,73 @@ function renderInbox() {
             </button>`).join('')}
           ${inboxChannel ? `<button class="inbox-chan clear" onclick="inboxFilter(null)">all</button>` : ''}
         </div>` : ''}
-      ${rows.length ? `
-        <div class="inbox-bulk-bar">
-          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.78rem;color:var(--text-2)">
-            <input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="inboxSelectAll(this.checked)"/>
-            ${selectedVisible.length ? `${selectedVisible.length} selected` : 'Select all'}
-          </label>
-          ${selectedVisible.length ? `
-            <div style="display:flex;gap:0.4rem;margin-left:auto">
-              <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 10px" onclick="inboxBulkMarkSeen()">${svgIcon('check', 12)} Mark as seen</button>
-              <button class="btn btn-ghost danger-btn" style="font-size:0.72rem;padding:3px 10px" onclick="inboxBulkDelete()">${svgIcon('trash', 12)} Delete</button>
-            </div>` : ''}
-        </div>` : ''}
-      ${rows.length ? rows.map(m => {
-        const open = inboxOpen[m.ID];
-        const checked = inboxSelected.has(m.ID);
-        return `
-        <div class="inbox-item ${m.STATUS === 'new' ? 'unread' : ''}">
-          <div class="inbox-head">
-            <input type="checkbox" class="inbox-select-cb" ${checked ? 'checked' : ''}
-                   onclick="event.stopPropagation();inboxToggleSelect('${escHtml(m.ID)}')"/>
-            <span class="inbox-chan-dot" data-ch="${escHtml(m.CHANNEL)}" onclick="inboxToggle('${escHtml(m.ID)}')"></span>
-            <span class="inbox-sender" onclick="inboxToggle('${escHtml(m.ID)}')">${escHtml(m.SENDER !== '-' ? m.SENDER : m.SOURCE)}</span>
-            <span class="inbox-title" onclick="inboxToggle('${escHtml(m.ID)}')">${escHtml(m.TITLE)}</span>
-            ${m.TAG && m.TAG !== '-' ? `<span class="inbox-tag">${escHtml(m.TAG)}</span>` : ''}
-            <span class="inbox-date" onclick="inboxToggle('${escHtml(m.ID)}')">${escHtml(m.RECEIVED_AT)}</span>
-          </div>
-          ${open ? `
-            <div class="inbox-body">${escHtml(m.BODY)}</div>
-            ${m.COMMENT && m.COMMENT !== '-' ? `<div class="inbox-comment"><span>Your note</span>${escHtml(m.COMMENT)}</div>` : ''}
-            <div class="inbox-actions">
-              <button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px" onclick="inboxReply('${escHtml(m.ID)}', false)">Reply</button>
-              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="inboxComment('${escHtml(m.ID)}', '${escHtml((m.COMMENT !== '-' ? m.COMMENT : '')).replace(/'/g, "\\'")}')">
-                ${m.COMMENT && m.COMMENT !== '-' ? 'Edit note' : 'Add note'}</button>
-              <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{tag:this.value})">
-                <option value="">untagged</option>
-                ${tags.map(t => `<option value="${escHtml(t.id)}"${t.id === m.TAG ? ' selected' : ''}>${escHtml(t.label)}</option>`).join('')}
-              </select>
-              <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{status:this.value})">
-                ${['new', 'seen', 'actioned', 'done'].map(s => `<option${s === m.STATUS ? ' selected' : ''}>${s}</option>`).join('')}
-              </select>
-              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px"
-                      onclick="quickDistillText('${escHtml(m.BODY).replace(/'/g, "\\'")}')">To task</button>
-              <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto"
-                      onclick="inboxDelete('${escHtml(m.ID)}')">Delete</button>
-            </div>` : ''}
-        </div>`;
-      }).join('') : `<div class="empty-state">${inboxChannel ? 'Nothing on this channel.' : 'Inbox zero. Enjoy it … it never lasts. Paste a message in, or text the bot.'}</div>`}
+      <div class="inbox-threads">
+        <div class="inbox-thread-list">
+          ${groups.length ? groups.map(g => {
+            const last = g.messages[g.messages.length - 1];
+            return `
+            <div class="inbox-thread-row${g.key === (active && active.key) ? ' on' : ''}" onclick="inboxSelectPerson('${escHtml(g.key).replace(/'/g, "\\'")}')">
+              <span class="inbox-chan-dot" data-ch="${escHtml(last.CHANNEL)}"></span>
+              <span class="inbox-thread-name">${escHtml(g.name)}</span>
+              ${g.unread ? `<span class="inbox-thread-unread">${g.unread}</span>` : ''}
+              <span class="inbox-thread-preview">${escHtml((last.BODY || '').slice(0, 40))}</span>
+              <span class="inbox-thread-date">${escHtml(last.RECEIVED_AT || '').slice(0, 10)}</span>
+            </div>`;
+          }).join('') : `<div class="empty-state">${inboxChannel ? 'Nothing on this channel.' : 'Inbox zero. Enjoy it … it never lasts.'}</div>`}
+        </div>
+        <div class="inbox-thread-view">
+          ${active ? `
+            <div class="inbox-thread-head">
+              <span class="inbox-thread-head-name">${escHtml(active.name)}</span>
+              <span class="inbox-thread-head-meta">${active.messages.length} message${active.messages.length === 1 ? '' : 's'} · ${[...active.channels].map(escHtml).join(', ')}</span>
+              <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.7rem;color:var(--text-2);margin-left:auto">
+                <input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="inboxSelectAll(this.checked)"/>
+                ${selectedVisible.length ? `${selectedVisible.length} selected` : 'Select all'}
+              </label>
+              ${selectedVisible.length ? `
+                <button class="btn btn-ghost" style="font-size:0.7rem;padding:3px 10px" onclick="inboxBulkMarkSeen()">${svgIcon('check', 12)} Mark seen</button>
+                <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:3px 10px" onclick="inboxBulkDelete()">${svgIcon('trash', 12)} Delete</button>` : ''}
+            </div>
+            <div class="inbox-bubbles">
+              ${rows.map(m => {
+                const open = inboxOpen[m.ID];
+                const checked = inboxSelected.has(m.ID);
+                const outbound = m.DIRECTION === 'out';
+                return `
+                <div class="inbox-bubble-row ${outbound ? 'out' : 'in'}">
+                  <input type="checkbox" class="inbox-select-cb" ${checked ? 'checked' : ''}
+                         onclick="event.stopPropagation();inboxToggleSelect('${escHtml(m.ID)}')"/>
+                  <div class="inbox-bubble ${m.STATUS === 'new' ? 'unread' : ''}" onclick="inboxToggle('${escHtml(m.ID)}')">
+                    <div class="inbox-bubble-meta">
+                      <span class="inbox-chan-dot" data-ch="${escHtml(m.CHANNEL)}"></span>
+                      ${m.TAG && m.TAG !== '-' ? `<span class="inbox-tag">${escHtml(m.TAG)}</span>` : ''}
+                      <span class="inbox-date">${escHtml(m.RECEIVED_AT)}</span>
+                    </div>
+                    <div class="inbox-bubble-body">${escHtml(open || m.BODY.length <= 240 ? m.BODY : m.BODY.slice(0, 240) + '…')}</div>
+                    ${open ? `
+                      ${m.COMMENT && m.COMMENT !== '-' ? `<div class="inbox-comment"><span>Your note</span>${escHtml(m.COMMENT)}</div>` : ''}
+                      <div class="inbox-actions" onclick="event.stopPropagation()">
+                        <button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px" onclick="inboxReply('${escHtml(m.ID)}', false)">Reply</button>
+                        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="inboxComment('${escHtml(m.ID)}', '${escHtml((m.COMMENT !== '-' ? m.COMMENT : '')).replace(/'/g, "\\'")}')">
+                          ${m.COMMENT && m.COMMENT !== '-' ? 'Edit note' : 'Add note'}</button>
+                        <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{tag:this.value})">
+                          <option value="">untagged</option>
+                          ${tags.map(t => `<option value="${escHtml(t.id)}"${t.id === m.TAG ? ' selected' : ''}>${escHtml(t.label)}</option>`).join('')}
+                        </select>
+                        <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{status:this.value})">
+                          ${['new', 'seen', 'actioned', 'done'].map(s => `<option${s === m.STATUS ? ' selected' : ''}>${s}</option>`).join('')}
+                        </select>
+                        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px"
+                                onclick="quickDistillText('${escHtml(m.BODY).replace(/'/g, "\\'")}')">To task</button>
+                        <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto"
+                                onclick="inboxDelete('${escHtml(m.ID)}')">Delete</button>
+                      </div>` : ''}
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>` : `<div class="empty-state">Pick a thread, or capture a new message below.</div>`}
+        </div>
+      </div>
 
       <div class="inbox-add ${inboxAddOpen ? 'open' : ''}" id="inbox-add">
         ${inboxAddOpen ? `
@@ -4122,7 +4212,12 @@ function renderInbox() {
               // Every name the agent knows: the people roster PLUS every sender
               // already on record in the inbox. A new name typed here simply
               // saves with the message and joins this list from then on.
-              const known = new Set((STATE.people || []).map(p => p.name));
+              // STATE.circlePeople (real /api/circle data) here, not
+              // STATE.people -- that came from /api/tags, which api-compat.js
+              // marks legacy:true and always 501s since the monolith it
+              // pointed at was deleted, so this list silently had nothing
+              // but session-local senders before (found live 20 Aug).
+              const known = new Set((STATE.circlePeople || []).map(p => p.NAME));
               (STATE.feed || []).forEach(m => { if (m.SENDER && m.SENDER !== '-') known.add(m.SENDER); });
               return [...known].sort((a, b) => a.localeCompare(b))
                 .map(n => `<option value="${escHtml(n)}">`).join('');
@@ -5876,7 +5971,8 @@ async function runAiArticleAction(action, btn) {
 // the actual filename. Pre-filled, not locked: still plain text inputs,
 // editable like any other field.
 
-let writerTab = 'registry';           // 'registry' | 'studio'
+let writerWizardStep = 1;             // BA26081810: 1 target, 2 archetype, 3 studio -- replaces the old flat registry/studio tab-swap
+let writerView = 'wizard';            // BA26081811: 'wizard' | 'documents' -- independent of the wizard step
 let writerNamespace = '_common';      // which archetype namespace is loaded
 let WRITER_ARCHETYPES = null;         // cached list for writerNamespace
 let writerActiveArchetype = null;     // the full archetype object (id, title, fields, filenameFields)
@@ -5884,6 +5980,7 @@ let writerContent = {};               // fieldName -> raw form value (string)
 let writerPreviewMd = '';
 let writerLastResult = null;          // {archetype, files:{ext:{filename,base64,bytes}}} from the last generate
 let writerFormats = { docx: true, md: false, pdf: false };
+let writerBrief = '';   // BA26081812: shared brief, feeds both the per-field ✨ buttons and Full draft
 
 let writerTargetKind = 'general';     // 'engagement' | 'project' | 'general'
 let writerTargetId = '';
@@ -5934,6 +6031,39 @@ async function loadWriterArchetypes(force = false) {
   if (currentView === 'writer') repaintView('writer');
 }
 
+/** Recency order for the archetype picker (step 2) -- BA26081810's "most
+ *  recently used first" ask. Reads generated_docs.tsv IDs once BA26081811
+ *  builds it; that file/route doesn't exist yet, so this degrades to the
+ *  registry's own order (unchanged behavior) until it does -- deliberately
+ *  not blocking this row on that one. */
+let WRITER_RECENT_ARCHETYPE_IDS = [];
+function orderArchetypesByRecency(archetypes) {
+  if (!WRITER_RECENT_ARCHETYPE_IDS.length) return archetypes;
+  const rank = new Map(WRITER_RECENT_ARCHETYPE_IDS.map((id, i) => [id, i]));
+  return [...archetypes].sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : 999) - (rank.has(b.id) ? rank.get(b.id) : 999));
+}
+
+function writerBreadcrumb() {
+  const step2Label = writerTargetLabel || 'General';
+  const step3Label = writerActiveArchetype ? writerActiveArchetype.title : 'Choose archetype';
+  const seg = (label, step, clickable) => clickable
+    ? `<a href="#" class="crumb-link" onclick="writerGoToStep(${step});return false">${escHtml(label)}</a>`
+    : `<span class="crumb-here">${escHtml(label)}</span>`;
+  return `
+    <div class="view-head-meta crumbs">
+      ${seg('Writer', 1, writerWizardStep > 1)}
+      <span class="crumb-sep">/</span>
+      ${seg(step2Label, 2, writerWizardStep > 2)}
+      ${writerWizardStep > 2 ? `<span class="crumb-sep">/</span>${seg(step3Label, 3, false)}` : ''}
+    </div>`;
+}
+
+function writerGoToStep(step) {
+  if (step > writerWizardStep) return;   // never skip ahead past what's actually been gathered
+  writerWizardStep = step;
+  repaintView('writer');
+}
+
 function renderWriter() {
   if (!WRITER_ARCHETYPES) {
     loadWriterArchetypes();
@@ -5944,31 +6074,209 @@ function renderWriter() {
   return `
     <div class="view-head">
       <h1>Writer</h1>
-      <div class="view-head-meta">Document Studio · automated drafting with guided, intelligent naming · no AI in the render path</div>
+      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+        ${writerView === 'wizard' ? writerBreadcrumb() : `<div class="view-head-meta">Generated documents</div>`}
+        ${writerView === 'wizard' && writerWizardStep > 1 ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="writerStartNewDocument()">+ New document</button>` : ''}
+        <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px;margin-left:${writerView === 'wizard' ? '0' : 'auto'}"
+                onclick="writerView='${writerView === 'wizard' ? 'documents' : 'wizard'}';repaintView('writer')">
+          ${writerView === 'wizard' ? 'Documents' : '← Back to Writer'}</button>
+      </div>
     </div>
 
     <div class="card">
-      <div class="card-header" style="flex-wrap:wrap;gap:0.6rem">
-        <div class="task-tabs">
-          <button class="task-tab${writerTab === 'registry' ? ' on' : ''}" onclick="setWriterTab('registry')">Archetypes <span>${WRITER_ARCHETYPES.length}</span></button>
-          <button class="task-tab${writerTab === 'studio' ? ' on' : ''}" onclick="setWriterTab('studio')">Studio <span>${writerActiveArchetype ? escHtml(writerActiveArchetype.title) : 'None selected'}</span></button>
-        </div>
-        <div style="display:flex;gap:0.4rem;align-items:center;margin-left:auto">
-          <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="loadWriterArchetypes(true)">Refresh</button>
-        </div>
-      </div>
-
-      ${writerTab === 'registry' ? renderWriterRegistry() : renderWriterStudio()}
+      ${writerView === 'documents' ? renderWriterDocuments()
+        : writerWizardStep === 1 ? renderWriterStepTarget()
+        : writerWizardStep === 2 ? renderWriterStepArchetype()
+        : renderWriterStudio()}
     </div>`;
 }
 
-function renderWriterRegistry() {
+function writerStartNewDocument() {
+  writerWizardStep = 1;
+  writerActiveArchetype = null;
+  writerContent = {};
+  writerPendingDraft = null;
+  writerLastResult = null;
+  writerPreviewMd = '';
+  writerBrief = '';
+  repaintView('writer');
+}
+
+// ── BA26081811: generated-documents list ──────────────────────────────────
+let WRITER_DOCS = null;
+let writerDocsFilter = { archetypeId: '', targetKind: '', status: 'active' };
+
+async function loadWriterDocs(force = false) {
+  if (WRITER_DOCS && !force) return;
+  try {
+    const q = new URLSearchParams();
+    if (writerDocsFilter.archetypeId) q.set('archetypeId', writerDocsFilter.archetypeId);
+    if (writerDocsFilter.targetKind) q.set('targetKind', writerDocsFilter.targetKind);
+    if (writerDocsFilter.status) q.set('status', writerDocsFilter.status);
+    const r = await fetch(`/api/generate/docs?${q}`);
+    const d = await r.json();
+    WRITER_DOCS = d.docs || [];
+    // Feeds BA26081810's recency-ordered archetype picker -- most recent
+    // CREATED_AT first (server already sorts that way), deduped.
+    WRITER_RECENT_ARCHETYPE_IDS = [...new Set(WRITER_DOCS.map(x => x.ARCHETYPE_ID))];
+  } catch (e) { WRITER_DOCS = []; }
+  if (currentView === 'writer') repaintView('writer');
+}
+function writerDocsSetFilter(patch) { Object.assign(writerDocsFilter, patch); loadWriterDocs(true); }
+
+function renderWriterDocuments() {
+  if (!WRITER_DOCS) { loadWriterDocs(); return `<div class="reader-loading"><div class="spinner-inline"></div><div>Reading generated documents…</div></div>`; }
+  const archetypeNames = new Map((WRITER_ARCHETYPES || []).map(a => [a.id, a.title]));
+
+  return `
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.7rem">
+      <select class="task-select" style="font-size:0.72rem" onchange="writerDocsSetFilter({status:this.value})">
+        ${['active', 'archived', 'deleted'].map(s => `<option value="${s}" ${writerDocsFilter.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+      </select>
+      <select class="task-select" style="font-size:0.72rem" onchange="writerDocsSetFilter({targetKind:this.value})">
+        <option value="">all targets</option>
+        ${['engagement', 'project', 'general'].map(k => `<option value="${k}" ${writerDocsFilter.targetKind === k ? 'selected' : ''}>${k}</option>`).join('')}
+      </select>
+      <span style="font-size:0.72rem;color:var(--text-3);margin-left:auto">${WRITER_DOCS.length} document${WRITER_DOCS.length === 1 ? '' : 's'}</span>
+    </div>
+    ${!WRITER_DOCS.length ? `<div class="empty-state">Nothing here yet. Generate a document and it'll show up in this list.</div>` : `
+      <div class="inbox-list">
+        ${WRITER_DOCS.map(d => `
+          <div class="inbox-item">
+            <div class="inbox-head" style="cursor:default">
+              <span class="inbox-sender">${escHtml(archetypeNames.get(d.ARCHETYPE_ID) || d.ARCHETYPE_ID)}</span>
+              <span class="inbox-title">${escHtml(d.FILENAME)}${d.TARGET_LABEL && d.TARGET_LABEL !== '-' ? ` · ${escHtml(d.TARGET_LABEL)}` : ''}</span>
+              ${d.TASK_ID && d.TASK_ID !== '-' ? `<span class="inbox-tag">task ${escHtml(d.TASK_ID)}</span>` : ''}
+              <span class="inbox-date">${escHtml(d.CREATED_AT)}</span>
+            </div>
+            <div class="inbox-actions" style="padding:0 0.4rem 0.6rem 0.4rem">
+              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocDownload('${escAttr(d.ID)}')">Download</button>
+              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocEdit('${escAttr(d.ID)}')">Edit</button>
+              ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-' ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">View on OneDrive ↗</a>` : ''}
+              ${d.TARGET_KIND === 'project' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocAttach('${escAttr(d.ID)}')">Attach to task</button>`
+                : `<span style="font-size:0.68rem;color:var(--text-3)" title="Only project-target documents can be attached to a task">Attach to task</span>`}
+              ${d.STATUS === 'active' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','archived')">Archive</button>`
+                : d.STATUS === 'archived' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','active')">Restore</button>` : ''}
+              <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerDocSetStatus('${escAttr(d.ID)}','deleted')">Delete</button>
+            </div>
+          </div>`).join('')}
+      </div>`}
+  `;
+}
+
+function writerDocDownload(id) {
+  const d = (WRITER_DOCS || []).find(x => x.ID === id);
+  fetch(`/api/generate/docs/download?id=${encodeURIComponent(id)}`).then(r => r.json()).then(data => {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    const bytes = atob(data.base64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    const blob = new Blob([arr], { type: data.contentType });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = data.filename; a.click();
+    URL.revokeObjectURL(a.href);
+  }).catch(e => showToast(e.message, 'error'));
+}
+
+async function writerDocSetStatus(id, status) {
+  if (status === 'deleted' && !await uiConfirm({ title: 'Delete this generated document?',
+    body: 'The rendered files are removed from disk. The row stays on record, hidden by default.', confirmLabel: 'Delete', danger: true })) return;
+  const r = await fetch('/api/generate/docs/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) });
+  const d = await r.json();
+  showToast(d.success ? 'Updated' : (d.error || 'Refused'), d.success ? 'success' : 'error');
+  await loadWriterDocs(true);
+}
+
+/** "Edit" is genuinely just re-opening the studio pre-filled from the
+ *  stored content.json and re-running generate -- output.js's own doc
+ *  comment already frames it this way, this isn't a new capability. */
+async function writerDocEdit(id) {
+  try {
+    const r = await fetch(`/api/generate/docs/content?id=${encodeURIComponent(id)}`);
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    const a = (WRITER_ARCHETYPES || []).find(x => x.id === data.archetypeId);
+    if (!a) { showToast(`Archetype "${data.archetypeId}" not found in the current registry`, 'error'); return; }
+    writerTargetKind = data.targetKind || 'general';
+    writerTargetId = data.targetId || '';
+    writerTargetLabel = data.targetLabel || '';
+    writerActiveArchetype = a;
+    writerContent = { ...data.content };
+    writerPendingDraft = null;
+    writerLastResult = null;
+    writerPreviewMd = '';
+    writerView = 'wizard';
+    writerWizardStep = 3;
+    repaintView('writer');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+/** uiPrompt() is free-text only, no select support -- a small dedicated
+ *  dropdown picker for this one case rather than stretching that helper. */
+function uiSelectPrompt({ title, options, confirmLabel = 'Choose' }) {
+  return new Promise(resolve => {
+    document.getElementById('ui-prompt')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'ui-prompt';
+    ov.className = 'modal-overlay';
+    const done = (val) => { ov.remove(); document.removeEventListener('keydown', onKey); resolve(val); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); done(null); } };
+    ov.innerHTML = `
+      <div class="modal-box ui-dialog">
+        <div class="modal-header"><span class="modal-title">${escHtml(title)}</span>
+          <button class="btn btn-ghost" data-no>✕</button></div>
+        <div class="modal-body">
+          <select id="ui-prompt-select" class="input">
+            ${options.map(o => `<option value="${escAttr(o.value)}">${escHtml(o.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" data-cancel>Cancel</button>
+          <button class="btn btn-primary" data-ok>${escHtml(confirmLabel)}</button>
+        </div>
+      </div>`;
+    ov.onclick = (e) => { if (e.target === ov) done(null); };
+    ov.querySelector('[data-no]').onclick = () => done(null);
+    ov.querySelector('[data-cancel]').onclick = () => done(null);
+    ov.querySelector('[data-ok]').onclick = () => done(ov.querySelector('#ui-prompt-select').value);
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+async function writerDocAttach(id) {
+  try {
+    const r = await fetch(`/api/generate/docs/tasks?id=${encodeURIComponent(id)}`);
+    const data = await r.json();
+    const tasks = data.tasks || [];
+    if (!tasks.length) { showToast('No tasks on this document\'s project to attach to', 'warn'); return; }
+    const choice = await uiSelectPrompt({ title: 'Attach to task', options: tasks.map(t => ({ value: t.ID, label: t.TITLE || t.ID })), confirmLabel: 'Attach' });
+    if (!choice) return;
+    const ar = await fetch('/api/generate/docs/attach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, taskId: choice }) });
+    const ad = await ar.json();
+    showToast(ad.success ? 'Attached' : (ad.error || 'Refused'), ad.success ? 'success' : 'error');
+    await loadWriterDocs(true);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+/** Step 1: "Draft for" target picker, now the wizard's own landing (was
+ *  embedded inline above the flat archetype list before this row). */
+function renderWriterStepTarget() {
   return `
     ${renderWriterTargetPicker()}
+    <div style="display:flex;justify-content:flex-end;margin-top:0.6rem">
+      <button class="btn btn-primary" style="font-size:0.78rem;padding:5px 14px" onclick="writerWizardStep=2;repaintView('writer')">Continue →</button>
+    </div>`;
+}
 
-    ${!WRITER_ARCHETYPES.length ? `<div class="empty-state" style="text-align:left;padding:1rem 0">No archetypes in "${escHtml(writerNamespace)}" (or _common). Add one under scope/lib/generate/archetypes/.</div>` : `
+/** Step 2: archetype picker, recency-ordered where data exists (see
+ *  orderArchetypesByRecency above). */
+function renderWriterStepArchetype() {
+  const list = orderArchetypesByRecency(WRITER_ARCHETYPES);
+  return `
+    ${!list.length ? `<div class="empty-state" style="text-align:left;padding:1rem 0">No archetypes in "${escHtml(writerNamespace)}" (or _common). Add one under scope/lib/generate/archetypes/.</div>` : `
       <div class="art-list" style="display:flex;flex-direction:column;gap:0.6rem">
-        ${WRITER_ARCHETYPES.map(a => `
+        ${list.map(a => `
           <div class="art-item" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-raised);border:1px solid var(--border);padding:0.7rem 0.9rem;border-radius:var(--r-md)">
             <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
               <div style="display:flex;align-items:center;gap:0.5rem">
@@ -5979,7 +6287,7 @@ function renderWriterRegistry() {
                 ${escHtml(a.id)} · ${a.fields.length} field${a.fields.length === 1 ? '' : 's'}
               </div>
             </div>
-            <button class="btn btn-primary" style="font-size:0.75rem;padding:3px 10px" onclick="openWriterStudio('${escAttr(a.id)}')">Open in Studio</button>
+            <button class="btn btn-primary" style="font-size:0.75rem;padding:3px 10px" onclick="openWriterStudio('${escAttr(a.id)}')">Choose</button>
           </div>`).join('')}
       </div>`}
   `;
@@ -6047,8 +6355,6 @@ function onWriterTargetPick(id) {
   }
 }
 
-function setWriterTab(tab) { writerTab = tab; repaintView('writer'); }
-
 /** Mirrors scope/lib/generate/naming.js's slugify() exactly (lowercase,
  *  non-alphanumeric runs -> one hyphen, trimmed) - the prefill has to
  *  slugify client-side the same way naming.js will slugify server-side at
@@ -6058,26 +6364,71 @@ function writerSlug(s) {
   return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
+/** Draft autosave (BA26081810) -- until BA26081811's content.json/
+ *  generated_docs.tsv mechanism exists server-side, this is client-side
+ *  localStorage, keyed by exactly what makes a draft resumable: which
+ *  target + which archetype. Debounced so every keystroke doesn't thrash
+ *  storage; the wizard having MORE steps than Notepad's blank page must
+ *  never mean typed work is riskier to lose, per the row's own framing. */
+function writerDraftKey() {
+  if (!writerActiveArchetype) return null;
+  return `isconl.writerDraft.${writerTargetKind}.${writerTargetId || 'general'}.${writerActiveArchetype.id}`;
+}
+let writerAutosaveTimer = null;
+function writerAutosave() {
+  const key = writerDraftKey();
+  if (!key) return;
+  clearTimeout(writerAutosaveTimer);
+  writerAutosaveTimer = setTimeout(() => {
+    try { localStorage.setItem(key, JSON.stringify({ content: writerContent, savedAt: Date.now() })); } catch {}
+  }, 800);
+}
+function writerRestoreDraft(archetypeId) {
+  const key = writerDraftKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    return d && d.content ? d : null;
+  } catch { return null; }
+}
+function writerDiscardDraft() {
+  const key = writerDraftKey();
+  if (key) { try { localStorage.removeItem(key); } catch {} }
+  writerContent = {};
+  repaintView('writer');
+}
+
 function openWriterStudio(archetypeId) {
   const a = (WRITER_ARCHETYPES || []).find(x => x.id === archetypeId);
   if (!a) return;
   writerActiveArchetype = a;
   writerContent = {};
-  // Intelligent naming, guided by the target picked in the Registry tab
-  // (17 Aug ask) rather than free-typed: the archetype's own two filename
-  // slots are pre-filled from the target's slug + kind. Still plain,
-  // editable text fields - a starting point, not a lock.
+  // Intelligent naming, guided by the target picked in step 1 rather than
+  // free-typed: the archetype's own two filename slots are pre-filled from
+  // the target's slug + kind. Still plain, editable text fields - a
+  // starting point, not a lock.
   if (a.filenameFields && writerTargetId) {
     const targetSlug = writerSlug(writerTargetId);
     const kindSlug = writerTargetKind === 'engagement' ? 'engagement' : writerTargetKind === 'project' ? 'project' : '';
     if (a.filenameFields.primary) writerContent[a.filenameFields.primary] = targetSlug;
     if (a.filenameFields.secondary && kindSlug) writerContent[a.filenameFields.secondary] = kindSlug;
   }
+  const draft = writerRestoreDraft(archetypeId);
+  writerPendingDraft = draft;   // offered as a resume banner in step 3, not silently applied over the fresh prefill
   writerPreviewMd = '';
   writerLastResult = null;
-  writerTab = 'studio';
+  writerWizardStep = 3;
   repaintView('writer');
 }
+let writerPendingDraft = null;
+function writerResumeDraft() {
+  if (writerPendingDraft) writerContent = { ...writerContent, ...writerPendingDraft.content };
+  writerPendingDraft = null;
+  repaintView('writer');
+}
+function writerDismissDraftBanner() { writerPendingDraft = null; repaintView('writer'); }
 
 /** Raw form-field text -> the value shape doc-builder.js's archetype.build() expects.
  *  Mirrors the `type`/`keys` convention each archetype's `fields` schema declares
@@ -6111,31 +6462,67 @@ function buildWriterContentPayload() {
 function renderWriterField(field) {
   const val = writerContent[field.name] || '';
   const label = `${escHtml(field.label || field.name)}${field.required ? ' <span style="color:var(--red,#e5534b)">*</span>' : ''}`;
-  const common = `oninput="writerContent['${escAttr(field.name)}']=this.value"`;
+  const common = `oninput="writerContent['${escAttr(field.name)}']=this.value;writerAutosave()"`;
+  const fieldId = `wf-${field.name}`;
 
   let control;
   if (field.type === 'select') {
-    control = `<select class="input" style="font-size:0.8rem" onchange="writerContent['${escAttr(field.name)}']=this.value">
+    control = `<select class="input" style="font-size:0.8rem" onchange="writerContent['${escAttr(field.name)}']=this.value;writerAutosave()">
       <option value="">Select…</option>
       ${(field.options || []).map(o => `<option value="${escAttr(o)}" ${val === o ? 'selected' : ''}>${escHtml(o)}</option>`).join('')}
     </select>`;
   } else if (field.type === 'textarea' || field.type === 'list' || field.type === 'reasoned-list' || field.type === 'table-list') {
     const rows = field.type === 'textarea' ? 3 : 4;
-    control = `<textarea class="input" style="font-size:0.8rem;font-family:var(--font-mono)" rows="${rows}" ${common}>${escHtml(val)}</textarea>`;
+    control = `<textarea id="${fieldId}" class="input" style="font-size:0.8rem;font-family:var(--font-mono)" rows="${rows}" ${common}>${escHtml(val)}</textarea>`;
   } else {
-    control = `<input type="text" class="input" style="font-size:0.8rem" value="${escAttr(val)}" ${common}/>`;
+    control = `<input id="${fieldId}" type="text" class="input" style="font-size:0.8rem" value="${escAttr(val)}" ${common}/>`;
   }
 
   return `
     <div style="display:flex;flex-direction:column;gap:0.3rem">
-      <label style="font-size:0.72rem;color:var(--text-3)">${label}</label>
+      <div style="display:flex;align-items:center;gap:0.4rem">
+        <label style="font-size:0.72rem;color:var(--text-3)">${label}</label>
+        <button class="writer-ai-field-btn" title="Research this field with AI, using the brief above"
+                onclick="writerResearchField('${escAttr(field.name)}',this)">✨</button>
+      </div>
       ${control}
     </div>`;
 }
 
+/** BA26081810's layout-metadata renderer -- ONE generic form renderer that
+ *  adapts presentation to hints on the archetype/fields instead of a
+ *  bespoke UI per archetype. Backward compatible: an archetype with no
+ *  `section`/`layout` metadata (every archetype today) renders exactly as
+ *  before, flat and stacked. `layout:'header-block'` on the archetype
+ *  renders every field as a compact single row (to/cc/subject shape);
+ *  otherwise fields carrying a `section` name group into collapsible
+ *  fieldsets, unsectioned fields render flat above/below the groups in
+ *  their original order. */
+function renderWriterFields(a) {
+  if (a.layout === 'header-block') {
+    return `<div class="writer-header-block">${a.fields.map(renderWriterField).join('')}</div>`;
+  }
+  const hasSections = a.fields.some(f => f.section);
+  if (!hasSections) return a.fields.map(renderWriterField).join('');
+
+  const sections = [];
+  const bySection = new Map();
+  for (const f of a.fields) {
+    const key = f.section || null;
+    if (!bySection.has(key)) { bySection.set(key, []); sections.push(key); }
+    bySection.get(key).push(f);
+  }
+  return sections.map(key => key === null
+    ? bySection.get(key).map(renderWriterField).join('')
+    : `<details class="writer-section" open>
+         <summary class="writer-section-title">${escHtml(key)}</summary>
+         <div class="writer-section-body">${bySection.get(key).map(renderWriterField).join('')}</div>
+       </details>`).join('');
+}
+
 function renderWriterStudio() {
   if (!writerActiveArchetype) {
-    return `<div class="empty-state" style="text-align:left;padding:1rem 0">Pick an archetype from the Archetypes tab to start a document.</div>`;
+    return `<div class="empty-state" style="text-align:left;padding:1rem 0">Pick an archetype to start a document.</div>`;
   }
   const a = writerActiveArchetype;
 
@@ -6147,13 +6534,27 @@ function renderWriterStudio() {
           <div style="font-size:0.7rem;color:var(--text-3);font-family:var(--font-mono)">${escHtml(writerNamespace)} / ${escHtml(a.id)}</div>
           ${writerTargetLabel ? `<div style="font-size:0.72rem;color:var(--text-2);margin-top:2px">Drafting for <strong>${escHtml(writerTargetLabel)}</strong></div>` : ''}
         </div>
-        <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="setWriterTab('registry')">← Back to Archetypes</button>
+        <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="writerGoToStep(2)">← Back to Archetypes</button>
+      </div>
+
+      ${writerPendingDraft ? `
+        <div class="writer-draft-banner" style="display:flex;align-items:center;gap:0.6rem;background:var(--amber-bg,rgba(210,153,34,0.1));border:1px solid var(--amber-dim);border-radius:var(--r-md);padding:0.5rem 0.8rem;margin-bottom:0.7rem;font-size:0.76rem;color:var(--text-2)">
+          <span>An autosaved draft from ${new Date(writerPendingDraft.savedAt).toLocaleString()} is available for this document.</span>
+          <button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerResumeDraft()">Resume draft</button>
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDismissDraftBanner()">Start fresh</button>
+        </div>` : ''}
+
+      <div class="writer-ai-bar">
+        <textarea id="writer-brief" class="input" style="font-size:0.78rem;flex:1;min-height:2.2rem"
+                  placeholder="Brief for AI assist (used by both the per-field ✨ buttons and Full draft below) — what is this document about?"
+                  oninput="writerBrief=this.value">${escHtml(writerBrief)}</textarea>
+        <button class="btn btn-ghost" id="writer-full-draft-btn" style="font-size:0.75rem;padding:4px 10px;white-space:nowrap" onclick="writerFullDraft(this)">✨ Full draft (all fields)</button>
       </div>
 
       <div class="art-studio-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:0.85rem">
         <!-- Content form -->
         <div style="display:flex;flex-direction:column;gap:0.6rem;max-height:600px;overflow-y:auto;padding-right:0.4rem">
-          ${a.fields.map(renderWriterField).join('')}
+          ${renderWriterFields(a)}
         </div>
 
         <!-- Preview + generate -->
@@ -6182,6 +6583,9 @@ function renderWriterStudio() {
                   <span style="font-size:0.75rem;color:var(--text-2);font-family:var(--font-mono)">${escHtml(f.filename)} · ${(f.bytes/1024).toFixed(1)} KB</span>
                   <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="downloadWriterFile('${ext}')">Download</button>
                 </div>`).join('')}
+              ${writerLastResult.onedriveWebUrl
+                ? `<a class="btn btn-ghost doc-act" style="font-size:0.72rem;padding:3px 9px;align-self:flex-start" href="${escAttr(writerLastResult.onedriveWebUrl)}" target="_blank" rel="noreferrer">View / Edit on OneDrive ↗</a>`
+                : writerTargetKind === 'general' ? `<span style="font-size:0.68rem;color:var(--text-3)">Not yet on OneDrive -- push may have failed, retry from the Documents list.</span>` : ''}
             </div>` : ''}
         </div>
       </div>
@@ -6208,6 +6612,63 @@ async function previewWriterDoc(btn) {
   }
 }
 
+/** BA26081812's per-field mode: proposes ONE field's value, using the
+ *  shared brief plus every other field already filled in as context.
+ *  Lands directly in that field's own input control, exactly like manual
+ *  typing would -- reviewable/editable before Generate, never applied
+ *  silently. */
+async function writerResearchField(fieldName, btn) {
+  const a = writerActiveArchetype;
+  if (!a) return;
+  const field = (a.fields || []).find(f => f.name === fieldName);
+  if (!field) return;
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await fetch('/api/writer/research-field', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archetypeId: a.id, field: { name: field.name, label: field.label, type: field.type },
+        brief: writerBrief, otherFieldValues: buildWriterContentPayload() }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'AI research failed');
+    writerContent[fieldName] = d.value;
+    writerAutosave();
+    const el = document.getElementById(`wf-${fieldName}`);
+    if (el) el.value = d.value; else repaintView('writer');
+  } catch (e) { showToast(e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
+}
+
+/** BA26081812's fast mode: proposes every field at once from the shared
+ *  brief. Same landing rule as the per-field mode -- fills the input form,
+ *  never generates unreviewed. */
+async function writerFullDraft(btn) {
+  const a = writerActiveArchetype;
+  if (!a) return;
+  if (!writerBrief.trim()) { showToast('Write a brief first -- full draft needs something to work from', 'warn'); return; }
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Drafting…'; }
+  try {
+    const r = await fetch('/api/writer/full-draft', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archetypeId: a.id, fields: a.fields.map(f => ({ name: f.name, label: f.label, type: f.type })), brief: writerBrief }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'AI full draft failed');
+    for (const [name, value] of Object.entries(d)) {
+      // List-type fields come back as arrays (the archetype's schema, not
+      // the model's own judgment, decides this) -- rejoin to the same
+      // newline-per-item raw text the textarea/parseWriterFieldValue expect.
+      writerContent[name] = Array.isArray(value) ? value.join('\n') : value;
+    }
+    writerAutosave();
+    repaintView('writer');
+    showToast('Draft filled in -- review before generating', 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
+}
+
 async function generateWriterDoc(btn) {
   const formats = Object.entries(writerFormats).filter(([, on]) => on).map(([f]) => f);
   if (!formats.length) { showToast('Pick at least one format to generate', 'error'); return; }
@@ -6216,11 +6677,18 @@ async function generateWriterDoc(btn) {
   try {
     const r = await fetch('/api/generate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ namespace: writerNamespace, archetypeId: writerActiveArchetype.id, content: buildWriterContentPayload(), formats }),
+      body: JSON.stringify({ namespace: writerNamespace, archetypeId: writerActiveArchetype.id, content: buildWriterContentPayload(), formats,
+        targetKind: writerTargetKind, targetId: writerTargetId, targetLabel: writerTargetLabel }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Generate failed');
     writerLastResult = d;
+    // A successfully generated document's draft has served its purpose --
+    // clearing it means reopening this archetype/target combo later starts
+    // clean rather than re-offering a now-stale "resume?" banner.
+    const key = writerDraftKey();
+    if (key) { try { localStorage.removeItem(key); } catch {} }
+    WRITER_DOCS = null;   // BA26081811's list is now stale -- refetch next time it's opened
     repaintView('writer');
     showToast('Document generated', 'success');
   } catch (e) {

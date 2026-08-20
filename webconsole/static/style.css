@@ -104,9 +104,20 @@ body.hover-motion-off {
   --hover-transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 
-/* ── SPACE-SPECIFIC PALETTES & TAILORED HOVER STATES ── */
-body[data-view="circle"],
-body[data-view="contacts"] {
+/* ── SPACE-SPECIFIC PALETTES & TAILORED HOVER STATES ──
+   FT26081805 (20 Aug 2026): these used to be set on `body[data-view=...]`
+   directly, which redefines the GLOBAL --green*/--panel-hover custom
+   properties for the whole document -- since --mc-command (:root, above)
+   is itself `var(--green-bright)`, that meant selecting Planning (or
+   Scope/Tasks/Jira/etc.) recolored the Command nav group and everything
+   else on the page that reads --green*, not just that view's own content.
+   Scoped to `#view-container` instead -- the same wrapper the space-accent
+   content-hover rules below already established (BR26081801, 18 Aug):
+   #view-container is a SIBLING of .sidebar/.chat-rail, not their ancestor,
+   so this palette now only cascades to the view's own rendered content,
+   never to the nav/sidebar/rail. */
+body[data-view="circle"] #view-container,
+body[data-view="contacts"] #view-container {
   --panel-hover: #221c2e;
   --green: #bc8cff;
   --green-bright: #d2a8ff;
@@ -116,10 +127,10 @@ body[data-view="contacts"] {
   --green-glow: rgba(188, 140, 255, 0.35);
 }
 
-body[data-view="scope"],
-body[data-view="tasks"],
-body[data-view="jira"],
-body[data-view="planning"] {
+body[data-view="scope"] #view-container,
+body[data-view="tasks"] #view-container,
+body[data-view="jira"] #view-container,
+body[data-view="planning"] #view-container {
   --panel-hover: #162232;
   --green: #58a6ff;
   --green-bright: #79c0ff;
@@ -129,9 +140,9 @@ body[data-view="planning"] {
   --green-glow: rgba(88, 166, 255, 0.35);
 }
 
-body[data-view="ideas"],
-body[data-view="learning"],
-body[data-view="campus"] {
+body[data-view="ideas"] #view-container,
+body[data-view="learning"] #view-container,
+body[data-view="campus"] #view-container {
   --panel-hover: #2a2214;
   --green: #d29922;
   --green-bright: #e3b341;
@@ -141,9 +152,9 @@ body[data-view="campus"] {
   --green-glow: rgba(210, 153, 34, 0.35);
 }
 
-body[data-view="pulse"],
-body[data-view="today"],
-body[data-view="calendar"] {
+body[data-view="pulse"] #view-container,
+body[data-view="today"] #view-container,
+body[data-view="calendar"] #view-container {
   --panel-hover: #1b271e;
   --green: #3fb950;
   --green-bright: #56d364;
@@ -3344,6 +3355,63 @@ body[data-callout-theme="muted"] .lesson-body {
 .inbox-actions { display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;
   padding:0 0.4rem 0.7rem 1.35rem; }
 
+/* ── INBOX THREADS (BM26081807) ── one scrollable per-person thread,
+   Signal/WhatsApp-style bubbles, instead of a flat message list. Left
+   column is the thread roster (one row per person), right column the
+   selected person's messages, oldest first, self-authored ones right-
+   aligned via .inbox-bubble-row.out. */
+.inbox-threads { display:flex; gap:0; min-height:0; height:min(60vh, 640px); border-top:1px solid var(--border); }
+.inbox-thread-list { width:15rem; flex-shrink:0; overflow-y:auto; border-right:1px solid var(--border); }
+.inbox-thread-row {
+  display:flex; align-items:center; gap:0.5rem; padding:0.6rem 0.6rem;
+  cursor:pointer; border-bottom:1px solid var(--border); border-left:2px solid transparent;
+  min-width:0; transition:var(--hover-transition);
+}
+.inbox-thread-row:hover { background:var(--hover-bg); border-left-color:var(--hover-border); }
+.inbox-thread-row.on { background:var(--bg-raised); border-left-color:var(--green-dim); }
+.inbox-thread-name { flex-shrink:0; font-size:0.78rem; color:var(--text); font-weight:600;
+  max-width:6rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inbox-thread-unread { flex-shrink:0; font-size:0.62rem; color:var(--bg); background:var(--green);
+  border-radius:999px; padding:1px 6px; font-weight:700; }
+.inbox-thread-preview { flex:1; min-width:0; font-size:0.72rem; color:var(--text-3);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inbox-thread-date { flex-shrink:0; font-size:0.62rem; color:var(--text-3); font-variant-numeric:tabular-nums; }
+.inbox-thread-view { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+.inbox-thread-head { display:flex; align-items:center; gap:0.6rem; padding:0.6rem 0.8rem;
+  border-bottom:1px solid var(--border); flex-shrink:0; }
+.inbox-thread-head-name { font-size:0.85rem; font-weight:650; color:var(--text); }
+.inbox-thread-head-meta { font-size:0.68rem; color:var(--text-3); }
+.inbox-bubbles { flex:1; overflow-y:auto; padding:0.8rem; display:flex; flex-direction:column; gap:0.5rem; }
+.inbox-bubble-row { display:flex; align-items:flex-end; gap:0.4rem; max-width:100%; }
+.inbox-bubble-row.out { flex-direction:row-reverse; margin-left:3rem; }
+.inbox-bubble-row.in { margin-right:3rem; }
+.inbox-bubble {
+  background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--r-md,10px);
+  padding:0.5rem 0.7rem; cursor:pointer; min-width:0; max-width:32rem;
+}
+.inbox-bubble-row.out .inbox-bubble { background:var(--green-dim); border-color:var(--green); }
+.inbox-bubble.unread { border-color:var(--green-dim); }
+.inbox-bubble-meta { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.2rem; }
+.inbox-bubble-body { font-size:0.8rem; color:var(--text); line-height:1.55; white-space:pre-wrap;
+  word-break:break-word; }
+
+/* ── WRITER WIZARD layout-metadata renderer (BA26081810) ── */
+.writer-header-block { display:flex; flex-direction:column; gap:0.4rem; background:var(--bg-raised);
+  border:1px solid var(--border); border-radius:var(--r-md); padding:0.6rem 0.8rem; }
+.writer-section { border:1px solid var(--border); border-radius:var(--r-md); overflow:hidden; }
+.writer-section + .writer-section { margin-top:0.5rem; }
+.writer-section-title { cursor:pointer; padding:0.5rem 0.7rem; font-size:0.74rem; font-weight:600;
+  text-transform:uppercase; letter-spacing:0.05em; color:var(--text-2); background:var(--bg-raised); }
+.writer-section-body { display:flex; flex-direction:column; gap:0.6rem; padding:0.7rem; }
+/* BA26081812: AI assist bar + per-field affordance. */
+.writer-ai-bar { display:flex; gap:0.5rem; align-items:flex-start; margin-bottom:0.7rem; }
+.writer-ai-field-btn {
+  border:none; background:transparent; cursor:pointer; font-size:0.72rem; line-height:1;
+  padding:1px 4px; border-radius:var(--r-sm,4px); color:var(--text-3); opacity:0.6;
+}
+.writer-ai-field-btn:hover { opacity:1; background:var(--bg-raised); color:var(--text); }
+.writer-ai-field-btn:disabled { opacity:0.3; cursor:default; }
+
 /* ── EQUICYCLE CALENDAR ──
    The cycle's 28 days as two sprint fortnights. Each cell knows its Gregorian
    date; the two lenses show the same events, differently framed. */
@@ -5260,6 +5328,10 @@ textarea.draft-message:focus, textarea.ro-body:focus {
 .reader-body .lesson-body { font-size:0.84rem; }           /* the lesson look, slightly compacted for the rail */
 .reader-body img { max-width:100%; border-radius:var(--r-md); display:block; margin:0 auto; }
 .reader-body iframe.reader-pdf { width:100%; height:100%; min-height:70vh; border:0; border-radius:var(--r-md); background:#fff; }
+/* BG26081806: Office Online embed + audio player tiers in the Context reader dock. */
+.reader-office { width:100%; height:100%; min-height:70vh; border:0; border-radius:var(--r-md); background:#fff; }
+.reader-audio-wrap { display:flex; justify-content:center; padding:2rem 0; }
+.reader-audio { width:100%; max-width:28rem; }
 .reader-pre {
   white-space:pre-wrap; word-break:break-word;
   font-family:'JetBrains Mono', ui-monospace, monospace;
