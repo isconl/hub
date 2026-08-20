@@ -38,7 +38,7 @@
 | ✅ | **GitHub CI: secrets-scan failing across all repos** | `hub: aed4e31`, `scope: d1ffde4`. All 6 repos CI GREEN. |
 | ✅ | **Branch lockstep: dev/main/staging synced** | All 6 repos aligned and pushed to remote. |
 | ✅ | **Grand campus audit: all 11 courses (123/123 modules)** | All upgraded to full depth standard (Book, Research, Fun fact, Jargon, Watch for, Objectives). |
-| ✅ | **Bundled portable Chatterbox TTS engine** | `vault/scripts/tts_service.py`, `vault/lib/narration.js`, `hub/scripts/dev-local.sh`. Runs at http://127.0.0.1:5001. Female narrator voice, seed 482193. ElevenLabs fallback retained. |
+| ✅ | **Bundled portable Chatterbox TTS engine** | `vault/scripts/tts_service.py`, `vault/lib/narration.js`, `hub/scripts/dev-local.sh`. Runs at http://127.0.0.1:5001. Female narrator voice, seed 482193. |
 | ✅ | **Unified monochrome SVG icon standard** | 38+ icons in SVG_ICONS/svgIcon() in app.js. Documented in hub/docs/design-system.md + vault/memory + _handoff. |
 | ✅ | **Custom scrollbars across whole UI** | Elegant minimal scrollbars in style.css. |
 | ✅ | **Alert/toast positioning: right 1rem, bottom 2rem** | style.css .vault-banner and toast stack repositioned. |
@@ -68,13 +68,14 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| N1 | **ElevenLabs narration audio generation** | 🔴 Blocked | BLOCKED: ElevenLabs subscription past-due. Clear at elevenlabs.io. Voice: Clara Louise (Bk8cLrXXi9WCZ4GQU4Ah), eleven_multilingual_v2. Chatterbox TTS is active fallback (local, portable, female narrator). |
 | B1 | **Self-improving background insight engine** | 🔴 Blocked | MS365 MCP connector connected at claude.ai but not yet visible to routines. Re-check /schedule connector list — may have propagated. Plan: daily cron reads campus.tsv/theme_days.tsv/plans.tsv, writes improved curated rows. |
 
 ### Tier 3 — Medium impact, lower urgency
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
+| IN1 | **Guard against served static assets being truncated mid-write** | ⬜ Queued | Logged 20 Aug 2026 from INC-003 (`_handoff/INCIDENTS.md`): `webconsole/static/app.js` was found truncated from 17,999 to 259 lines, uncommitted, cutting off mid-statement — an interrupted write from an unidentified process, served as-is by the dev server since there's no build step/cache in front of static files. Fixed by `git checkout`. Consider atomic temp-file+rename for any tool that regenerates `app.js`, and/or a boot-time sanity check (min line count / doesn't end mid-statement) that refuses to serve or alerts. Origin process never identified — if it recurs, check what was writing to the file. |
+| IN2 | **Investigate/clean up `.git.corrupted-20260817/`** | ⬜ Queued | Logged 20 Aug 2026. Untracked 14MB directory sitting at the `hub` repo root, structurally a full `.git` dir (HEAD/index/objects/refs, last touched 17 Aug 03:59 EAT — same morning as `INC-001`). Not referenced in any handoff doc found by grep. Current `.git` is healthy (`git fsck` shows only ordinary dangling commits, no corruption). Likely a safety copy made while resolving `INC-001` and never cleaned up. Not urgent — confirm it's safe to delete (or archive outside the repo) before removing; low priority disk cleanup, not a live bug. |
 | D1 | **Deliverables engine** | ⬜ Queued | scope/deliverable_roots.tsv, Graph-resolved paths, naming-convention parser. Design: OneDrive paths via vault Graph client, not hardcoded. |
 | D2 | **Corporate engagement dashboards** | ⬜ Queued | Cards per engagement: days worked, people, master disable toggle. |
 | G1 | **GitHub integration: replace legacy routing** | ⬜ Queued | Replace legacy:true on /api/github/snapshot with native engine routing. |
@@ -104,7 +105,7 @@
 5. **Both AGY and Claude** must update this file at the start and end of each session.
 6. **Zero client/tenant PII in git repos.** All personal data (circle/people.tsv, touches.tsv, dia/ profiles, OneDrive content) lives ONLY in OneDrive. Code repos are open-source & multi-tenant agnostic.
 7. **Icon rule:** every icon in the UI comes from the unified SVG_ICONS / svgIcon() set. No emojis for UI chrome.
-8. **Chatterbox TTS** is the primary local narration engine (http://127.0.0.1:5001). ElevenLabs is the cloud fallback when billing is clear.
+8. **Chatterbox TTS** is the sole narration engine (http://127.0.0.1:5001), local and free.
 
 ---
 
