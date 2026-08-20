@@ -109,19 +109,25 @@ status_one() {
   fi
 }
 
-cmd="${1:-start}"
-case "$cmd" in
-  start)
-    for s in "${SERVICES[@]}"; do IFS=: read -r name port dir <<<"$s"; start_one "$name" "$port" "$dir"; done
-    ;;
-  stop)
-    for s in "${SERVICES[@]}"; do IFS=: read -r name port dir <<<"$s"; stop_one "$name"; done
-    ;;
-  status)
-    for s in "${SERVICES[@]}"; do IFS=: read -r name port dir <<<"$s"; status_one "$name" "$port"; done
-    ;;
-  *)
-    echo "usage: $0 [start|stop|status]" >&2
-    exit 1
-    ;;
-esac
+# Only dispatch a command when run directly (`./dev-local.sh start`) --
+# watchdog.sh (BI26081808) sources this file to reuse SERVICES/start_one/
+# stop_one/status_one without also triggering a `start` as a side effect
+# of the import.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  cmd="${1:-start}"
+  case "$cmd" in
+    start)
+      for s in "${SERVICES[@]}"; do IFS=: read -r name port dir <<<"$s"; start_one "$name" "$port" "$dir"; done
+      ;;
+    stop)
+      for s in "${SERVICES[@]}"; do IFS=: read -r name port dir <<<"$s"; stop_one "$name"; done
+      ;;
+    status)
+      for s in "${SERVICES[@]}"; do IFS=: read -r name port dir <<<"$s"; status_one "$name" "$port"; done
+      ;;
+    *)
+      echo "usage: $0 [start|stop|status]" >&2
+      exit 1
+      ;;
+  esac
+fi
