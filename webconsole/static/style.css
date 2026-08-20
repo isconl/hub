@@ -104,9 +104,20 @@ body.hover-motion-off {
   --hover-transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 
-/* ── SPACE-SPECIFIC PALETTES & TAILORED HOVER STATES ── */
-body[data-view="circle"],
-body[data-view="contacts"] {
+/* ── SPACE-SPECIFIC PALETTES & TAILORED HOVER STATES ──
+   FT26081805 (20 Aug 2026): these used to be set on `body[data-view=...]`
+   directly, which redefines the GLOBAL --green*/--panel-hover custom
+   properties for the whole document -- since --mc-command (:root, above)
+   is itself `var(--green-bright)`, that meant selecting Planning (or
+   Scope/Tasks/Jira/etc.) recolored the Command nav group and everything
+   else on the page that reads --green*, not just that view's own content.
+   Scoped to `#view-container` instead -- the same wrapper the space-accent
+   content-hover rules below already established (BR26081801, 18 Aug):
+   #view-container is a SIBLING of .sidebar/.chat-rail, not their ancestor,
+   so this palette now only cascades to the view's own rendered content,
+   never to the nav/sidebar/rail. */
+body[data-view="circle"] #view-container,
+body[data-view="contacts"] #view-container {
   --panel-hover: #221c2e;
   --green: #bc8cff;
   --green-bright: #d2a8ff;
@@ -116,10 +127,10 @@ body[data-view="contacts"] {
   --green-glow: rgba(188, 140, 255, 0.35);
 }
 
-body[data-view="scope"],
-body[data-view="tasks"],
-body[data-view="jira"],
-body[data-view="planning"] {
+body[data-view="scope"] #view-container,
+body[data-view="tasks"] #view-container,
+body[data-view="jira"] #view-container,
+body[data-view="planning"] #view-container {
   --panel-hover: #162232;
   --green: #58a6ff;
   --green-bright: #79c0ff;
@@ -129,9 +140,9 @@ body[data-view="planning"] {
   --green-glow: rgba(88, 166, 255, 0.35);
 }
 
-body[data-view="ideas"],
-body[data-view="learning"],
-body[data-view="campus"] {
+body[data-view="ideas"] #view-container,
+body[data-view="learning"] #view-container,
+body[data-view="campus"] #view-container {
   --panel-hover: #2a2214;
   --green: #d29922;
   --green-bright: #e3b341;
@@ -141,9 +152,9 @@ body[data-view="campus"] {
   --green-glow: rgba(210, 153, 34, 0.35);
 }
 
-body[data-view="pulse"],
-body[data-view="today"],
-body[data-view="calendar"] {
+body[data-view="pulse"] #view-container,
+body[data-view="today"] #view-container,
+body[data-view="calendar"] #view-container {
   --panel-hover: #1b271e;
   --green: #3fb950;
   --green-bright: #56d364;
