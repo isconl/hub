@@ -3384,6 +3384,15 @@ body[data-callout-theme="muted"] .lesson-body {
 .inbox-bubble-body { font-size:0.8rem; color:var(--text); line-height:1.55; white-space:pre-wrap;
   word-break:break-word; }
 
+/* ── WRITER WIZARD layout-metadata renderer (BA26081810) ── */
+.writer-header-block { display:flex; flex-direction:column; gap:0.4rem; background:var(--bg-raised);
+  border:1px solid var(--border); border-radius:var(--r-md); padding:0.6rem 0.8rem; }
+.writer-section { border:1px solid var(--border); border-radius:var(--r-md); overflow:hidden; }
+.writer-section + .writer-section { margin-top:0.5rem; }
+.writer-section-title { cursor:pointer; padding:0.5rem 0.7rem; font-size:0.74rem; font-weight:600;
+  text-transform:uppercase; letter-spacing:0.05em; color:var(--text-2); background:var(--bg-raised); }
+.writer-section-body { display:flex; flex-direction:column; gap:0.6rem; padding:0.7rem; }
+
 /* ── EQUICYCLE CALENDAR ──
    The cycle's 28 days as two sprint fortnights. Each cell knows its Gregorian
    date; the two lenses show the same events, differently framed. */

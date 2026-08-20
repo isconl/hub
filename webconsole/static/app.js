@@ -5956,7 +5956,7 @@ async function runAiArticleAction(action, btn) {
 // the actual filename. Pre-filled, not locked: still plain text inputs,
 // editable like any other field.
 
-let writerTab = 'registry';           // 'registry' | 'studio'
+let writerWizardStep = 1;             // BA26081810: 1 target, 2 archetype, 3 studio -- replaces the old flat registry/studio tab-swap
 let writerNamespace = '_common';      // which archetype namespace is loaded
 let WRITER_ARCHETYPES = null;         // cached list for writerNamespace
 let writerActiveArchetype = null;     // the full archetype object (id, title, fields, filenameFields)
@@ -6014,6 +6014,39 @@ async function loadWriterArchetypes(force = false) {
   if (currentView === 'writer') repaintView('writer');
 }
 
+/** Recency order for the archetype picker (step 2) -- BA26081810's "most
+ *  recently used first" ask. Reads generated_docs.tsv IDs once BA26081811
+ *  builds it; that file/route doesn't exist yet, so this degrades to the
+ *  registry's own order (unchanged behavior) until it does -- deliberately
+ *  not blocking this row on that one. */
+let WRITER_RECENT_ARCHETYPE_IDS = [];
+function orderArchetypesByRecency(archetypes) {
+  if (!WRITER_RECENT_ARCHETYPE_IDS.length) return archetypes;
+  const rank = new Map(WRITER_RECENT_ARCHETYPE_IDS.map((id, i) => [id, i]));
+  return [...archetypes].sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : 999) - (rank.has(b.id) ? rank.get(b.id) : 999));
+}
+
+function writerBreadcrumb() {
+  const step2Label = writerTargetLabel || 'General';
+  const step3Label = writerActiveArchetype ? writerActiveArchetype.title : 'Choose archetype';
+  const seg = (label, step, clickable) => clickable
+    ? `<a href="#" class="crumb-link" onclick="writerGoToStep(${step});return false">${escHtml(label)}</a>`
+    : `<span class="crumb-here">${escHtml(label)}</span>`;
+  return `
+    <div class="view-head-meta crumbs">
+      ${seg('Writer', 1, writerWizardStep > 1)}
+      <span class="crumb-sep">/</span>
+      ${seg(step2Label, 2, writerWizardStep > 2)}
+      ${writerWizardStep > 2 ? `<span class="crumb-sep">/</span>${seg(step3Label, 3, false)}` : ''}
+    </div>`;
+}
+
+function writerGoToStep(step) {
+  if (step > writerWizardStep) return;   // never skip ahead past what's actually been gathered
+  writerWizardStep = step;
+  repaintView('writer');
+}
+
 function renderWriter() {
   if (!WRITER_ARCHETYPES) {
     loadWriterArchetypes();
@@ -6024,31 +6057,47 @@ function renderWriter() {
   return `
     <div class="view-head">
       <h1>Writer</h1>
-      <div class="view-head-meta">Document Studio · automated drafting with guided, intelligent naming · no AI in the render path</div>
+      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+        ${writerBreadcrumb()}
+        ${writerWizardStep > 1 ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="writerStartNewDocument()">+ New document</button>` : ''}
+      </div>
     </div>
 
     <div class="card">
-      <div class="card-header" style="flex-wrap:wrap;gap:0.6rem">
-        <div class="task-tabs">
-          <button class="task-tab${writerTab === 'registry' ? ' on' : ''}" onclick="setWriterTab('registry')">Archetypes <span>${WRITER_ARCHETYPES.length}</span></button>
-          <button class="task-tab${writerTab === 'studio' ? ' on' : ''}" onclick="setWriterTab('studio')">Studio <span>${writerActiveArchetype ? escHtml(writerActiveArchetype.title) : 'None selected'}</span></button>
-        </div>
-        <div style="display:flex;gap:0.4rem;align-items:center;margin-left:auto">
-          <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="loadWriterArchetypes(true)">Refresh</button>
-        </div>
-      </div>
-
-      ${writerTab === 'registry' ? renderWriterRegistry() : renderWriterStudio()}
+      ${writerWizardStep === 1 ? renderWriterStepTarget()
+        : writerWizardStep === 2 ? renderWriterStepArchetype()
+        : renderWriterStudio()}
     </div>`;
 }
 
-function renderWriterRegistry() {
+function writerStartNewDocument() {
+  writerWizardStep = 1;
+  writerActiveArchetype = null;
+  writerContent = {};
+  writerPendingDraft = null;
+  writerLastResult = null;
+  writerPreviewMd = '';
+  repaintView('writer');
+}
+
+/** Step 1: "Draft for" target picker, now the wizard's own landing (was
+ *  embedded inline above the flat archetype list before this row). */
+function renderWriterStepTarget() {
   return `
     ${renderWriterTargetPicker()}
+    <div style="display:flex;justify-content:flex-end;margin-top:0.6rem">
+      <button class="btn btn-primary" style="font-size:0.78rem;padding:5px 14px" onclick="writerWizardStep=2;repaintView('writer')">Continue →</button>
+    </div>`;
+}
 
-    ${!WRITER_ARCHETYPES.length ? `<div class="empty-state" style="text-align:left;padding:1rem 0">No archetypes in "${escHtml(writerNamespace)}" (or _common). Add one under scope/lib/generate/archetypes/.</div>` : `
+/** Step 2: archetype picker, recency-ordered where data exists (see
+ *  orderArchetypesByRecency above). */
+function renderWriterStepArchetype() {
+  const list = orderArchetypesByRecency(WRITER_ARCHETYPES);
+  return `
+    ${!list.length ? `<div class="empty-state" style="text-align:left;padding:1rem 0">No archetypes in "${escHtml(writerNamespace)}" (or _common). Add one under scope/lib/generate/archetypes/.</div>` : `
       <div class="art-list" style="display:flex;flex-direction:column;gap:0.6rem">
-        ${WRITER_ARCHETYPES.map(a => `
+        ${list.map(a => `
           <div class="art-item" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-raised);border:1px solid var(--border);padding:0.7rem 0.9rem;border-radius:var(--r-md)">
             <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
               <div style="display:flex;align-items:center;gap:0.5rem">
@@ -6059,7 +6108,7 @@ function renderWriterRegistry() {
                 ${escHtml(a.id)} · ${a.fields.length} field${a.fields.length === 1 ? '' : 's'}
               </div>
             </div>
-            <button class="btn btn-primary" style="font-size:0.75rem;padding:3px 10px" onclick="openWriterStudio('${escAttr(a.id)}')">Open in Studio</button>
+            <button class="btn btn-primary" style="font-size:0.75rem;padding:3px 10px" onclick="openWriterStudio('${escAttr(a.id)}')">Choose</button>
           </div>`).join('')}
       </div>`}
   `;
@@ -6127,8 +6176,6 @@ function onWriterTargetPick(id) {
   }
 }
 
-function setWriterTab(tab) { writerTab = tab; repaintView('writer'); }
-
 /** Mirrors scope/lib/generate/naming.js's slugify() exactly (lowercase,
  *  non-alphanumeric runs -> one hyphen, trimmed) - the prefill has to
  *  slugify client-side the same way naming.js will slugify server-side at
@@ -6138,26 +6185,71 @@ function writerSlug(s) {
   return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
+/** Draft autosave (BA26081810) -- until BA26081811's content.json/
+ *  generated_docs.tsv mechanism exists server-side, this is client-side
+ *  localStorage, keyed by exactly what makes a draft resumable: which
+ *  target + which archetype. Debounced so every keystroke doesn't thrash
+ *  storage; the wizard having MORE steps than Notepad's blank page must
+ *  never mean typed work is riskier to lose, per the row's own framing. */
+function writerDraftKey() {
+  if (!writerActiveArchetype) return null;
+  return `isconl.writerDraft.${writerTargetKind}.${writerTargetId || 'general'}.${writerActiveArchetype.id}`;
+}
+let writerAutosaveTimer = null;
+function writerAutosave() {
+  const key = writerDraftKey();
+  if (!key) return;
+  clearTimeout(writerAutosaveTimer);
+  writerAutosaveTimer = setTimeout(() => {
+    try { localStorage.setItem(key, JSON.stringify({ content: writerContent, savedAt: Date.now() })); } catch {}
+  }, 800);
+}
+function writerRestoreDraft(archetypeId) {
+  const key = writerDraftKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    return d && d.content ? d : null;
+  } catch { return null; }
+}
+function writerDiscardDraft() {
+  const key = writerDraftKey();
+  if (key) { try { localStorage.removeItem(key); } catch {} }
+  writerContent = {};
+  repaintView('writer');
+}
+
 function openWriterStudio(archetypeId) {
   const a = (WRITER_ARCHETYPES || []).find(x => x.id === archetypeId);
   if (!a) return;
   writerActiveArchetype = a;
   writerContent = {};
-  // Intelligent naming, guided by the target picked in the Registry tab
-  // (17 Aug ask) rather than free-typed: the archetype's own two filename
-  // slots are pre-filled from the target's slug + kind. Still plain,
-  // editable text fields - a starting point, not a lock.
+  // Intelligent naming, guided by the target picked in step 1 rather than
+  // free-typed: the archetype's own two filename slots are pre-filled from
+  // the target's slug + kind. Still plain, editable text fields - a
+  // starting point, not a lock.
   if (a.filenameFields && writerTargetId) {
     const targetSlug = writerSlug(writerTargetId);
     const kindSlug = writerTargetKind === 'engagement' ? 'engagement' : writerTargetKind === 'project' ? 'project' : '';
     if (a.filenameFields.primary) writerContent[a.filenameFields.primary] = targetSlug;
     if (a.filenameFields.secondary && kindSlug) writerContent[a.filenameFields.secondary] = kindSlug;
   }
+  const draft = writerRestoreDraft(archetypeId);
+  writerPendingDraft = draft;   // offered as a resume banner in step 3, not silently applied over the fresh prefill
   writerPreviewMd = '';
   writerLastResult = null;
-  writerTab = 'studio';
+  writerWizardStep = 3;
   repaintView('writer');
 }
+let writerPendingDraft = null;
+function writerResumeDraft() {
+  if (writerPendingDraft) writerContent = { ...writerContent, ...writerPendingDraft.content };
+  writerPendingDraft = null;
+  repaintView('writer');
+}
+function writerDismissDraftBanner() { writerPendingDraft = null; repaintView('writer'); }
 
 /** Raw form-field text -> the value shape doc-builder.js's archetype.build() expects.
  *  Mirrors the `type`/`keys` convention each archetype's `fields` schema declares
@@ -6191,11 +6283,11 @@ function buildWriterContentPayload() {
 function renderWriterField(field) {
   const val = writerContent[field.name] || '';
   const label = `${escHtml(field.label || field.name)}${field.required ? ' <span style="color:var(--red,#e5534b)">*</span>' : ''}`;
-  const common = `oninput="writerContent['${escAttr(field.name)}']=this.value"`;
+  const common = `oninput="writerContent['${escAttr(field.name)}']=this.value;writerAutosave()"`;
 
   let control;
   if (field.type === 'select') {
-    control = `<select class="input" style="font-size:0.8rem" onchange="writerContent['${escAttr(field.name)}']=this.value">
+    control = `<select class="input" style="font-size:0.8rem" onchange="writerContent['${escAttr(field.name)}']=this.value;writerAutosave()">
       <option value="">Select…</option>
       ${(field.options || []).map(o => `<option value="${escAttr(o)}" ${val === o ? 'selected' : ''}>${escHtml(o)}</option>`).join('')}
     </select>`;
@@ -6213,9 +6305,40 @@ function renderWriterField(field) {
     </div>`;
 }
 
+/** BA26081810's layout-metadata renderer -- ONE generic form renderer that
+ *  adapts presentation to hints on the archetype/fields instead of a
+ *  bespoke UI per archetype. Backward compatible: an archetype with no
+ *  `section`/`layout` metadata (every archetype today) renders exactly as
+ *  before, flat and stacked. `layout:'header-block'` on the archetype
+ *  renders every field as a compact single row (to/cc/subject shape);
+ *  otherwise fields carrying a `section` name group into collapsible
+ *  fieldsets, unsectioned fields render flat above/below the groups in
+ *  their original order. */
+function renderWriterFields(a) {
+  if (a.layout === 'header-block') {
+    return `<div class="writer-header-block">${a.fields.map(renderWriterField).join('')}</div>`;
+  }
+  const hasSections = a.fields.some(f => f.section);
+  if (!hasSections) return a.fields.map(renderWriterField).join('');
+
+  const sections = [];
+  const bySection = new Map();
+  for (const f of a.fields) {
+    const key = f.section || null;
+    if (!bySection.has(key)) { bySection.set(key, []); sections.push(key); }
+    bySection.get(key).push(f);
+  }
+  return sections.map(key => key === null
+    ? bySection.get(key).map(renderWriterField).join('')
+    : `<details class="writer-section" open>
+         <summary class="writer-section-title">${escHtml(key)}</summary>
+         <div class="writer-section-body">${bySection.get(key).map(renderWriterField).join('')}</div>
+       </details>`).join('');
+}
+
 function renderWriterStudio() {
   if (!writerActiveArchetype) {
-    return `<div class="empty-state" style="text-align:left;padding:1rem 0">Pick an archetype from the Archetypes tab to start a document.</div>`;
+    return `<div class="empty-state" style="text-align:left;padding:1rem 0">Pick an archetype to start a document.</div>`;
   }
   const a = writerActiveArchetype;
 
@@ -6227,13 +6350,20 @@ function renderWriterStudio() {
           <div style="font-size:0.7rem;color:var(--text-3);font-family:var(--font-mono)">${escHtml(writerNamespace)} / ${escHtml(a.id)}</div>
           ${writerTargetLabel ? `<div style="font-size:0.72rem;color:var(--text-2);margin-top:2px">Drafting for <strong>${escHtml(writerTargetLabel)}</strong></div>` : ''}
         </div>
-        <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="setWriterTab('registry')">← Back to Archetypes</button>
+        <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="writerGoToStep(2)">← Back to Archetypes</button>
       </div>
+
+      ${writerPendingDraft ? `
+        <div class="writer-draft-banner" style="display:flex;align-items:center;gap:0.6rem;background:var(--amber-bg,rgba(210,153,34,0.1));border:1px solid var(--amber-dim);border-radius:var(--r-md);padding:0.5rem 0.8rem;margin-bottom:0.7rem;font-size:0.76rem;color:var(--text-2)">
+          <span>An autosaved draft from ${new Date(writerPendingDraft.savedAt).toLocaleString()} is available for this document.</span>
+          <button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerResumeDraft()">Resume draft</button>
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDismissDraftBanner()">Start fresh</button>
+        </div>` : ''}
 
       <div class="art-studio-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:0.85rem">
         <!-- Content form -->
         <div style="display:flex;flex-direction:column;gap:0.6rem;max-height:600px;overflow-y:auto;padding-right:0.4rem">
-          ${a.fields.map(renderWriterField).join('')}
+          ${renderWriterFields(a)}
         </div>
 
         <!-- Preview + generate -->
@@ -6301,6 +6431,11 @@ async function generateWriterDoc(btn) {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Generate failed');
     writerLastResult = d;
+    // A successfully generated document's draft has served its purpose --
+    // clearing it means reopening this archetype/target combo later starts
+    // clean rather than re-offering a now-stale "resume?" banner.
+    const key = writerDraftKey();
+    if (key) { try { localStorage.removeItem(key); } catch {} }
     repaintView('writer');
     showToast('Document generated', 'success');
   } catch (e) {
