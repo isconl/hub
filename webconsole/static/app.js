@@ -788,7 +788,15 @@ async function fetchState() {
   // drives sender/recipient pickers. One call, cached in STATE.
   try {
     const r = await fetch('/api/tags');
-    if (r.ok) { const d = await r.json(); STATE.tags = d.tags || []; STATE.people = d.people || []; }
+    if (r.ok) { const d = await r.json(); STATE.tags = d.tags || []; }
+  } catch {}
+  // The real people roster, for the Inbox per-person thread rebuild
+  // (BM26081807) and the capture panel's sender datalist -- /api/tags
+  // above is a dead legacy route (always 501s), never actually populated
+  // people data.
+  try {
+    const r = await fetch('/api/circle');
+    if (r.ok) { const d = await r.json(); STATE.circlePeople = d.people || []; }
   } catch {}
 }
 
@@ -4037,12 +4045,56 @@ function getChannelBadgeClass(ch) {
 let inboxChannel = null;   // click a channel chip to filter; click again to clear
 let inboxOpen = {};        // ID -> expanded
 let inboxSelected = new Set(); // ID -> selected for bulk actions
+let inboxPersonKey = null; // grouping key of the open thread (person.ID, or 'sender:<name>' for unlinked rows) - null = show the thread list
+
+/**
+ * BM26081807: group the flat inbox feed into one thread per person.
+ * PERSON_ID is the real link (set by circle's chat-import and inbox.js's
+ * own auto-match); a manually-captured row with no match yet falls back to
+ * grouping by SENDER text so it still reads as one thread rather than
+ * scattering across "unknown". Computed on every render, not persisted --
+ * a new WhatsApp import (BM26081801) or inbox capture just shows up next
+ * render, no separate merge/refresh step.
+ */
+function inboxGroups() {
+  const feed = STATE.feed || [];
+  const rows = inboxChannel ? feed.filter(i => i.CHANNEL === inboxChannel) : feed;
+  const peopleById = new Map((STATE.circlePeople || []).map(p => [p.ID, p]));
+  const groups = new Map();
+  for (const m of rows) {
+    const hasPerson = m.PERSON_ID && m.PERSON_ID !== '-';
+    const key = hasPerson ? m.PERSON_ID : `sender:${m.SENDER && m.SENDER !== '-' ? m.SENDER : m.SOURCE}`;
+    if (!groups.has(key)) {
+      const person = hasPerson ? peopleById.get(m.PERSON_ID) : null;
+      groups.set(key, {
+        key, personId: hasPerson ? m.PERSON_ID : null,
+        name: person ? person.NAME : (m.SENDER && m.SENDER !== '-' ? m.SENDER : m.SOURCE),
+        messages: [], unread: 0, channels: new Set(),
+      });
+    }
+    const g = groups.get(key);
+    g.messages.push(m);
+    g.channels.add(m.CHANNEL);
+    if (m.STATUS === 'new') g.unread++;
+  }
+  for (const g of groups.values()) g.messages.sort((a, b) => (a.RECEIVED_AT < b.RECEIVED_AT ? -1 : a.RECEIVED_AT > b.RECEIVED_AT ? 1 : 0));
+  return [...groups.values()].sort((a, b) => {
+    const la = a.messages[a.messages.length - 1]?.RECEIVED_AT || '';
+    const lb = b.messages[b.messages.length - 1]?.RECEIVED_AT || '';
+    return lb < la ? -1 : lb > la ? 1 : 0;
+  });
+}
+
+function inboxSelectPerson(key) { inboxPersonKey = key; inboxSelected.clear(); repaintView('inbox'); }
 
 function renderInbox() {
   const feed = STATE.feed || [];
   const channels = [...new Set(feed.map(i => i.CHANNEL).filter(c => c && c !== '-'))];
-  const rows = inboxChannel ? feed.filter(i => i.CHANNEL === inboxChannel) : feed;
   const tags = STATE.tags || [];
+  const groups = inboxGroups();
+  const active = groups.find(g => g.key === inboxPersonKey) || groups[0] || null;
+  if (active && inboxPersonKey === null) inboxPersonKey = active.key;
+  const rows = active ? active.messages : [];
   const visibleIds = rows.map(m => m.ID);
   const selectedVisible = visibleIds.filter(id => inboxSelected.has(id));
   const allVisibleSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
@@ -4050,12 +4102,12 @@ function renderInbox() {
   return `
     <div class="view-head">
       <h1>Inbox</h1>
-      <div class="view-head-meta">every source in one place, verbatim - exactly as sent</div>
+      <div class="view-head-meta">one thread per person, every source - verbatim, exactly as sent</div>
     </div>
     <div class="card">
       <div class="card-header">
         <span class="card-title">Inbox</span>
-        <span class="card-meta">${rows.length}${inboxChannel ? ` of ${feed.length} · ${escHtml(inboxChannel)}` : ' messages'} · verbatim … exactly as sent</span>
+        <span class="card-meta">${groups.length} thread${groups.length === 1 ? '' : 's'}${inboxChannel ? ` · ${escHtml(inboxChannel)}` : ''} · ${feed.length} messages</span>
       </div>
       ${channels.length ? `
         <div class="inbox-channels">
@@ -4065,53 +4117,73 @@ function renderInbox() {
             </button>`).join('')}
           ${inboxChannel ? `<button class="inbox-chan clear" onclick="inboxFilter(null)">all</button>` : ''}
         </div>` : ''}
-      ${rows.length ? `
-        <div class="inbox-bulk-bar">
-          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.78rem;color:var(--text-2)">
-            <input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="inboxSelectAll(this.checked)"/>
-            ${selectedVisible.length ? `${selectedVisible.length} selected` : 'Select all'}
-          </label>
-          ${selectedVisible.length ? `
-            <div style="display:flex;gap:0.4rem;margin-left:auto">
-              <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 10px" onclick="inboxBulkMarkSeen()">${svgIcon('check', 12)} Mark as seen</button>
-              <button class="btn btn-ghost danger-btn" style="font-size:0.72rem;padding:3px 10px" onclick="inboxBulkDelete()">${svgIcon('trash', 12)} Delete</button>
-            </div>` : ''}
-        </div>` : ''}
-      ${rows.length ? rows.map(m => {
-        const open = inboxOpen[m.ID];
-        const checked = inboxSelected.has(m.ID);
-        return `
-        <div class="inbox-item ${m.STATUS === 'new' ? 'unread' : ''}">
-          <div class="inbox-head">
-            <input type="checkbox" class="inbox-select-cb" ${checked ? 'checked' : ''}
-                   onclick="event.stopPropagation();inboxToggleSelect('${escHtml(m.ID)}')"/>
-            <span class="inbox-chan-dot" data-ch="${escHtml(m.CHANNEL)}" onclick="inboxToggle('${escHtml(m.ID)}')"></span>
-            <span class="inbox-sender" onclick="inboxToggle('${escHtml(m.ID)}')">${escHtml(m.SENDER !== '-' ? m.SENDER : m.SOURCE)}</span>
-            <span class="inbox-title" onclick="inboxToggle('${escHtml(m.ID)}')">${escHtml(m.TITLE)}</span>
-            ${m.TAG && m.TAG !== '-' ? `<span class="inbox-tag">${escHtml(m.TAG)}</span>` : ''}
-            <span class="inbox-date" onclick="inboxToggle('${escHtml(m.ID)}')">${escHtml(m.RECEIVED_AT)}</span>
-          </div>
-          ${open ? `
-            <div class="inbox-body">${escHtml(m.BODY)}</div>
-            ${m.COMMENT && m.COMMENT !== '-' ? `<div class="inbox-comment"><span>Your note</span>${escHtml(m.COMMENT)}</div>` : ''}
-            <div class="inbox-actions">
-              <button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px" onclick="inboxReply('${escHtml(m.ID)}', false)">Reply</button>
-              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="inboxComment('${escHtml(m.ID)}', '${escHtml((m.COMMENT !== '-' ? m.COMMENT : '')).replace(/'/g, "\\'")}')">
-                ${m.COMMENT && m.COMMENT !== '-' ? 'Edit note' : 'Add note'}</button>
-              <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{tag:this.value})">
-                <option value="">untagged</option>
-                ${tags.map(t => `<option value="${escHtml(t.id)}"${t.id === m.TAG ? ' selected' : ''}>${escHtml(t.label)}</option>`).join('')}
-              </select>
-              <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{status:this.value})">
-                ${['new', 'seen', 'actioned', 'done'].map(s => `<option${s === m.STATUS ? ' selected' : ''}>${s}</option>`).join('')}
-              </select>
-              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px"
-                      onclick="quickDistillText('${escHtml(m.BODY).replace(/'/g, "\\'")}')">To task</button>
-              <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto"
-                      onclick="inboxDelete('${escHtml(m.ID)}')">Delete</button>
-            </div>` : ''}
-        </div>`;
-      }).join('') : `<div class="empty-state">${inboxChannel ? 'Nothing on this channel.' : 'Inbox zero. Enjoy it … it never lasts. Paste a message in, or text the bot.'}</div>`}
+      <div class="inbox-threads">
+        <div class="inbox-thread-list">
+          ${groups.length ? groups.map(g => {
+            const last = g.messages[g.messages.length - 1];
+            return `
+            <div class="inbox-thread-row${g.key === (active && active.key) ? ' on' : ''}" onclick="inboxSelectPerson('${escHtml(g.key).replace(/'/g, "\\'")}')">
+              <span class="inbox-chan-dot" data-ch="${escHtml(last.CHANNEL)}"></span>
+              <span class="inbox-thread-name">${escHtml(g.name)}</span>
+              ${g.unread ? `<span class="inbox-thread-unread">${g.unread}</span>` : ''}
+              <span class="inbox-thread-preview">${escHtml((last.BODY || '').slice(0, 40))}</span>
+              <span class="inbox-thread-date">${escHtml(last.RECEIVED_AT || '').slice(0, 10)}</span>
+            </div>`;
+          }).join('') : `<div class="empty-state">${inboxChannel ? 'Nothing on this channel.' : 'Inbox zero. Enjoy it … it never lasts.'}</div>`}
+        </div>
+        <div class="inbox-thread-view">
+          ${active ? `
+            <div class="inbox-thread-head">
+              <span class="inbox-thread-head-name">${escHtml(active.name)}</span>
+              <span class="inbox-thread-head-meta">${active.messages.length} message${active.messages.length === 1 ? '' : 's'} · ${[...active.channels].map(escHtml).join(', ')}</span>
+              <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.7rem;color:var(--text-2);margin-left:auto">
+                <input type="checkbox" ${allVisibleSelected ? 'checked' : ''} onchange="inboxSelectAll(this.checked)"/>
+                ${selectedVisible.length ? `${selectedVisible.length} selected` : 'Select all'}
+              </label>
+              ${selectedVisible.length ? `
+                <button class="btn btn-ghost" style="font-size:0.7rem;padding:3px 10px" onclick="inboxBulkMarkSeen()">${svgIcon('check', 12)} Mark seen</button>
+                <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:3px 10px" onclick="inboxBulkDelete()">${svgIcon('trash', 12)} Delete</button>` : ''}
+            </div>
+            <div class="inbox-bubbles">
+              ${rows.map(m => {
+                const open = inboxOpen[m.ID];
+                const checked = inboxSelected.has(m.ID);
+                const outbound = m.DIRECTION === 'out';
+                return `
+                <div class="inbox-bubble-row ${outbound ? 'out' : 'in'}">
+                  <input type="checkbox" class="inbox-select-cb" ${checked ? 'checked' : ''}
+                         onclick="event.stopPropagation();inboxToggleSelect('${escHtml(m.ID)}')"/>
+                  <div class="inbox-bubble ${m.STATUS === 'new' ? 'unread' : ''}" onclick="inboxToggle('${escHtml(m.ID)}')">
+                    <div class="inbox-bubble-meta">
+                      <span class="inbox-chan-dot" data-ch="${escHtml(m.CHANNEL)}"></span>
+                      ${m.TAG && m.TAG !== '-' ? `<span class="inbox-tag">${escHtml(m.TAG)}</span>` : ''}
+                      <span class="inbox-date">${escHtml(m.RECEIVED_AT)}</span>
+                    </div>
+                    <div class="inbox-bubble-body">${escHtml(open || m.BODY.length <= 240 ? m.BODY : m.BODY.slice(0, 240) + '…')}</div>
+                    ${open ? `
+                      ${m.COMMENT && m.COMMENT !== '-' ? `<div class="inbox-comment"><span>Your note</span>${escHtml(m.COMMENT)}</div>` : ''}
+                      <div class="inbox-actions" onclick="event.stopPropagation()">
+                        <button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px" onclick="inboxReply('${escHtml(m.ID)}', false)">Reply</button>
+                        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="inboxComment('${escHtml(m.ID)}', '${escHtml((m.COMMENT !== '-' ? m.COMMENT : '')).replace(/'/g, "\\'")}')">
+                          ${m.COMMENT && m.COMMENT !== '-' ? 'Edit note' : 'Add note'}</button>
+                        <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{tag:this.value})">
+                          <option value="">untagged</option>
+                          ${tags.map(t => `<option value="${escHtml(t.id)}"${t.id === m.TAG ? ' selected' : ''}>${escHtml(t.label)}</option>`).join('')}
+                        </select>
+                        <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{status:this.value})">
+                          ${['new', 'seen', 'actioned', 'done'].map(s => `<option${s === m.STATUS ? ' selected' : ''}>${s}</option>`).join('')}
+                        </select>
+                        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px"
+                                onclick="quickDistillText('${escHtml(m.BODY).replace(/'/g, "\\'")}')">To task</button>
+                        <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto"
+                                onclick="inboxDelete('${escHtml(m.ID)}')">Delete</button>
+                      </div>` : ''}
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>` : `<div class="empty-state">Pick a thread, or capture a new message below.</div>`}
+        </div>
+      </div>
 
       <div class="inbox-add ${inboxAddOpen ? 'open' : ''}" id="inbox-add">
         ${inboxAddOpen ? `
@@ -4122,7 +4194,12 @@ function renderInbox() {
               // Every name the agent knows: the people roster PLUS every sender
               // already on record in the inbox. A new name typed here simply
               // saves with the message and joins this list from then on.
-              const known = new Set((STATE.people || []).map(p => p.name));
+              // STATE.circlePeople (real /api/circle data) here, not
+              // STATE.people -- that came from /api/tags, which api-compat.js
+              // marks legacy:true and always 501s since the monolith it
+              // pointed at was deleted, so this list silently had nothing
+              // but session-local senders before (found live 20 Aug).
+              const known = new Set((STATE.circlePeople || []).map(p => p.NAME));
               (STATE.feed || []).forEach(m => { if (m.SENDER && m.SENDER !== '-') known.add(m.SENDER); });
               return [...known].sort((a, b) => a.localeCompare(b))
                 .map(n => `<option value="${escHtml(n)}">`).join('');
