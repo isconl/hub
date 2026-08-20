@@ -6568,6 +6568,9 @@ function renderWriterStudio() {
                   <span style="font-size:0.75rem;color:var(--text-2);font-family:var(--font-mono)">${escHtml(f.filename)} · ${(f.bytes/1024).toFixed(1)} KB</span>
                   <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 8px" onclick="downloadWriterFile('${ext}')">Download</button>
                 </div>`).join('')}
+              ${writerLastResult.onedriveWebUrl
+                ? `<a class="btn btn-ghost doc-act" style="font-size:0.72rem;padding:3px 9px;align-self:flex-start" href="${escAttr(writerLastResult.onedriveWebUrl)}" target="_blank" rel="noreferrer">View / Edit on OneDrive ↗</a>`
+                : writerTargetKind === 'general' ? `<span style="font-size:0.68rem;color:var(--text-3)">Not yet on OneDrive -- push may have failed, retry from the Documents list.</span>` : ''}
             </div>` : ''}
         </div>
       </div>
