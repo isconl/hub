@@ -5345,7 +5345,22 @@ function renderCorporateDetail() {
         ${eng.doctrine.never?.length ? `<div><div class="corp-card-mini-label" style="color:var(--red);margin-bottom:6px">NEVER</div>
           ${eng.doctrine.never.map(x => `<div class="decision-text" style="padding:3px 0">${escHtml(x)}</div>`).join('')}</div>` : ''}
       </div>
-    </div>` : ''}`;
+    </div>` : ''}
+
+    <div class="card" style="animation:fadeSlideIn 0.55s ease both">
+      <div class="card-header"><span class="card-title">Tasks</span><span class="card-meta">${(eng.tasks || []).length}</span></div>
+      ${!(eng.tasks || []).length ? `<div class="empty-state">No tasks tagged to this org yet (set ORG_ID on a scope/tasks.tsv row).</div>` :
+        eng.tasks.map(t => `
+        <div class="decision-item">
+          <div class="decision-id">${escHtml(t.id)}</div>
+          <div style="flex:1"><div class="decision-text">${escHtml(t.title || '')}</div>
+          <span class="pill pill-${t.status === 'done' ? 'confirmed' : 'pending'}" style="margin-top:4px">${escHtml((t.status || '').toUpperCase())}${t.dueDate ? ` &middot; due ${escHtml(t.dueDate)}` : ''}</span></div>
+        </div>`).join('')}
+      <div class="corp-card-mini-label" style="margin-top:10px;color:var(--text-3)">
+        Documents for this engagement follow CLAUDE.md &sect;9's naming shape:
+        <code>${escHtml(eng.id)}_{page_slug}_v{major}_{minor}_{patch}_{YYYYMMDD}.{ext}</code>
+      </div>
+    </div>`;
 }
 
 // ── SPACES (axial tree) ───────────────────────────────────────────────────────
