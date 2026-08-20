@@ -3403,6 +3403,14 @@ body[data-callout-theme="muted"] .lesson-body {
 .writer-section-title { cursor:pointer; padding:0.5rem 0.7rem; font-size:0.74rem; font-weight:600;
   text-transform:uppercase; letter-spacing:0.05em; color:var(--text-2); background:var(--bg-raised); }
 .writer-section-body { display:flex; flex-direction:column; gap:0.6rem; padding:0.7rem; }
+/* BA26081812: AI assist bar + per-field affordance. */
+.writer-ai-bar { display:flex; gap:0.5rem; align-items:flex-start; margin-bottom:0.7rem; }
+.writer-ai-field-btn {
+  border:none; background:transparent; cursor:pointer; font-size:0.72rem; line-height:1;
+  padding:1px 4px; border-radius:var(--r-sm,4px); color:var(--text-3); opacity:0.6;
+}
+.writer-ai-field-btn:hover { opacity:1; background:var(--bg-raised); color:var(--text); }
+.writer-ai-field-btn:disabled { opacity:0.3; cursor:default; }
 
 /* ── EQUICYCLE CALENDAR ──
    The cycle's 28 days as two sprint fortnights. Each cell knows its Gregorian

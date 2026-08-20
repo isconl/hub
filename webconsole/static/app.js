@@ -5965,6 +5965,7 @@ let writerContent = {};               // fieldName -> raw form value (string)
 let writerPreviewMd = '';
 let writerLastResult = null;          // {archetype, files:{ext:{filename,base64,bytes}}} from the last generate
 let writerFormats = { docx: true, md: false, pdf: false };
+let writerBrief = '';   // BA26081812: shared brief, feeds both the per-field ✨ buttons and Full draft
 
 let writerTargetKind = 'general';     // 'engagement' | 'project' | 'general'
 let writerTargetId = '';
@@ -6082,6 +6083,7 @@ function writerStartNewDocument() {
   writerPendingDraft = null;
   writerLastResult = null;
   writerPreviewMd = '';
+  writerBrief = '';
   repaintView('writer');
 }
 
@@ -6446,6 +6448,7 @@ function renderWriterField(field) {
   const val = writerContent[field.name] || '';
   const label = `${escHtml(field.label || field.name)}${field.required ? ' <span style="color:var(--red,#e5534b)">*</span>' : ''}`;
   const common = `oninput="writerContent['${escAttr(field.name)}']=this.value;writerAutosave()"`;
+  const fieldId = `wf-${field.name}`;
 
   let control;
   if (field.type === 'select') {
@@ -6455,14 +6458,18 @@ function renderWriterField(field) {
     </select>`;
   } else if (field.type === 'textarea' || field.type === 'list' || field.type === 'reasoned-list' || field.type === 'table-list') {
     const rows = field.type === 'textarea' ? 3 : 4;
-    control = `<textarea class="input" style="font-size:0.8rem;font-family:var(--font-mono)" rows="${rows}" ${common}>${escHtml(val)}</textarea>`;
+    control = `<textarea id="${fieldId}" class="input" style="font-size:0.8rem;font-family:var(--font-mono)" rows="${rows}" ${common}>${escHtml(val)}</textarea>`;
   } else {
-    control = `<input type="text" class="input" style="font-size:0.8rem" value="${escAttr(val)}" ${common}/>`;
+    control = `<input id="${fieldId}" type="text" class="input" style="font-size:0.8rem" value="${escAttr(val)}" ${common}/>`;
   }
 
   return `
     <div style="display:flex;flex-direction:column;gap:0.3rem">
-      <label style="font-size:0.72rem;color:var(--text-3)">${label}</label>
+      <div style="display:flex;align-items:center;gap:0.4rem">
+        <label style="font-size:0.72rem;color:var(--text-3)">${label}</label>
+        <button class="writer-ai-field-btn" title="Research this field with AI, using the brief above"
+                onclick="writerResearchField('${escAttr(field.name)}',this)">✨</button>
+      </div>
       ${control}
     </div>`;
 }
@@ -6522,6 +6529,13 @@ function renderWriterStudio() {
           <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDismissDraftBanner()">Start fresh</button>
         </div>` : ''}
 
+      <div class="writer-ai-bar">
+        <textarea id="writer-brief" class="input" style="font-size:0.78rem;flex:1;min-height:2.2rem"
+                  placeholder="Brief for AI assist (used by both the per-field ✨ buttons and Full draft below) — what is this document about?"
+                  oninput="writerBrief=this.value">${escHtml(writerBrief)}</textarea>
+        <button class="btn btn-ghost" id="writer-full-draft-btn" style="font-size:0.75rem;padding:4px 10px;white-space:nowrap" onclick="writerFullDraft(this)">✨ Full draft (all fields)</button>
+      </div>
+
       <div class="art-studio-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:0.85rem">
         <!-- Content form -->
         <div style="display:flex;flex-direction:column;gap:0.6rem;max-height:600px;overflow-y:auto;padding-right:0.4rem">
@@ -6578,6 +6592,63 @@ async function previewWriterDoc(btn) {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = was; }
   }
+}
+
+/** BA26081812's per-field mode: proposes ONE field's value, using the
+ *  shared brief plus every other field already filled in as context.
+ *  Lands directly in that field's own input control, exactly like manual
+ *  typing would -- reviewable/editable before Generate, never applied
+ *  silently. */
+async function writerResearchField(fieldName, btn) {
+  const a = writerActiveArchetype;
+  if (!a) return;
+  const field = (a.fields || []).find(f => f.name === fieldName);
+  if (!field) return;
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await fetch('/api/writer/research-field', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archetypeId: a.id, field: { name: field.name, label: field.label, type: field.type },
+        brief: writerBrief, otherFieldValues: buildWriterContentPayload() }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'AI research failed');
+    writerContent[fieldName] = d.value;
+    writerAutosave();
+    const el = document.getElementById(`wf-${fieldName}`);
+    if (el) el.value = d.value; else repaintView('writer');
+  } catch (e) { showToast(e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
+}
+
+/** BA26081812's fast mode: proposes every field at once from the shared
+ *  brief. Same landing rule as the per-field mode -- fills the input form,
+ *  never generates unreviewed. */
+async function writerFullDraft(btn) {
+  const a = writerActiveArchetype;
+  if (!a) return;
+  if (!writerBrief.trim()) { showToast('Write a brief first -- full draft needs something to work from', 'warn'); return; }
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Drafting…'; }
+  try {
+    const r = await fetch('/api/writer/full-draft', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archetypeId: a.id, fields: a.fields.map(f => ({ name: f.name, label: f.label, type: f.type })), brief: writerBrief }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'AI full draft failed');
+    for (const [name, value] of Object.entries(d)) {
+      // List-type fields come back as arrays (the archetype's schema, not
+      // the model's own judgment, decides this) -- rejoin to the same
+      // newline-per-item raw text the textarea/parseWriterFieldValue expect.
+      writerContent[name] = Array.isArray(value) ? value.join('\n') : value;
+    }
+    writerAutosave();
+    repaintView('writer');
+    showToast('Draft filled in -- review before generating', 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
 }
 
 async function generateWriterDoc(btn) {
