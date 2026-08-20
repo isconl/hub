@@ -5300,6 +5300,10 @@ textarea.draft-message:focus, textarea.ro-body:focus {
 .reader-body .lesson-body { font-size:0.84rem; }           /* the lesson look, slightly compacted for the rail */
 .reader-body img { max-width:100%; border-radius:var(--r-md); display:block; margin:0 auto; }
 .reader-body iframe.reader-pdf { width:100%; height:100%; min-height:70vh; border:0; border-radius:var(--r-md); background:#fff; }
+/* BG26081806: Office Online embed + audio player tiers in the Context reader dock. */
+.reader-office { width:100%; height:100%; min-height:70vh; border:0; border-radius:var(--r-md); background:#fff; }
+.reader-audio-wrap { display:flex; justify-content:center; padding:2rem 0; }
+.reader-audio { width:100%; max-width:28rem; }
 .reader-pre {
   white-space:pre-wrap; word-break:break-word;
   font-family:'JetBrains Mono', ui-monospace, monospace;

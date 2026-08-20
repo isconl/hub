@@ -2402,6 +2402,24 @@ async function fmPreviewInReader(item) {
     } else if (ext === '.pdf') {
       const rawUrl = `/api/onedrive/raw?id=${encodeURIComponent(item.id)}`;
       readerBody(`<object class="reader-pdf" data="${rawUrl}" type="application/pdf" width="100%" height="100%"><iframe class="reader-pdf" src="${rawUrl}" title="${escAttr(item.name)}"></iframe></object>`);
+    } else if (['.mp3', '.wav', '.m4a', '.ogg', '.aac', '.flac'].includes(ext)) {
+      // Narration files already exist per uploadLarge() -- BG26081806's audio tier.
+      const rawUrl = `/api/onedrive/raw?id=${encodeURIComponent(item.id)}`;
+      readerBody(`<div class="reader-audio-wrap"><audio class="reader-audio" controls preload="metadata" src="${escAttr(rawUrl)}">
+        Your browser can't play this audio inline.</audio></div>`);
+    } else if (['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'].includes(ext)) {
+      // BG26081806's Office tier -- data.officePreviewUrl comes from Graph's
+      // own POST /items/{id}/preview action (vault/lib/onedrive-browse.js),
+      // a short-lived pre-authorized embed URL. The file's plain webUrl is
+      // NOT usable here -- confirmed live 20 Aug, view.officeapps.live.com
+      // refuses it as "not publicly accessible" since it needs an
+      // authenticated OneDrive session, not just a valid link.
+      if (data.officePreviewUrl) {
+        readerBody(`<iframe class="reader-office" src="${escAttr(data.officePreviewUrl)}" title="${escAttr(item.name)}"></iframe>`);
+      } else {
+        readerBody(`<div class="reader-note">Couldn't get an embeddable preview for this file.
+          ${data.webUrl ? `<a class="btn btn-ghost doc-act" href="${escAttr(data.webUrl)}" target="_blank" rel="noreferrer" style="margin-top:0.5rem">Open on OneDrive ↗</a>` : ''}</div>`);
+      }
     } else if (data.isText && data.textContent) {
       const isMd = /\.(md|markdown|mdown|mkd)$/i.test(ext) || /\.md$/i.test(item.name || '');
       const filePath = item.path || (fileManagerPath === 'root' ? item.name : `${fileManagerPath}/${item.name}`);
