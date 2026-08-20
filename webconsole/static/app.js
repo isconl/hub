@@ -5957,6 +5957,7 @@ async function runAiArticleAction(action, btn) {
 // editable like any other field.
 
 let writerWizardStep = 1;             // BA26081810: 1 target, 2 archetype, 3 studio -- replaces the old flat registry/studio tab-swap
+let writerView = 'wizard';            // BA26081811: 'wizard' | 'documents' -- independent of the wizard step
 let writerNamespace = '_common';      // which archetype namespace is loaded
 let WRITER_ARCHETYPES = null;         // cached list for writerNamespace
 let writerActiveArchetype = null;     // the full archetype object (id, title, fields, filenameFields)
@@ -6058,13 +6059,17 @@ function renderWriter() {
     <div class="view-head">
       <h1>Writer</h1>
       <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
-        ${writerBreadcrumb()}
-        ${writerWizardStep > 1 ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="writerStartNewDocument()">+ New document</button>` : ''}
+        ${writerView === 'wizard' ? writerBreadcrumb() : `<div class="view-head-meta">Generated documents</div>`}
+        ${writerView === 'wizard' && writerWizardStep > 1 ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="writerStartNewDocument()">+ New document</button>` : ''}
+        <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px;margin-left:${writerView === 'wizard' ? '0' : 'auto'}"
+                onclick="writerView='${writerView === 'wizard' ? 'documents' : 'wizard'}';repaintView('writer')">
+          ${writerView === 'wizard' ? 'Documents' : '← Back to Writer'}</button>
       </div>
     </div>
 
     <div class="card">
-      ${writerWizardStep === 1 ? renderWriterStepTarget()
+      ${writerView === 'documents' ? renderWriterDocuments()
+        : writerWizardStep === 1 ? renderWriterStepTarget()
         : writerWizardStep === 2 ? renderWriterStepArchetype()
         : renderWriterStudio()}
     </div>`;
@@ -6078,6 +6083,163 @@ function writerStartNewDocument() {
   writerLastResult = null;
   writerPreviewMd = '';
   repaintView('writer');
+}
+
+// ── BA26081811: generated-documents list ──────────────────────────────────
+let WRITER_DOCS = null;
+let writerDocsFilter = { archetypeId: '', targetKind: '', status: 'active' };
+
+async function loadWriterDocs(force = false) {
+  if (WRITER_DOCS && !force) return;
+  try {
+    const q = new URLSearchParams();
+    if (writerDocsFilter.archetypeId) q.set('archetypeId', writerDocsFilter.archetypeId);
+    if (writerDocsFilter.targetKind) q.set('targetKind', writerDocsFilter.targetKind);
+    if (writerDocsFilter.status) q.set('status', writerDocsFilter.status);
+    const r = await fetch(`/api/generate/docs?${q}`);
+    const d = await r.json();
+    WRITER_DOCS = d.docs || [];
+    // Feeds BA26081810's recency-ordered archetype picker -- most recent
+    // CREATED_AT first (server already sorts that way), deduped.
+    WRITER_RECENT_ARCHETYPE_IDS = [...new Set(WRITER_DOCS.map(x => x.ARCHETYPE_ID))];
+  } catch (e) { WRITER_DOCS = []; }
+  if (currentView === 'writer') repaintView('writer');
+}
+function writerDocsSetFilter(patch) { Object.assign(writerDocsFilter, patch); loadWriterDocs(true); }
+
+function renderWriterDocuments() {
+  if (!WRITER_DOCS) { loadWriterDocs(); return `<div class="reader-loading"><div class="spinner-inline"></div><div>Reading generated documents…</div></div>`; }
+  const archetypeNames = new Map((WRITER_ARCHETYPES || []).map(a => [a.id, a.title]));
+
+  return `
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.7rem">
+      <select class="task-select" style="font-size:0.72rem" onchange="writerDocsSetFilter({status:this.value})">
+        ${['active', 'archived', 'deleted'].map(s => `<option value="${s}" ${writerDocsFilter.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+      </select>
+      <select class="task-select" style="font-size:0.72rem" onchange="writerDocsSetFilter({targetKind:this.value})">
+        <option value="">all targets</option>
+        ${['engagement', 'project', 'general'].map(k => `<option value="${k}" ${writerDocsFilter.targetKind === k ? 'selected' : ''}>${k}</option>`).join('')}
+      </select>
+      <span style="font-size:0.72rem;color:var(--text-3);margin-left:auto">${WRITER_DOCS.length} document${WRITER_DOCS.length === 1 ? '' : 's'}</span>
+    </div>
+    ${!WRITER_DOCS.length ? `<div class="empty-state">Nothing here yet. Generate a document and it'll show up in this list.</div>` : `
+      <div class="inbox-list">
+        ${WRITER_DOCS.map(d => `
+          <div class="inbox-item">
+            <div class="inbox-head" style="cursor:default">
+              <span class="inbox-sender">${escHtml(archetypeNames.get(d.ARCHETYPE_ID) || d.ARCHETYPE_ID)}</span>
+              <span class="inbox-title">${escHtml(d.FILENAME)}${d.TARGET_LABEL && d.TARGET_LABEL !== '-' ? ` · ${escHtml(d.TARGET_LABEL)}` : ''}</span>
+              ${d.TASK_ID && d.TASK_ID !== '-' ? `<span class="inbox-tag">task ${escHtml(d.TASK_ID)}</span>` : ''}
+              <span class="inbox-date">${escHtml(d.CREATED_AT)}</span>
+            </div>
+            <div class="inbox-actions" style="padding:0 0.4rem 0.6rem 0.4rem">
+              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocDownload('${escAttr(d.ID)}')">Download</button>
+              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocEdit('${escAttr(d.ID)}')">Edit</button>
+              ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-' ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">View on OneDrive ↗</a>` : ''}
+              ${d.TARGET_KIND === 'project' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocAttach('${escAttr(d.ID)}')">Attach to task</button>`
+                : `<span style="font-size:0.68rem;color:var(--text-3)" title="Only project-target documents can be attached to a task">Attach to task</span>`}
+              ${d.STATUS === 'active' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','archived')">Archive</button>`
+                : d.STATUS === 'archived' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','active')">Restore</button>` : ''}
+              <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerDocSetStatus('${escAttr(d.ID)}','deleted')">Delete</button>
+            </div>
+          </div>`).join('')}
+      </div>`}
+  `;
+}
+
+function writerDocDownload(id) {
+  const d = (WRITER_DOCS || []).find(x => x.ID === id);
+  fetch(`/api/generate/docs/download?id=${encodeURIComponent(id)}`).then(r => r.json()).then(data => {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    const bytes = atob(data.base64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    const blob = new Blob([arr], { type: data.contentType });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = data.filename; a.click();
+    URL.revokeObjectURL(a.href);
+  }).catch(e => showToast(e.message, 'error'));
+}
+
+async function writerDocSetStatus(id, status) {
+  if (status === 'deleted' && !await uiConfirm({ title: 'Delete this generated document?',
+    body: 'The rendered files are removed from disk. The row stays on record, hidden by default.', confirmLabel: 'Delete', danger: true })) return;
+  const r = await fetch('/api/generate/docs/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) });
+  const d = await r.json();
+  showToast(d.success ? 'Updated' : (d.error || 'Refused'), d.success ? 'success' : 'error');
+  await loadWriterDocs(true);
+}
+
+/** "Edit" is genuinely just re-opening the studio pre-filled from the
+ *  stored content.json and re-running generate -- output.js's own doc
+ *  comment already frames it this way, this isn't a new capability. */
+async function writerDocEdit(id) {
+  try {
+    const r = await fetch(`/api/generate/docs/content?id=${encodeURIComponent(id)}`);
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    const a = (WRITER_ARCHETYPES || []).find(x => x.id === data.archetypeId);
+    if (!a) { showToast(`Archetype "${data.archetypeId}" not found in the current registry`, 'error'); return; }
+    writerTargetKind = data.targetKind || 'general';
+    writerTargetId = data.targetId || '';
+    writerTargetLabel = data.targetLabel || '';
+    writerActiveArchetype = a;
+    writerContent = { ...data.content };
+    writerPendingDraft = null;
+    writerLastResult = null;
+    writerPreviewMd = '';
+    writerView = 'wizard';
+    writerWizardStep = 3;
+    repaintView('writer');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+/** uiPrompt() is free-text only, no select support -- a small dedicated
+ *  dropdown picker for this one case rather than stretching that helper. */
+function uiSelectPrompt({ title, options, confirmLabel = 'Choose' }) {
+  return new Promise(resolve => {
+    document.getElementById('ui-prompt')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'ui-prompt';
+    ov.className = 'modal-overlay';
+    const done = (val) => { ov.remove(); document.removeEventListener('keydown', onKey); resolve(val); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); done(null); } };
+    ov.innerHTML = `
+      <div class="modal-box ui-dialog">
+        <div class="modal-header"><span class="modal-title">${escHtml(title)}</span>
+          <button class="btn btn-ghost" data-no>✕</button></div>
+        <div class="modal-body">
+          <select id="ui-prompt-select" class="input">
+            ${options.map(o => `<option value="${escAttr(o.value)}">${escHtml(o.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" data-cancel>Cancel</button>
+          <button class="btn btn-primary" data-ok>${escHtml(confirmLabel)}</button>
+        </div>
+      </div>`;
+    ov.onclick = (e) => { if (e.target === ov) done(null); };
+    ov.querySelector('[data-no]').onclick = () => done(null);
+    ov.querySelector('[data-cancel]').onclick = () => done(null);
+    ov.querySelector('[data-ok]').onclick = () => done(ov.querySelector('#ui-prompt-select').value);
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+async function writerDocAttach(id) {
+  try {
+    const r = await fetch(`/api/generate/docs/tasks?id=${encodeURIComponent(id)}`);
+    const data = await r.json();
+    const tasks = data.tasks || [];
+    if (!tasks.length) { showToast('No tasks on this document\'s project to attach to', 'warn'); return; }
+    const choice = await uiSelectPrompt({ title: 'Attach to task', options: tasks.map(t => ({ value: t.ID, label: t.TITLE || t.ID })), confirmLabel: 'Attach' });
+    if (!choice) return;
+    const ar = await fetch('/api/generate/docs/attach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, taskId: choice }) });
+    const ad = await ar.json();
+    showToast(ad.success ? 'Attached' : (ad.error || 'Refused'), ad.success ? 'success' : 'error');
+    await loadWriterDocs(true);
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 /** Step 1: "Draft for" target picker, now the wizard's own landing (was
@@ -6426,7 +6588,8 @@ async function generateWriterDoc(btn) {
   try {
     const r = await fetch('/api/generate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ namespace: writerNamespace, archetypeId: writerActiveArchetype.id, content: buildWriterContentPayload(), formats }),
+      body: JSON.stringify({ namespace: writerNamespace, archetypeId: writerActiveArchetype.id, content: buildWriterContentPayload(), formats,
+        targetKind: writerTargetKind, targetId: writerTargetId, targetLabel: writerTargetLabel }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Generate failed');
@@ -6436,6 +6599,7 @@ async function generateWriterDoc(btn) {
     // clean rather than re-offering a now-stale "resume?" banner.
     const key = writerDraftKey();
     if (key) { try { localStorage.removeItem(key); } catch {} }
+    WRITER_DOCS = null;   // BA26081811's list is now stale -- refetch next time it's opened
     repaintView('writer');
     showToast('Document generated', 'success');
   } catch (e) {
