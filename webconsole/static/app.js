@@ -8512,6 +8512,38 @@ async function syncClock() {
  */
 let DAY = null;
 let dayInFlight = false;
+
+// BT26082003: block-transition notifications. lastNotifiedBlockId starts
+// undefined (not null) so the very first tick this page load ever sees a
+// current block never fires a notification for "arriving mid-block" --
+// only a genuine transition (a real change from one id to another) does.
+let lastNotifiedBlockId;
+
+/** Fires a browser notification the moment the active named block changes.
+ *  Visual-only (no sound/vibration -- browsers can't reliably force either,
+ *  and this matches the fleet's existing vibrate-not-sound philosophy).
+ *  Quiet blocks (Rest, Protected -- blocks.js's own `quiet` flag) never
+ *  notify, matching vault's existing "no notification, no reminder" rule
+ *  for those hours exactly, rather than a second Rest-only special case. */
+function checkBlockTransitionNotify(d) {
+  if (!d) return;
+  const current = d.current || null;
+  const currentId = current ? current.id : null;
+  if (currentId === lastNotifiedBlockId) return;
+  lastNotifiedBlockId = currentId;
+  if (!current || current.quiet) return;
+  if (typeof Notification === 'undefined') return;
+
+  const fire = () => {
+    try { new Notification(current.name, { body: current.note && current.note !== '-' ? current.note : '' }); }
+    catch (e) {}
+  };
+  // Requested lazily, at the first real transition this page load sees --
+  // never on page load itself unprompted, per the row's own instruction.
+  if (Notification.permission === 'granted') fire();
+  else if (Notification.permission === 'default') Notification.requestPermission().then((p) => { if (p === 'granted') fire(); });
+}
+
 async function fetchDay(force = false) {
   if (dayInFlight || (DAY && !force)) return;
   dayInFlight = true;
@@ -9390,6 +9422,7 @@ function ctxTick() {
   }
 
   const d = localDayNow();
+  checkBlockTransitionNotify(d);
   if (d) {
     // The current block's countdown is patched every second (not just on
     // transition), so the rail never shows a minute that's up to 60s stale.
