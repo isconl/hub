@@ -2688,6 +2688,17 @@ function renderIntegrationsBody() {
         </div>
       </div>
       <div class="card">
+        <div class="card-header"><span class="card-title">Google · Gmail</span><span class="badge badge-medium">○ Not Connected</span></div>
+        <div style="font-size:0.82rem;color:var(--text-2);margin-bottom:0.75rem">
+          <div><strong>Inbox sync:</strong> Not connected yet</div>
+          <div><strong>Reply:</strong> Inline from Inbox, once connected</div>
+        </div>
+        <div style="display:flex;gap:0.4rem">
+          <button class="btn btn-primary" onclick="navigate('settings')">Connect Gmail</button>
+          <button class="btn btn-ghost" onclick="navigate('inbox')">Open Inbox</button>
+        </div>
+      </div>
+      <div class="card">
         <div class="card-header"><span class="card-title">Social</span><span class="badge ${bf.hasToken?'badge-jira':'badge-medium'}">${bf.hasToken?'● Connected':'○ Not Connected'}</span></div>
         <div style="font-size:0.82rem;color:var(--text-2);margin-bottom:0.75rem">
           <div><strong>Social Media:</strong> ${bf.hasToken?'Ready to schedule':'Token needed'}</div>
@@ -3218,6 +3229,30 @@ function renderSettings() {
         <div class="settings-actions">
           <button class="btn btn-primary" onclick="saveSettings('ms')">Save Manual Config</button>
           <button class="btn btn-ghost" onclick="navigate('files')">Open File Manager</button>
+        </div>
+      </div>
+
+      <!-- Google (BM26082011) -->
+      <div class="settings-section">
+        <div class="settings-section-title">Google Account · Gmail + Calendar
+          <span id="google-status-badge" class="badge badge-medium" style="margin-left:auto">○ Not Connected</span>
+        </div>
+        <p class="settings-hint">
+          Connect a Gmail account to pull mail into <strong>Inbox</strong> (same per-person threads WhatsApp already uses) and read/reply inline. Needs a one-time Google Cloud OAuth client set up first (<code>GOOGLE_CLIENT_ID</code>/<code>GOOGLE_CLIENT_SECRET</code>) -- ask whoever runs this fleet if Start below fails immediately.
+        </p>
+        <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-md);padding:0.85rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;flex-wrap:wrap">
+            <div>
+              <strong style="color:var(--text);font-size:0.85rem">1-Click Google Device Login</strong>
+              <div style="font-size:0.75rem;color:var(--text-3)">Authorize with Google's device code, same flow as Microsoft 365 above</div>
+            </div>
+            <button class="btn btn-primary" onclick="startGoogleDeviceLogin()">Start Google Login</button>
+          </div>
+          <div id="google-device-box" class="hidden" style="margin-top:0.75rem;padding:0.75rem;background:var(--panel);border:1px solid var(--green-dim);border-radius:var(--r-sm)">
+            <div style="font-size:0.8rem;color:var(--text-2);margin-bottom:0.4rem">1. Copy code: <strong id="google-user-code" style="font-size:1.1rem;color:var(--green-bright);font-family:var(--font-mono);letter-spacing:0.1em;background:var(--surface);padding:2px 8px;border-radius:4px">....</strong></div>
+            <div style="font-size:0.8rem;color:var(--text-2);margin-bottom:0.5rem">2. Open link: <a id="google-login-link" href="https://google.com/device" target="_blank" class="btn btn-ghost" style="font-size:0.75rem;padding:2px 8px">Open google.com/device ↗</a></div>
+            <div id="google-poll-status" style="font-size:0.73rem;color:var(--amber);font-family:var(--font-mono)">Waiting for you to enter code...</div>
+          </div>
         </div>
       </div>
 
@@ -3839,6 +3874,52 @@ async function startM365DeviceLogin() {
   } catch(e) { if (pollEl) pollEl.textContent = 'Error: ' + e.message; }
 }
 
+let googlePollTimer = null;
+
+async function startGoogleDeviceLogin(account = 'default') {
+  const box = document.getElementById('google-device-box');
+  const codeEl = document.getElementById('google-user-code');
+  const pollEl = document.getElementById('google-poll-status');
+  const badgeEl = document.getElementById('google-status-badge');
+  if (box) box.classList.remove('hidden');
+  if (pollEl) pollEl.textContent = 'Requesting code from Google…';
+
+  try {
+    const r = await fetch('/api/google/auth/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account }),
+    });
+    const data = await r.json();
+    if (!data.ok) { if (pollEl) pollEl.textContent = 'Failed: ' + (data.error || 'Unknown error'); return; }
+
+    if (codeEl) codeEl.textContent = data.userCode;
+    const linkEl = document.getElementById('google-login-link');
+    if (linkEl && data.verificationUri) linkEl.href = data.verificationUri;
+    if (pollEl) pollEl.textContent = 'Code generated! Click the link above, enter code, and sign in.';
+    showToast(`Google Code: ${data.userCode}`, 'info');
+
+    if (googlePollTimer) clearInterval(googlePollTimer);
+    googlePollTimer = setInterval(async () => {
+      try {
+        const pr = await fetch('/api/google/auth/poll', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account, deviceCode: data.deviceCode }),
+        });
+        const pd = await pr.json();
+        if (pd.connected) {
+          clearInterval(googlePollTimer);
+          if (pollEl) { pollEl.textContent = '● Google Account Connected Successfully!'; pollEl.style.color = 'var(--green)'; }
+          if (badgeEl) { badgeEl.textContent = '● Connected'; badgeEl.className = 'badge badge-jira'; }
+          showToast('Google Account Connected Successfully!', 'success');
+        } else if (!pd.waiting) {
+          clearInterval(googlePollTimer);
+          if (pollEl) pollEl.textContent = 'Status: ' + (pd.error || 'sign-in did not complete');
+        }
+        // pd.waiting === true (authorization_pending/slow_down) -- keep polling, no UI change needed.
+      } catch (e) {}
+    }, (data.pollIntervalSec || 5) * 1000);
+  } catch (e) { if (pollEl) pollEl.textContent = 'Error: ' + e.message; }
+}
+
 async function injectContext() {
   const text = document.getElementById('context-inject-input')?.value.trim();
   if (!text) { showToast('Paste context text first','error'); return; }
@@ -4064,6 +4145,7 @@ let inboxChannel = null;   // click a channel chip to filter; click again to cle
 let inboxOpen = {};        // ID -> expanded
 let inboxSelected = new Set(); // ID -> selected for bulk actions
 let inboxPersonKey = null; // grouping key of the open thread (person.ID, or 'sender:<name>' for unlinked rows) - null = show the thread list
+let inboxGmailComposeFor = null; // ID of the gmail message currently showing an inline reply box (BM26082011)
 
 /**
  * BM26081807: group the flat inbox feed into one thread per person.
@@ -4181,7 +4263,9 @@ function renderInbox() {
                     ${open ? `
                       ${m.COMMENT && m.COMMENT !== '-' ? `<div class="inbox-comment"><span>Your note</span>${escHtml(m.COMMENT)}</div>` : ''}
                       <div class="inbox-actions" onclick="event.stopPropagation()">
-                        <button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px" onclick="inboxReply('${escHtml(m.ID)}', false)">Reply</button>
+                        ${m.CHANNEL === 'gmail' && m.DIRECTION === 'in'
+                          ? `<button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px" onclick="inboxToggleGmailCompose('${escHtml(m.ID)}')">Reply via Gmail</button>`
+                          : `<button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px" onclick="inboxReply('${escHtml(m.ID)}', false)">Reply</button>`}
                         <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="inboxComment('${escHtml(m.ID)}', '${escHtml((m.COMMENT !== '-' ? m.COMMENT : '')).replace(/'/g, "\\'")}')">
                           ${m.COMMENT && m.COMMENT !== '-' ? 'Edit note' : 'Add note'}</button>
                         <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{tag:this.value})">
@@ -4195,7 +4279,17 @@ function renderInbox() {
                                 onclick="quickDistillText('${escHtml(m.BODY).replace(/'/g, "\\'")}')">To task</button>
                         <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto"
                                 onclick="inboxDelete('${escHtml(m.ID)}')">Delete</button>
-                      </div>` : ''}
+                      </div>
+                      ${inboxGmailComposeFor === m.ID ? `
+                      <div class="inbox-gmail-compose" onclick="event.stopPropagation()" style="margin-top:0.5rem;padding:0.6rem;background:var(--panel);border:1px solid var(--border);border-radius:var(--r-sm)">
+                        <div style="font-size:0.72rem;color:var(--text-3);margin-bottom:0.35rem">Replying to <strong>${escHtml(m.SENDER)}</strong></div>
+                        <textarea id="gmail-reply-${escHtml(m.ID)}" class="draft-message draft-editable" style="min-height:5rem" placeholder="Write your reply…"></textarea>
+                        <div style="display:flex;gap:0.4rem;margin-top:0.4rem">
+                          <button class="btn btn-primary" style="font-size:0.7rem;padding:3px 10px" onclick="inboxSendGmailReply('${escHtml(m.ID)}')">Send</button>
+                          <button class="btn btn-ghost" style="font-size:0.7rem;padding:3px 10px" onclick="inboxToggleGmailCompose('${escHtml(m.ID)}')">Cancel</button>
+                        </div>
+                        <div id="gmail-send-status-${escHtml(m.ID)}" style="font-size:0.7rem;color:var(--text-3);margin-top:0.3rem"></div>
+                      </div>` : ''}` : ''}
                   </div>
                 </div>`;
               }).join('')}
@@ -4354,6 +4448,46 @@ async function inboxComment(id, current) {
     hint: 'This also steers the generated reply.', confirmLabel: 'Save note' });
   if (note === null) return;
   inboxSet(id, { comment: note });
+}
+
+function inboxToggleGmailCompose(id) {
+  inboxGmailComposeFor = inboxGmailComposeFor === id ? null : id;
+  repaintView('inbox');
+}
+
+// "Name <email>" (gmail-sync.js's own SENDER shape) or a bare address --
+// recovers the real address either way. A pure display name with no
+// address at all (shouldn't happen from gmail-sync.js, but a hand-entered
+// row could) has nothing to extract; caller checks for null.
+function extractEmailAddress(senderField) {
+  const angle = /<([^>]+)>/.exec(senderField || '');
+  if (angle) return angle[1];
+  return /^[^\s<>]+@[^\s<>]+$/.test((senderField || '').trim()) ? senderField.trim() : null;
+}
+
+async function inboxSendGmailReply(id) {
+  const m = (STATE.feed || []).find(x => x.ID === id);
+  const statusEl = document.getElementById(`gmail-send-status-${id}`);
+  const textEl = document.getElementById(`gmail-reply-${id}`);
+  if (!m || !textEl) return;
+  const to = extractEmailAddress(m.SENDER);
+  if (!to) { if (statusEl) statusEl.textContent = 'No email address on record for this sender.'; return; }
+  const body = textEl.value.trim();
+  if (!body) { if (statusEl) statusEl.textContent = 'Write something first.'; return; }
+
+  if (statusEl) statusEl.textContent = 'Sending…';
+  try {
+    const r = await (await fetch('/api/google/send', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, subject: m.SUBJECT && m.SUBJECT !== '-' ? `Re: ${m.SUBJECT}` : 'Re:', body, personId: m.PERSON_ID }) })).json();
+    if (!r.ok) { if (statusEl) statusEl.textContent = 'Failed: ' + (r.error || 'unknown error'); return; }
+    showToast('Reply sent', 'success');
+    inboxGmailComposeFor = null;
+    await fetchState();
+    repaintView('inbox');
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+  }
 }
 
 async function inboxAdd() {
