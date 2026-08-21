@@ -4290,7 +4290,7 @@ function renderInbox() {
                       <div class="inbox-actions" onclick="event.stopPropagation()">
                         ${m.CHANNEL === 'gmail' && m.DIRECTION === 'in'
                           ? `<button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px" onclick="inboxToggleGmailCompose('${escHtml(m.ID)}')">Reply via Gmail</button>`
-                          : `<button class="btn btn-primary" style="font-size:0.7rem;padding:2px 9px" onclick="inboxReply('${escHtml(m.ID)}', false)">Reply</button>`}
+                          : ''}
                         <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="inboxComment('${escHtml(m.ID)}', '${escHtml((m.COMMENT !== '-' ? m.COMMENT : '')).replace(/'/g, "\\'")}')">
                           ${m.COMMENT && m.COMMENT !== '-' ? 'Edit note' : 'Add note'}</button>
                         <select class="task-select" style="font-size:0.68rem" onchange="inboxSet('${escHtml(m.ID)}',{tag:this.value})">
@@ -4535,44 +4535,6 @@ async function inboxAdd() {
       showToast(d.success ? `Captured ${d.id}` : (d.error || 'Refused'), d.success ? 'success' : 'error');
       await fetchState(); repaintView('inbox');
     });
-}
-
-// The reply, in the sender's register, steered by the margin note. Reuses the
-// chase overlay chrome - one shape for every "here are the words" moment.
-async function inboxReply(id, regenerate) {
-  let overlay = document.getElementById('chase-overlay');
-  if (overlay) overlay.remove();
-  overlay = document.createElement('div');
-  overlay.id = 'chase-overlay';
-  overlay.className = 'chase-overlay';
-  overlay.innerHTML = `<div class="chase-box"><div class="brief-pending">
-    <div class="spinner-inline"></div><div>Writing the reply for ${escHtml(id)}…</div></div></div>`;
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  document.body.appendChild(overlay);
-  try {
-    const d = await (await fetch('/api/inbox/reply', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, regenerate: !!regenerate }) })).json();
-    if (!d.success) {
-      overlay.querySelector('.chase-box').innerHTML = `<div class="empty-state">${escHtml(d.error || 'Not available')}</div>`;
-      return;
-    }
-    overlay.querySelector('.chase-box').innerHTML = `
-      <div class="chase-head">
-        <div>Reply to <strong>${escHtml(d.draft.to)}</strong> via ${escHtml(d.draft.channel)}</div>
-        <button class="btn btn-ghost" style="font-size:0.7rem" onclick="document.getElementById('chase-overlay').remove()">Close</button>
-      </div>
-      <textarea class="draft-message draft-editable" id="chase-text" spellcheck="true" aria-label="The message - edit it before you send it">${escHtml(d.draft.body)}</textarea><div class="draft-editable-hint">Edit it freely - what you leave here is what gets copied.</div>
-      ${d.draft.checks?.length ? `<div class="draft-checks"><div class="draft-checks-label">Check before sending</div>
-        ${d.draft.checks.map(c => `<div class="draft-check"><code>${escHtml(c.found)}</code><span>${escHtml(c.say)}</span></div>`).join('')}</div>` : ''}
-      <div class="draft-actions">
-        <button class="btn btn-primary" style="font-size:0.72rem;padding:3px 10px"
-                onclick="navigator.clipboard?.writeText(draftText('chase-text')).then(()=>showToast('Copied … go be charming','success'))">Copy</button>
-        <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 10px" onclick="inboxReply('${escHtml(id)}', true)">Different angle</button>
-      </div>`;
-  } catch (e) {
-    overlay.querySelector('.chase-box').innerHTML = `<div class="empty-state">${escHtml(e.message)}</div>`;
-  }
 }
 
 function quickDistillText(text) {
