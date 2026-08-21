@@ -15201,11 +15201,12 @@ let learnRestorePct = null;   // scroll depth to restore once the lesson paints
 
 async function fetchLearning() {
   try {
-    const [courseData, campusData] = await Promise.all([
+    const [courseData, campusData, contribData] = await Promise.all([
       fetch('/api/learning').then(r => r.json()),
       fetch('/api/learning/campus').then(r => r.json()).catch(() => null),
+      fetch('/api/learning/contributions').then(r => r.json()).catch(() => null),
     ]);
-    LEARN = { ...courseData, campus: campusData };
+    LEARN = { ...courseData, campus: campusData, contrib: contribData };
   } catch { LEARN = null; }
   if (currentView === 'learning') {
     document.getElementById('view-container').innerHTML = renderLearning();
@@ -15958,6 +15959,13 @@ function renderLearning() {
 
     <!-- CAMPUS: Context-Aware Advice Board — shown first -->
     ${renderCampus(resumeBanner)}
+
+    ${LEARN.contrib && LEARN.contrib.days ? `
+    <div class="card" style="margin-bottom:1.5rem">
+      <div class="card-header"><span class="card-title">Learning activity</span>
+        <span class="card-meta">last 52 weeks</span></div>
+      ${contribGridHtml({ days: LEARN.contrib.days }).html}
+    </div>` : ''}
 
     <!-- LEARNING TRACKS: Classified groups and course cards -->
     ${learnViewMode === 'groups' ? `
