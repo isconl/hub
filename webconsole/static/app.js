@@ -1244,6 +1244,14 @@ function renderToday() {
             <div class="evt-import-note">Google Calendar: Settings → your calendar → Export, then drop the .ics here. Duplicates are skipped by title and date.</div>
             <input type="file" id="evt-ics-file" accept=".ics,text/calendar" hidden onchange="calImportIcsFile(this)"/>
           </div>
+          <div class="evt-import">
+            <div class="evt-import-head">Or take events out</div>
+            <div class="evt-import-row">
+              <button class="btn btn-ghost" onclick="calExportIcs(this)"
+                      title="Local events + recurring dates (birthdays, anniversaries) as a standard .ics file">Download .ics</button>
+            </div>
+            <div class="evt-import-note">Import into Google Calendar, Apple Calendar, or anywhere else that reads .ics. Live Microsoft 365 events aren't included — they're already in Outlook.</div>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" onclick="closeAddEventModal()">Cancel</button>
@@ -1317,6 +1325,23 @@ function calImportIcsFile(input) {
   };
   reader.readAsText(f);
 }
+async function calExportIcs(btn) {
+  const was = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    const d = await (await fetch('/api/calendar/export')).json();
+    if (!d.ok) { showToast(d.error || 'Export failed', 'error'); return; }
+    const blob = new Blob([d.ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `isconl-calendar-${new Date().toISOString().slice(0, 10)}.ics`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Calendar exported', 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+  btn.disabled = false; btn.textContent = was;
+}
+
 function closeAddEventModal() {
   const m = document.getElementById('add-event-modal');
   if (m) m.classList.add('hidden');
