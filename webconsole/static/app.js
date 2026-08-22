@@ -4444,6 +4444,13 @@ function repaintView(name) {
   // network. A repaint throws that away, so without this the card sits on
   // "Checking for the current build..." for as long as the page stays open.
   if (currentView === name && name === 'settings' && typeof loadApkCard === 'function') loadApkCard();
+  // BL26082103: the lesson-reader checkpoint rail is built/torn down from
+  // this hook, not navigate()'s -- learnOpenLesson() (and every other lesson
+  // entry point) calls repaintView('learning') directly, never navigate().
+  if (currentView === name && name === 'learning') {
+    if (learnOpen.course && learnOpen.file && typeof learnInitCheckpoints === 'function') learnInitCheckpoints();
+    else if (typeof learnTeardownCheckpoints === 'function') learnTeardownCheckpoints();
+  }
   try { if (typeof refreshContextIfActive === 'function') refreshContextIfActive(); } catch {}
 }
 
@@ -11780,6 +11787,10 @@ async function rechase(id, btn) {
 
 function navigate(viewName, params = {}, opts = {}) {
   if (!viewFns[viewName]) return;
+  // BL26082103: tear down any stale checkpoint rail before switching away
+  // from the lesson reader -- repaintView('learning') rebuilds it if the
+  // destination is still a lesson, this just guards every other view.
+  if (viewName !== 'learning' && typeof learnTeardownCheckpoints === 'function') learnTeardownCheckpoints();
   if (!opts.fromHistory) {
     pushHistory(viewName, params, currentView === viewName && viewName !== 'task');
     trailPush(viewName, params.taskId);
@@ -11841,6 +11852,7 @@ function navigate(viewName, params = {}, opts = {}) {
   if (viewName==='notifications') fetchNotifs();
   if (viewName==='finance')  fetchFinance();
   if (viewName==='planning') fetchPlans();
+  if (viewName==='learning' && learnOpen.course && learnOpen.file && typeof learnInitCheckpoints === 'function') learnInitCheckpoints();
   // Files always opens at the OneDrive root unless a space explicitly handed a
   // path over for this one visit.
   if (viewName==='files')    { const p = fmPendingPath || 'root'; fmPendingPath = null; setTimeout(()=>fmNavigate(p), 100); }
@@ -15386,6 +15398,74 @@ function learnScrollToTop() {
   if (c) c.scrollTop = 0;
 }
 
+// ── LESSON CHECKPOINT RAIL (BL26082103) ─────────────────────────────────────
+// Minimal, label-free vertical rail of dots, one per `##`/`###` heading
+// (rendered <h3>/<h4> by learnMd() above, each with a stable id already).
+// Lives outside the render template entirely -- built/positioned/torn down
+// here in JS against .lesson-body's real, current bounding box rather than
+// guessed via CSS, since the reading column's horizontal position shifts
+// with the sidebar/chat-rail's own widths. Hidden (not just squeezed) when
+// there genuinely isn't room beside the column, per the row's "adaptable"
+// ask -- never fights the reading column for space.
+let learnCheckpointObserver = null;
+function learnTeardownCheckpoints() {
+  if (learnCheckpointObserver) { learnCheckpointObserver.disconnect(); learnCheckpointObserver = null; }
+  document.getElementById('lesson-checkpoints')?.remove();
+  window.removeEventListener('resize', learnPositionCheckpoints);
+}
+function learnInitCheckpoints() {
+  learnTeardownCheckpoints();
+  const body = document.querySelector('.lesson-body');
+  const headings = body ? Array.from(body.querySelectorAll('h3[id], h4[id]')) : [];
+  if (!body || headings.length < 2) return;   // not worth a rail for 0-1 sections
+
+  const rail = document.createElement('div');
+  rail.id = 'lesson-checkpoints';
+  rail.className = 'lesson-checkpoints';
+  headings.forEach(h => {
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = `lesson-checkpoint-dot ${h.tagName.toLowerCase()}`;
+    dot.dataset.target = h.id;
+    dot.title = h.textContent;
+    dot.setAttribute('aria-label', h.textContent);
+    dot.onclick = () => {
+      const c = document.getElementById('view-container');
+      const target = document.getElementById(h.id);
+      if (c && target) c.scrollTop = target.offsetTop - 16;   // instant, matches learnScrollToTop's reasoning
+    };
+    rail.appendChild(dot);
+  });
+  document.body.appendChild(rail);
+
+  learnPositionCheckpoints();
+  window.addEventListener('resize', learnPositionCheckpoints);
+
+  learnCheckpointObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const dot = rail.querySelector(`.lesson-checkpoint-dot[data-target="${entry.target.id}"]`);
+      if (dot) dot.classList.toggle('active', entry.isIntersecting);
+    });
+  }, { root: document.getElementById('view-container'), rootMargin: '-10% 0px -80% 0px' });
+  headings.forEach(h => learnCheckpointObserver.observe(h));
+}
+function learnPositionCheckpoints() {
+  const rail = document.getElementById('lesson-checkpoints');
+  const body = document.querySelector('.lesson-body');
+  const vc = document.getElementById('view-container');
+  if (!rail || !body || !vc) return;
+  const bodyRect = body.getBoundingClientRect();
+  const vcRect = vc.getBoundingClientRect();
+  const railWidth = 28;   // dots + hover-tooltip breathing room
+  const gap = 20;
+  const roomLeft = vcRect.right - bodyRect.right - gap - railWidth;
+  if (roomLeft < 0) { rail.classList.remove('visible'); return; }
+  rail.style.left = `${bodyRect.right + gap}px`;
+  rail.style.top = `${Math.max(vcRect.top, bodyRect.top)}px`;
+  rail.style.height = `${Math.min(vcRect.bottom, bodyRect.bottom) - Math.max(vcRect.top, bodyRect.top)}px`;
+  rail.classList.add('visible');
+}
+
 /** Jump straight back into the exact spot a resume row describes. */
 async function learnResume(course, lesson, pct) {
   learnCourseOpen = course;
@@ -16564,7 +16644,18 @@ function renderMapBlock(spec) {
   return `<div class="lesson-map">${spec.label ? `<div class="lesson-chart-title">${escHtml(spec.label)}</div>` : ''}<iframe src="${src}" loading="lazy" title="${escAttr(spec.label || 'map')}"></iframe></div>`;
 }
 
+// BL26082103: stable per-heading ids for the checkpoint rail, reset each
+// learnMd() call (one lesson at a time) so a repeated heading text within
+// the same lesson still gets a unique id instead of colliding.
+let learnHeadingSeen = {};
+function learnHeadingId(text) {
+  const base = writerSlug(text) || 'section';
+  const n = (learnHeadingSeen[base] = (learnHeadingSeen[base] || 0) + 1);
+  return n === 1 ? base : `${base}-${n}`;
+}
+
 function learnMd(src) {
+  learnHeadingSeen = {};
   let rawSrc = String(src || '');
   // Holds any block-level HTML that must survive the escHtml pass below
   // untouched - equations first (7 Aug), charts and maps joined it (14 Aug).
@@ -16725,8 +16816,8 @@ function learnMd(src) {
       i = nextIdx; continue;
     }
     if (/^#### /.test(line)) { out.push(`<h5>${restoreMath(inline(line.slice(5)))}</h5>`); continue; }
-    if (/^### /.test(line)) { out.push(`<h4>${restoreMath(inline(line.slice(4)))}</h4>`); continue; }
-    if (/^## /.test(line))  { closeQuiz(); out.push(`<h3>${restoreMath(inline(line.slice(3)))}</h3>`); continue; }
+    if (/^### /.test(line)) { const t = line.slice(4); out.push(`<h4 id="${learnHeadingId(t)}">${restoreMath(inline(t))}</h4>`); continue; }
+    if (/^## /.test(line))  { closeQuiz(); const t = line.slice(3); out.push(`<h3 id="${learnHeadingId(t)}">${restoreMath(inline(t))}</h3>`); continue; }
     if (/^# /.test(line))   { closeQuiz(); out.push(`<h2>${restoreMath(inline(line.slice(2)))}</h2>`); continue; }
     if (/^\*\*(You will be able to|What you will learn|What will be learnt):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);

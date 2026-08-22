@@ -3117,6 +3117,27 @@ body[data-callout-theme="muted"] .lesson-body {
 .lesson-scroll-top-btn.visible { opacity:1; pointer-events:auto; transform:translateY(0); }
 .lesson-scroll-top-btn:hover { color:var(--text); border-color:var(--lb-accent, #6fc0af); background:var(--lb-accent-bg, rgba(111,192,175,0.10)); }
 
+/* BL26082103: minimal checkpoint rail, one dot per section heading. Built
+   and positioned entirely in JS (app.js's learnPositionCheckpoints()) against
+   .lesson-body's real bounding box, not guessed here via a media query --
+   the reading column's horizontal position shifts with the sidebar/chat-rail
+   widths, so a fixed breakpoint would be wrong as often as right. `.visible`
+   is only added once JS confirms there's actual room; default hidden. */
+.lesson-checkpoints {
+  position:fixed; width:2px; display:none;
+  flex-direction:column; align-items:center; justify-content:space-between;
+  z-index:4; background:var(--border); border-radius:1px;
+}
+.lesson-checkpoints.visible { display:flex; }
+.lesson-checkpoint-dot {
+  width:6px; height:6px; border-radius:50%; padding:0; border:none; cursor:pointer;
+  background:var(--border-mid); flex-shrink:0; transition:background 0.15s, transform 0.15s;
+  transform:scale(1);
+}
+.lesson-checkpoint-dot.h3 { width:7px; height:7px; }
+.lesson-checkpoint-dot:hover { background:var(--lb-accent, #6fc0af); transform:scale(1.3); }
+.lesson-checkpoint-dot.active { background:var(--lb-accent, #6fc0af); transform:scale(1.3); }
+
 /* ── JOURNAL ── */
 .jr-compose-row { display:flex; gap:0.5rem; margin-top:0.6rem; flex-wrap:wrap; align-items:center; }
 .jr-entry { padding-top:0.8rem; }
