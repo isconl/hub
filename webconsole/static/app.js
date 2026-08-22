@@ -9070,6 +9070,16 @@ function ctxSlots() {
   const mins = (m) => m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`;
   const s = [];
 
+  // BM26082010: a message lifted from chat always wins the top slot until
+  // dismissed or replaced by another lift -- score above every computed
+  // signal below (99 is the next-highest, "sync" disconnected).
+  if (typeof CTX_LIFTED !== 'undefined' && CTX_LIFTED) {
+    s.push({ key: 'lifted', score: 999, tone: 'hot',
+      head: 'Lifted from chat', lead: CTX_LIFTED.text.slice(0, 160),
+      meta: `${fmtWhen(CTX_LIFTED.at, { rel: true })} · tap to dismiss`,
+      go: 'ctxClearLifted()' });
+  }
+
   const ms = STATE.services?.msgraph;
   if (ms && ms !== 'connected') s.push({ key: 'sync', score: 99, tone: 'hot',
     head: 'Not syncing', lead: 'OneDrive disconnected',
@@ -12171,6 +12181,17 @@ function chatAppend(role, html, opts = {}) {
   body.innerHTML = html;          // callers pass already-escaped/formatted html
   el.appendChild(body);
 
+  // Hover-only timestamp (BM26082010) -- no timestamp shown at all before
+  // this, Signal-style: quiet until you hover, then it's there.
+  if (!opts.transient) {
+    const ts = document.createElement('div');
+    ts.className = 'msg-ts';
+    const at = new Date();
+    ts.textContent = at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    ts.title = at.toLocaleString();
+    el.appendChild(ts);
+  }
+
   // Every message carries its own copy button and can be picked up by the
   // selection bar. Transient messages - the typing indicator, action cards -
   // opt out, so there is never a copy button on something with nothing to copy.
@@ -12184,6 +12205,27 @@ function chatAppend(role, html, opts = {}) {
     act.textContent = 'Copy';
     act.onclick = (e) => { e.stopPropagation(); chatCopyMessage(el, act); };
     el.appendChild(act);
+
+    // Four more per-bubble controls (BM26082010), alongside Copy: lift into
+    // Context, regenerate (agent only), branch from here, reply-to-quote.
+    const actions = document.createElement('div');
+    actions.className = 'chat-msg-actions';
+    const mkBtn = (cls, title, icon, fn) => {
+      const b = document.createElement('button');
+      b.className = `chat-msg-action ${cls}`;
+      b.type = 'button';
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.innerHTML = svgIcon(icon, 12);
+      b.onclick = (e) => { e.stopPropagation(); fn(el); };
+      return b;
+    };
+    actions.appendChild(mkBtn('chat-msg-lift', 'Lift into Context', 'pin', chatLiftToContext));
+    if (role !== 'user') actions.appendChild(mkBtn('chat-msg-regen', 'Regenerate', 'refresh', chatRegenerate));
+    actions.appendChild(mkBtn('chat-msg-branch', 'Branch from here', 'layers', chatBranchFrom));
+    actions.appendChild(mkBtn('chat-msg-quote', 'Reply with quote', 'arrowLeft', chatReplyQuote));
+    el.appendChild(actions);
+
     el.addEventListener('click', () => {
       if (!document.body.classList.contains('chat-selecting')) return;
       el.classList.toggle('picked');
@@ -12239,6 +12281,85 @@ function chatCopyMessage(el, btn) {
     btn.classList.add('done');
     setTimeout(() => { btn.textContent = was; btn.classList.remove('done'); }, 1500);
   });
+}
+
+// ── CHAT: PER-BUBBLE HOVER CONTROLS (BM26082010) ─────────────────────────────
+// Four actions beyond Copy/Select, each on its own bubble, alongside the
+// existing .chat-msg-copy button rather than replacing it.
+
+/** Lifts a message's text into the Context panel as a pinned, top-scoring
+ *  slot (ctxSlots() reads CTX_LIFTED) until dismissed or replaced by another
+ *  lift -- the panel already re-renders from ctxSlots() on demand, so this
+ *  needs no new rendering path, just one more slot source. */
+let CTX_LIFTED = null;
+function ctxClearLifted() { CTX_LIFTED = null; if (typeof renderRailContext === 'function') renderRailContext(); }
+function chatLiftToContext(el) {
+  const text = chatMsgText(el);
+  if (!text) return;
+  CTX_LIFTED = { text, at: new Date().toISOString() };
+  if (typeof renderRailContext === 'function') renderRailContext();
+  showToast('Lifted into Context', 'success');
+}
+
+/** Agent messages only: drop this reply and re-run the turn against the
+ *  user message right before it. Reuses chatRunTurn() (the same code path
+ *  sendRailChat() uses after appending a bubble) rather than duplicating
+ *  the distill/act/stream/fallback routing. */
+async function chatRegenerate(el) {
+  if (!el.classList.contains('agent')) return;
+  const prevUser = el.previousElementSibling;
+  if (!prevUser || !prevUser.classList.contains('user')) {
+    showToast('No prior message to regenerate from', 'warn');
+    return;
+  }
+  const text = chatMsgText(prevUser);
+  if (!text) return;
+  el.remove();
+  await chatRunTurn(text);
+}
+
+/** Quotes this message into the composer ahead of whatever he types next,
+ *  Signal-style reply-to-quote. Purely local -- the quote is just text the
+ *  next real message carries, not a stored reference to the original. */
+function chatReplyQuote(el) {
+  const ta = document.getElementById('chat-rail-textarea');
+  if (!ta) return;
+  const text = chatMsgText(el);
+  if (!text) return;
+  const quoted = text.split('\n').map(l => `> ${l}`).join('\n');
+  ta.value = ta.value ? `${quoted}\n\n${ta.value}` : `${quoted}\n\n`;
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+}
+
+/** Forks a new thread seeded with a LOCAL copy of the transcript up to and
+ *  including this message -- the new thread is real (same /thread/new the
+ *  New Conversation button uses, so it saves going forward normally), but
+ *  the seeded prior messages are display-only, not replayed against the
+ *  agent or persisted individually: there is no bulk-import endpoint for
+ *  "these N messages happened," and resending each one for real would
+ *  trigger duplicate agent turns and side effects. Good enough to branch
+ *  a conversation's direction from a specific point; a real persisted
+ *  branch is a backend change for a future row if he wants full history
+ *  on the branched thread too. */
+async function chatBranchFrom(el) {
+  const box = chatBox();
+  if (!box) return;
+  const prior = Array.from(box.querySelectorAll('.chat-msg-real'));
+  const cut = prior.indexOf(el);
+  if (cut < 0) return;
+  const toReplay = prior.slice(0, cut + 1).map(m => ({
+    role: m.classList.contains('user') ? 'user' : 'agent',
+    html: m.querySelector('.msg-content')?.innerHTML || '',
+  }));
+
+  await fetch('/api/chat/thread/new', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  box.innerHTML = ctxField(ctxFieldRgb());
+  toReplay.forEach(m => chatAppend(m.role, m.html));
+  document.getElementById('chat-history')?.classList.add('hidden');
+  chatScrollToEnd();
+  showToast('Branched into a new conversation from here', 'success');
 }
 
 function chatToggleSelect() {
@@ -12448,6 +12569,17 @@ async function sendRailChat() {
   chatAppend('user', chatFormat(text));
   ta.value = '';
   ta.style.height = '';           // reset autosize
+  await chatRunTurn(text);
+}
+
+/**
+ * Everything sendRailChat() does AFTER the user bubble is already on screen:
+ * distill-or-talk routing, streaming with a non-streaming fallback, error
+ * handling. Split out so chatRegenerate() (BM26082010) can re-run a turn
+ * against an EXISTING user message without appending a duplicate bubble.
+ */
+async function chatRunTurn(text) {
+  if (!chatBox()) { showToast('Chat panel not ready', 'error'); return; }
   chatSetBusy(true);
 
   // Multi-line pasted content that looks like a task list goes to the distiller.
@@ -15235,6 +15367,25 @@ window.addEventListener('scroll', () => {
   }, 1200);
 }, { passive: true });
 
+/** Scroll-to-top button (lesson reader only) - #view-container is the real
+ *  scrollable element (overflow-y:auto, see style.css), not window, so this
+ *  listens/scrolls there rather than on window like the resume-tracker above. */
+document.getElementById('view-container').addEventListener('scroll', () => {
+  const btn = document.getElementById('lesson-scroll-top-btn');
+  if (!btn) return;
+  const c = document.getElementById('view-container');
+  btn.classList.toggle('visible', c.scrollTop > window.innerHeight * 0.6);
+}, { passive: true });
+function learnScrollToTop() {
+  // Plain instant jump, not scrollTo({behavior:'smooth'}) -- smooth scrolling
+  // on this element (via the scrollTo option or CSS scroll-behavior) proved
+  // unreliable after a real scroll gesture during testing 22 Aug 2026
+  // (worked in isolation, silently no-op'd after genuine wheel input).
+  // Direct scrollTop assignment is the one path confirmed reliable every time.
+  const c = document.getElementById('view-container');
+  if (c) c.scrollTop = 0;
+}
+
 /** Jump straight back into the exact spot a resume row describes. */
 async function learnResume(course, lesson, pct) {
   learnCourseOpen = course;
@@ -15804,6 +15955,9 @@ function renderLearning() {
               ${next ? `<button class="btn btn-ghost" onclick="learnMark('${escHtml(course.ID)}','${escHtml(lesson.file)}','done',true);learnOpenLesson('${escHtml(course.ID)}','${escHtml(next.file)}')"
                 title="Marks this one done and moves on">${escHtml(next.title.slice(0, 32))} →</button>` : ''}`;
           })()}
+        </div>
+        <div class="lesson-scroll-top-wrap">
+          <button id="lesson-scroll-top-btn" class="lesson-scroll-top-btn" onclick="learnScrollToTop()" title="Scroll to top">${LESSON_ICONS.scrollTop}</button>
         </div>
       </div>
       ${course.ID === 'financial-intelligence' || (learnOpen.content || '').includes('$$') ? renderDynamicFinancialCalculators() : ''}
@@ -16722,6 +16876,7 @@ const LESSON_ICONS = {
   pause:   `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="0.6"/><rect x="9" y="3" width="3" height="10" rx="0.6"/></svg>`,
   share:   `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12.5" cy="3.5" r="1.8"/><circle cx="3.5" cy="8" r="1.8"/><circle cx="12.5" cy="12.5" r="1.8"/><path d="M5.1 7.1l5.8-3.2M5.1 8.9l5.8 3.2"/></svg>`,
   artifact:`<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="9.5" rx="1.3"/><path d="M5.5 14.5h5"/><path d="M8 12v2.5"/></svg>`,
+  scrollTop:`<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V3.5"/><path d="M4 7.5L8 3.5l4 4"/></svg>`,
 };
 
 /** The lesson currently open, resolved fresh each call rather than threaded
