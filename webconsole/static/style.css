@@ -3500,6 +3500,53 @@ body[data-callout-theme="muted"] .lesson-body {
 .eqcal-greg { font-size:0.58rem; color:var(--text-3); }
 .eqcal-dots { font-size:0.75rem; color:var(--amber); line-height:0.5; letter-spacing:1px; }
 
+/* ── PLANNER CALENDAR (BT26082101) ──
+   Weekly grid, hour rows, day-theme headers, colored day-blocks. Sizing/
+   spacing follows the .eqcal- and .day-rail-block conventions above rather
+   than inventing a new visual language: same border/radius tokens, same
+   gradient-tinted block treatment. */
+.planner { display:flex; gap:0.5rem; overflow-x:auto; }
+.planner-gutter { flex-shrink:0; width:2.6rem; }
+.planner-gutter-spacer { height:3.4rem; }   /* matches .planner-col-head's height */
+.planner-hour-label { font-size:0.6rem; color:var(--text-3); font-family:var(--font-mono);
+  text-align:right; padding-right:0.4rem; box-sizing:border-box;
+  transform:translateY(-0.5em); }
+.planner-grid { display:grid; grid-template-columns:repeat(7, minmax(110px, 1fr)); gap:6px; flex:1; }
+.planner-col { display:flex; flex-direction:column; min-width:0; }
+.planner-col-today .planner-col-head { border-color:var(--green-dim); }
+.planner-col-head {
+  height:3.4rem; box-sizing:border-box; padding:0.35rem 0.5rem;
+  border:1px solid var(--border); border-radius:var(--r-md) var(--r-md) 0 0;
+  border-bottom:none; background:var(--panel);
+}
+.planner-col-day { font-size:0.72rem; font-weight:600; color:var(--text); font-variant-numeric:tabular-nums; }
+.planner-col-today .planner-col-day { color:var(--green); }
+.planner-col-theme { font-size:0.6rem; color:var(--theme-tone, var(--text-3)); text-transform:uppercase; letter-spacing:0.05em; margin-top:0.1rem; }
+.planner-col-allday { border:1px solid var(--border); border-top:none; padding:0.25rem 0.4rem;
+  display:flex; flex-direction:column; gap:2px; background:var(--bg, #0d1117); }
+.planner-allday-item { font-size:0.62rem; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.planner-allday-more { font-size:0.58rem; color:var(--text-3); }
+.planner-col-body {
+  position:relative; border:1px solid var(--border); border-top:none; border-radius:0 0 var(--r-md) var(--r-md);
+  background:var(--bg, #0d1117); cursor:pointer; overflow:hidden;
+}
+.planner-block-band {
+  position:absolute; left:0; right:0; opacity:0.4;
+  background:linear-gradient(90deg,
+    color-mix(in srgb, var(--tone) 72%, #fff) 0%,
+    var(--tone) 55%,
+    color-mix(in srgb, var(--tone) 82%, #000) 100%);
+  border-left:2px solid var(--tone);
+}
+.planner-event-pill {
+  position:absolute; left:2px; right:2px; height:1.1rem; border-radius:2px;
+  font-size:0.6rem; color:var(--text); padding:0 0.3rem; line-height:1.1rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1;
+}
+@media (max-width: 1080px) {
+  .planner-grid { grid-template-columns:repeat(7, minmax(90px, 1fr)); }
+}
+
 /* ── DAY COUNTS ──
    The number is the point, so the number is the design: a large, quiet numeral
    with everything else set small around it. The nearest milestone is the

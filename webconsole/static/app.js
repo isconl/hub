@@ -1490,6 +1490,7 @@ function renderCalendar() {
           <div class="task-tabs" style="margin-right:0.4rem">
             <button class="task-tab${mode === 'gregorian' ? ' on' : ''}" onclick="calMode('gregorian')">Gregorian</button>
             <button class="task-tab${mode === 'eq' ? ' on' : ''}" onclick="calMode('eq')">Equicycle</button>
+            <button class="task-tab${mode === 'planner' ? ' on' : ''}" onclick="calMode('planner')">Planner</button>
           </div>
           ${mode === 'gregorian' ? `
             <button class="btn btn-ghost" onclick="prevMiniMonth()">← Prev</button>
@@ -1498,7 +1499,7 @@ function renderCalendar() {
           <button class="btn btn-primary" onclick="openAddEventModal()">+ Schedule</button>
         </div>
       </div>
-      ${mode === 'eq' ? renderEqCalendar(byDate) : `
+      ${mode === 'eq' ? renderEqCalendar(byDate) : mode === 'planner' ? renderPlannerCalendar(byDate) : `
         <div class="cal-weekdays"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
         <div class="cal-grid">${dayCells.join('')}</div>`}
     </div>
@@ -1559,6 +1560,96 @@ function renderCalendar() {
 }
 
 function calMode(m) { calendarState.mode = m; repaintView('calendar'); }
+
+/**
+ * BT26082101: the Planner view - a weekly grid, columns = days of the week
+ * (Sun-Sat containing today), rows = every hour, day-theme names atop each
+ * column, the day's blocks shown as colored bands. Reads the same `bs` shape
+ * renderDayBlocks() already reads (DAY.blocks / DAY.now.blocks) but anchors
+ * segments to literal midnight (00:00-24:00 top-to-bottom, via midSeg()
+ * below) rather than the day-rail's own 05:00 rotation (seg(), ~line 8862) -
+ * a planner page reads top-of-day to bottom, not "day starts when Protected
+ * does". DAY.blocks is the SAME 12 rows applied to every weekday today (see
+ * BT26082002, not yet shipped) - until that lands, every column legitimately
+ * shows identical bands, which is still correct given today's data model.
+ * DAY_THEMES uses the names BT26082104 (shipped same session) locked, not
+ * the older names this row's own build.md note was scoped against.
+ */
+function renderPlannerCalendar(byDate) {
+  const HOUR_PX = 44;
+  const today = new Date();
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - today.getDay());
+  const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const DAY_THEMES = [
+    { name: 'Architecture', axis: 'rest' },       // Sun
+    { name: 'Innovation',   axis: 'innovator' },  // Mon
+    { name: 'Leadership',   axis: 'visionary' },  // Tue
+    { name: 'Reset',        axis: 'creator' },    // Wed
+    { name: 'Creativity',   axis: 'connection' }, // Thu
+    { name: 'Dispatch',     axis: 'learning' },   // Fri
+    { name: 'Hearth',       axis: 'home' },       // Sat
+  ];
+  const bs = DAY ? (DAY.blocks || (DAY.now && DAY.now.blocks) || []) : [];
+  // Literal-midnight version of renderDayBlocks()'s rail-relative seg() -
+  // a block that wraps midnight (Rest, 21:00-05:00) still splits into two
+  // bands, just anchored to [0,1440] instead of a rotated rail origin.
+  const midSeg = (b) => {
+    const s = b.start, e0 = b.end;
+    const e = e0 <= s ? e0 + 1440 : e0;
+    return e > 1440 ? [[s, 1440], [0, e - 1440]] : [[s, e]];
+  };
+  const pad = n => String(n).padStart(2, '0');
+
+  const cols = DAY_NAMES.map((dn, i) => {
+    const d = new Date(weekStart); d.setDate(weekStart.getDate() + i);
+    const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const isToday = d.toDateString() === today.toDateString();
+    const items = byDate[key] || [];
+    const timed = items.filter(it => it.time);
+    const untimed = items.filter(it => !it.time);
+    const theme = DAY_THEMES[i];
+    const themeTone = toneOf({ axis: theme.axis });
+
+    const bands = bs.flatMap(b => midSeg(b).map(([s, e]) => `
+      <div class="planner-block-band" style="top:${(s / 60 * HOUR_PX).toFixed(1)}px;height:${Math.max(2, (e - s) / 60 * HOUR_PX).toFixed(1)}px;--tone:${toneOf(b)}"
+           title="${escAttr(b.name)} · ${escAttr(b.startClock || '')}-${escAttr(b.endClock || '')}"></div>`
+    )).join('');
+
+    const pills = timed.map(it => {
+      const [h, m] = String(it.time).split(':').map(Number);
+      const mins = (h || 0) * 60 + (m || 0);
+      const tone = it.color || themeTone;
+      return `<div class="planner-event-pill" style="top:${(mins / 60 * HOUR_PX).toFixed(1)}px;background:${escHtml(tone)}22;border-left:2px solid ${escHtml(tone)}"
+                   title="${escAttr(it.title || '')}">${escHtml((it.title || '').slice(0, 26))}</div>`;
+    }).join('');
+
+    return `
+      <div class="planner-col${isToday ? ' planner-col-today' : ''}">
+        <div class="planner-col-head" style="--theme-tone:${themeTone}">
+          <div class="planner-col-day">${DAY_NAMES[i]} ${d.getDate()}</div>
+          <div class="planner-col-theme">${escHtml(theme.name)}</div>
+        </div>
+        ${untimed.length ? `<div class="planner-col-allday">${untimed.slice(0, 3).map(it =>
+          `<div class="planner-allday-item ${escAttr(it.type)}">${escHtml((it.title || '').slice(0, 20))}</div>`).join('')}${
+          untimed.length > 3 ? `<div class="planner-allday-more">+${untimed.length - 3}</div>` : ''}</div>` : ''}
+        <div class="planner-col-body" style="height:${24 * HOUR_PX}px" onclick="openAddEventOnDate('${key}')">${bands}${pills}</div>
+      </div>`;
+  }).join('');
+
+  const gutter = Array.from({ length: 24 }, (_, h) =>
+    `<div class="planner-hour-label" style="height:${HOUR_PX}px">${h === 0 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h - 12) + 'p'}</div>`
+  ).join('');
+
+  return `
+    <div class="planner">
+      <div class="planner-gutter">
+        <div class="planner-gutter-spacer"></div>
+        <div class="planner-hour-labels">${gutter}</div>
+      </div>
+      <div class="planner-grid">${cols}</div>
+    </div>`;
+}
 
 /**
  * The Equicycle month: the current 28-day cycle as two sprint fortnights, each
