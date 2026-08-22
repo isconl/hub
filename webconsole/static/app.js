@@ -48,7 +48,13 @@ const SVG_ICONS = {
   list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
   eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   audio: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>',
-  pin: '<path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6z"/><circle cx="12" cy="8" r="2"/>'
+  pin: '<path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6z"/><circle cx="12" cy="8" r="2"/>',
+  play: '<polygon points="5 3 19 12 5 21 5 3"/>',
+  pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
+  skipBack: '<polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>',
+  skipNext: '<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>',
+  musicNote: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  youtube: '<path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/>',
 };
 
 function svgIcon(name, size=15, cls='', extra='') {
@@ -2518,11 +2524,13 @@ async function fmPreviewInReader(item) {
     } else if (ext === '.pdf') {
       const rawUrl = `/api/onedrive/raw?id=${encodeURIComponent(item.id)}`;
       readerBody(`<object class="reader-pdf" data="${rawUrl}" type="application/pdf" width="100%" height="100%"><iframe class="reader-pdf" src="${rawUrl}" title="${escAttr(item.name)}"></iframe></object>`);
-    } else if (['.mp3', '.wav', '.m4a', '.ogg', '.aac', '.flac'].includes(ext)) {
-      // Narration files already exist per uploadLarge() -- BG26081806's audio tier.
-      const rawUrl = `/api/onedrive/raw?id=${encodeURIComponent(item.id)}`;
-      readerBody(`<div class="reader-audio-wrap"><audio class="reader-audio" controls preload="metadata" src="${escAttr(rawUrl)}">
-        Your browser can't play this audio inline.</audio></div>`);
+    } else if (PLAYABLE_RE.test(item.name || '') && item.downloadUrl) {
+      // BE26082009: routed through the real media player (transport controls,
+      // queue) instead of BG26081806's bare <audio controls> tag -- same
+      // downloadUrl this branch already had, just handed to the player.
+      MEDIA_QUEUE = [{ title: item.name, src: item.downloadUrl, kind: 'onedrive', video: VIDEO_RE.test(item.name || '') }];
+      MEDIA_INDEX = 0;
+      readerBody(mediaTransportHtml());
     } else if (['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'].includes(ext)) {
       // BG26081806's Office tier -- data.officePreviewUrl comes from Graph's
       // own POST /items/{id}/preview action (vault/lib/onedrive-browse.js),
@@ -9620,6 +9628,219 @@ document.addEventListener('keydown', (e) => {
 });
 
 const READER_KB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+
+// ── MEDIA PLAYER (BE26082009) ────────────────────────────────────────────────
+// Real transport controls + a queue, replacing BG26081806's passive
+// <audio controls> tag. Lives in the reader dock (the "Context" tab) --
+// same surface a document preview opens in, since a media file IS a kind
+// of document preview here. Local files go through the new `media` engine
+// (sandboxed browsing + a short-lived signed streaming ticket, since a
+// <video>/<audio> element's src can't carry an Authorization header);
+// OneDrive files need no new backend at all -- vault's existing
+// onedrive.browse.list already returns each file's Graph downloadUrl, a
+// pre-signed direct link the player can point straight at. YouTube is a
+// client-side iframe embed, no backend involvement.
+//
+// Known limitation, not solved here: playback stops if the reader dock is
+// closed or replaced by another preview -- the <video> element lives in
+// #reader-body, which gets wiped on both. A persistent background player
+// (surviving navigation) would need to move playback out of the dock
+// entirely; out of scope for this pass, and not a regression against the
+// passive preview it replaces, which had the exact same lifecycle.
+const PLAYABLE_RE = /\.(mp3|m4a|aac|flac|ogg|oga|wav|opus|mp4|m4v|webm|mov|mkv)$/i;
+const VIDEO_RE = /\.(mp4|m4v|webm|mov|mkv)$/i;
+let MEDIA_QUEUE = [];       // [{title, src, kind:'local'|'onedrive'|'youtube', video:bool, youtubeId?}]
+let MEDIA_INDEX = -1;
+let MEDIA_BASE_URL = null;  // cached media engine base URL (see /api/media/base-url)
+let MEDIA_SOURCE_TAB = 'local';
+let MEDIA_LOCAL_PATH = '';
+let MEDIA_ONEDRIVE_PATH = 'root';
+
+async function mediaBaseUrl() {
+  if (MEDIA_BASE_URL) return MEDIA_BASE_URL;
+  const r = await fetch('/api/media/base-url');
+  const d = await r.json();
+  if (!r.ok || !d.url) throw new Error(d.error || 'media engine is not configured on this hub');
+  MEDIA_BASE_URL = d.url;
+  return MEDIA_BASE_URL;
+}
+
+function mediaOpenPlayer() {
+  setRailMode('reader');
+  readerShell('Media Player', 'loading…');
+  document.getElementById('reader-download').style.display = 'none';
+  mediaRenderPlayer();
+}
+
+function mediaSwitchSource(tab) { MEDIA_SOURCE_TAB = tab; mediaRenderPlayer(); }
+
+function mediaRenderPlayer() {
+  document.getElementById('reader-name').textContent = 'Media Player';
+  readerMeta(MEDIA_QUEUE.length ? `${MEDIA_QUEUE.length} in queue` : 'nothing queued yet');
+  const tabs = [
+    ['local', 'folder', 'Local'],
+    ['onedrive', 'layers', 'OneDrive'],
+    ['youtube', 'youtube', 'YouTube'],
+  ];
+  readerBody(`
+    <div class="media-player">
+      <div class="media-source-tabs task-tabs">
+        ${tabs.map(([id, icon, label]) => `<button class="task-tab${MEDIA_SOURCE_TAB === id ? ' on' : ''}" onclick="mediaSwitchSource('${id}')">${svgIcon(icon, 13)} ${label}</button>`).join('')}
+      </div>
+      <div class="media-browser" id="media-browser"><div class="reader-loading"><div class="spinner-inline"></div></div></div>
+      <div class="media-queue-wrap" id="media-queue-wrap">${mediaQueueHtml()}</div>
+      <div class="media-transport-wrap" id="media-transport-wrap">${mediaTransportHtml()}</div>
+    </div>`);
+  mediaRenderBrowser();
+}
+
+function mediaListHtml(entries, currentPath, navigateFn, playFn) {
+  const up = currentPath && currentPath !== 'root' && currentPath !== ''
+    ? `<div class="media-row media-row-up" onclick="${navigateFn}('${escAttr(mediaParentPath(currentPath))}')">${svgIcon('arrowLeft', 13)} ..</div>` : '';
+  if (!entries.length) return `${up}<div class="reader-note">Empty folder.</div>`;
+  return up + entries.map(e => {
+    const safeName = escAttr(e.name);
+    const safePath = escAttr(e.path);
+    if (e.type === 'dir') {
+      return `<div class="media-row" onclick="${navigateFn}('${safePath}')">${svgIcon('folder', 14)} <span>${escHtml(e.name)}</span></div>`;
+    }
+    const playable = !!e.playable;
+    return `<div class="media-row${playable ? ' media-row-playable' : ''}" ${playable ? `onclick="${playFn}('${safePath}','${safeName}')"` : ''}>
+      ${svgIcon(playable ? 'musicNote' : 'file', 14)} <span>${escHtml(e.name)}</span>
+      ${e.bytes ? `<span class="media-row-size">${READER_KB(e.bytes)}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+function mediaParentPath(p) {
+  const parts = String(p || '').split('/').filter(Boolean);
+  parts.pop();
+  return parts.join('/');
+}
+
+function mediaLocalNavigate(path) { MEDIA_LOCAL_PATH = path; mediaRenderBrowser(); }
+function mediaOneDriveNavigate(path) { MEDIA_ONEDRIVE_PATH = path || 'root'; mediaRenderBrowser(); }
+
+async function mediaRenderBrowser() {
+  const el = document.getElementById('media-browser');
+  if (!el) return;
+  if (MEDIA_SOURCE_TAB === 'youtube') {
+    el.innerHTML = `
+      <div class="media-youtube-add">
+        <input type="text" id="media-yt-url" class="media-yt-input" placeholder="Paste a YouTube video URL…"
+               onkeydown="if(event.key==='Enter')mediaAddYoutube()"/>
+        <button class="btn btn-primary" onclick="mediaAddYoutube()">Add to queue</button>
+      </div>`;
+    return;
+  }
+  if (MEDIA_SOURCE_TAB === 'local') {
+    try {
+      const r = await fetch(`/api/media/list?path=${encodeURIComponent(MEDIA_LOCAL_PATH)}`);
+      const d = await r.json();
+      if (d.error) { el.innerHTML = `<div class="reader-note">${escHtml(d.error)}</div>`; return; }
+      el.innerHTML = mediaListHtml(d.entries, MEDIA_LOCAL_PATH, 'mediaLocalNavigate', 'mediaPlayLocal');
+    } catch (e) { el.innerHTML = `<div class="reader-note">${escHtml(e.message)}</div>`; }
+    return;
+  }
+  // onedrive -- same /api/onedrive/list endpoint and item shape fmNavigate() already uses.
+  try {
+    const r = await fetch(`/api/onedrive/list?path=${encodeURIComponent(MEDIA_ONEDRIVE_PATH)}`);
+    const d = await r.json();
+    if (d.error) { el.innerHTML = `<div class="reader-note">${escHtml(d.error)}</div>`; return; }
+    const items = d.items || d.value || [];
+    const entries = items.map(i => ({
+      name: i.name,
+      path: i.folder ? (MEDIA_ONEDRIVE_PATH === 'root' ? i.name : `${MEDIA_ONEDRIVE_PATH}/${i.name}`) : i.id,
+      type: i.folder ? 'dir' : 'file',
+      playable: !i.folder && PLAYABLE_RE.test(i.name || ''),
+      bytes: i.size,
+      _downloadUrl: i.downloadUrl,
+      _name: i.name,
+    }));
+    el.innerHTML = mediaListHtml(entries, MEDIA_ONEDRIVE_PATH, 'mediaOneDriveNavigate', 'mediaPlayOneDrive');
+    // downloadUrl/name aren't safe to smuggle through an onclick string
+    // (query strings, quotes) -- stash them keyed by item id instead.
+    MEDIA_ONEDRIVE_CACHE = {};
+    entries.forEach(e => { if (e.type === 'file') MEDIA_ONEDRIVE_CACHE[e.path] = e; });
+  } catch (e) { el.innerHTML = `<div class="reader-note">${escHtml(e.message)}</div>`; }
+}
+let MEDIA_ONEDRIVE_CACHE = {};
+
+async function mediaPlayLocal(path, name) {
+  try {
+    const [ticketRes, baseUrl] = await Promise.all([
+      fetch(`/api/media/ticket?path=${encodeURIComponent(path)}`).then(r => r.json()),
+      mediaBaseUrl(),
+    ]);
+    if (ticketRes.error) { showToast(ticketRes.error, 'error'); return; }
+    mediaEnqueueAndPlay({ title: name, src: `${baseUrl}/stream?t=${encodeURIComponent(ticketRes.ticket)}`, kind: 'local', video: VIDEO_RE.test(name) });
+  } catch (e) { showToast(e.message, 'error'); }
+}
+function mediaPlayOneDrive(id, name) {
+  const e = MEDIA_ONEDRIVE_CACHE[id];
+  if (!e || !e._downloadUrl) { showToast('No direct link for this file (may have expired -- reopen the folder)', 'error'); return; }
+  mediaEnqueueAndPlay({ title: e._name || name, src: e._downloadUrl, kind: 'onedrive', video: VIDEO_RE.test(e._name || name) });
+}
+function mediaAddYoutube() {
+  const input = document.getElementById('media-yt-url');
+  const url = (input?.value || '').trim();
+  const m = url.match(/(?:youtu\.be\/|v=|embed\/)([A-Za-z0-9_-]{11})/);
+  if (!m) { showToast('Not a recognizable YouTube URL', 'error'); return; }
+  mediaEnqueueAndPlay({ title: `YouTube: ${m[1]}`, kind: 'youtube', youtubeId: m[1] });
+  if (input) input.value = '';
+}
+
+function mediaEnqueueAndPlay(track) {
+  MEDIA_QUEUE.push(track);
+  MEDIA_INDEX = MEDIA_QUEUE.length - 1;
+  mediaRenderPlayer();
+}
+function mediaRemoveFromQueue(i) {
+  MEDIA_QUEUE.splice(i, 1);
+  if (MEDIA_INDEX === i) { MEDIA_INDEX = -1; }
+  else if (MEDIA_INDEX > i) { MEDIA_INDEX -= 1; }
+  mediaRenderPlayer();
+}
+function mediaPlayIndex(i) { MEDIA_INDEX = i; mediaRenderPlayer(); }
+function mediaNext() { if (MEDIA_INDEX < MEDIA_QUEUE.length - 1) { MEDIA_INDEX += 1; mediaRenderPlayer(); } }
+function mediaPrev() { if (MEDIA_INDEX > 0) { MEDIA_INDEX -= 1; mediaRenderPlayer(); } }
+function mediaEnded() { mediaNext(); }
+
+function mediaQueueHtml() {
+  if (!MEDIA_QUEUE.length) return '';
+  return `<div class="media-queue">
+    ${MEDIA_QUEUE.map((t, i) => `
+      <div class="media-queue-row${i === MEDIA_INDEX ? ' media-queue-row-active' : ''}">
+        <span class="media-queue-play" onclick="mediaPlayIndex(${i})">${svgIcon(i === MEDIA_INDEX ? 'play' : 'musicNote', 12)}</span>
+        <span class="media-queue-title">${escHtml(t.title)}</span>
+        <span class="media-queue-remove" onclick="mediaRemoveFromQueue(${i})" title="Remove">${svgIcon('x', 11)}</span>
+      </div>`).join('')}
+  </div>`;
+}
+
+function mediaTransportHtml() {
+  if (MEDIA_INDEX < 0 || !MEDIA_QUEUE[MEDIA_INDEX]) return '';
+  const t = MEDIA_QUEUE[MEDIA_INDEX];
+  if (t.kind === 'youtube') {
+    return `<div class="media-transport media-transport-youtube">
+      <div class="media-yt-embed"><iframe src="https://www.youtube-nocookie.com/embed/${escAttr(t.youtubeId)}?autoplay=1"
+        title="${escAttr(t.title)}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>
+      <div class="media-transport-controls">
+        <button class="chat-rail-control-btn" onclick="mediaPrev()" ${MEDIA_INDEX === 0 ? 'disabled' : ''}>${svgIcon('skipBack', 14)}</button>
+        <span class="media-transport-title">${escHtml(t.title)}</span>
+        <button class="chat-rail-control-btn" onclick="mediaNext()" ${MEDIA_INDEX === MEDIA_QUEUE.length - 1 ? 'disabled' : ''}>${svgIcon('skipNext', 14)}</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="media-transport">
+    ${t.video ? `<video id="media-el" class="media-video-el" src="${escAttr(t.src)}" controls autoplay onended="mediaEnded()"></video>`
+               : `<audio id="media-el" src="${escAttr(t.src)}" controls autoplay onended="mediaEnded()" style="width:100%"></audio>`}
+    <div class="media-transport-controls">
+      <button class="chat-rail-control-btn" onclick="mediaPrev()" ${MEDIA_INDEX === 0 ? 'disabled' : ''}>${svgIcon('skipBack', 14)}</button>
+      <span class="media-transport-title">${escHtml(t.title)}</span>
+      <button class="chat-rail-control-btn" onclick="mediaNext()" ${MEDIA_INDEX === MEDIA_QUEUE.length - 1 ? 'disabled' : ''}>${svgIcon('skipNext', 14)}</button>
+    </div>
+  </div>`;
+}
 
 /**
  * EDITING IN THE READER.
