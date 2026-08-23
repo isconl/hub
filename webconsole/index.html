@@ -41,7 +41,7 @@
            work, then money, then the channels, then the plumbing. -->
       <div id="cmd-suggestions" class="cmd-suggestions">
         <div class="cmd-group-label">GO TO</div>
-        <div class="cmd-item" data-view="today">Today</div>
+        <div class="cmd-item" data-view="today">Hub</div>
         <div class="cmd-item" data-view="tasks">Tasks</div>
         <div class="cmd-item" data-view="planning">Planning</div>
         <div class="cmd-item" data-view="ideas">Ideas</div>
@@ -209,14 +209,6 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/></svg>
             Learning
           </button>
-          <!-- BE26082009: not a data-view -- the player lives in the right
-               rail's Context tab (reader dock), not the main content pane,
-               so this opens it directly via mediaOpenPlayer() rather than
-               navigate(), which would swap the main view instead. -->
-          <button class="nav-item" id="nav-media" onclick="mediaOpenPlayer()">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            Media
-          </button>
           </div>
 
           <!-- The rings ARE the menu: each item opens the Circle filtered to
@@ -284,6 +276,11 @@
           <button class="nav-item" data-view="files" id="nav-files">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
             File Manager
+          </button>
+          <!-- BE26082009: Media player moved to SYSTEM -->
+          <button class="nav-item" id="nav-media" onclick="mediaOpenPlayer()">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            Media
           </button>
           <button class="nav-item" data-view="audit" id="nav-audit">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
