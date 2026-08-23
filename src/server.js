@@ -18,8 +18,11 @@ const { createRenderClient } = require('../lib/render');
 const { createDeployClient } = require('../lib/deploy');
 const { findRoute } = require('../lib/api-compat');
 const { createStaticServer } = require('../lib/static');
+const fs = require('fs');
+const path = require('path');
 const servicesRegistry = require('../lib/services-registry');
 const manifest = require('../lib/manifest');
+const apk = require('../lib/apk');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
 const BIND = process.env.HUB_BIND || '127.0.0.1';
@@ -452,6 +455,39 @@ async function main() {
         const mediaUrl = process.env.MEDIA_PUBLIC_URL || process.env.MEDIA_URL || '';
         if (!mediaUrl) return sendJson(res, 502, { error: 'media is not configured on this hub' });
         return sendJson(res, 200, { url: mediaUrl });
+      }
+
+      if (pathname === '/api/apk/latest' && req.method === 'GET') {
+        const info = apk.getLatestInfo(path.join(__dirname, '..'));
+        return sendJson(res, 200, info);
+      }
+
+      if (pathname === '/api/apk/ticket' && req.method === 'POST') {
+        const token = apk.issueTicket();
+        return sendJson(res, 200, {
+          success: true,
+          url: `/api/apk/download?t=${token}`,
+          expiresInMs: 15 * 60 * 1000,
+        });
+      }
+
+      if (pathname === '/api/apk/download' && req.method === 'GET') {
+        const ticket = String(url.searchParams.get('t') || '');
+        if (!apk.isTicketValid(ticket) && !authProxy.verify(req)) {
+          return sendJson(res, 404, { error: 'Not Found' });
+        }
+        const file = apk.findLocalApk(path.join(__dirname, '..'));
+        if (!file || !fs.existsSync(file)) {
+          return sendJson(res, 404, { error: 'No APK build available' });
+        }
+        const stat = fs.statSync(file);
+        res.writeHead(200, {
+          'Content-Type': 'application/vnd.android.package-archive',
+          'Content-Disposition': `attachment; filename="${path.basename(file)}"`,
+          'Content-Length': stat.size,
+          'Cache-Control': 'no-store',
+        });
+        return fs.createReadStream(file).pipe(res);
       }
 
       // -- /api/* compatibility layer for the real, already-signed Flutter app --
