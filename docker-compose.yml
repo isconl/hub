@@ -1,9 +1,10 @@
 # Local / self-hosted deployment of the whole isconl-agent fleet: one
-# Docker network, one compose file, six engines. This is the "most portable
-# means" the owner asked for -- runs identically on a laptop, a bare-metal
-# box, or an Oracle Compute instance (the server-space rebuild's target).
+# Docker network, one compose file, seven engines (BE26082009, 22 Aug 2026,
+# added `media` as the 7th spoke). This is the "most portable means" the
+# owner asked for -- runs identically on a laptop, a bare-metal box, or an
+# Oracle Compute instance (the server-space rebuild's target).
 #
-# ASSUMES the standard local checkout layout: all 6 repos as sibling
+# ASSUMES the standard local checkout layout: all 7 repos as sibling
 # directories under engineer-systems/Systems/iSconl/ (matches how this
 # session cloned them). Production deployment is per-service (Render today,
 # Oracle later) rather than this compose file -- this is for running the
@@ -143,11 +144,37 @@ services:
       resources:
         limits: { cpus: "0.4", memory: 768m }
 
+  media:
+    build: ../media
+    container_name: isconl-media
+    restart: unless-stopped
+    environment:
+      MEDIA_BIND: 0.0.0.0
+      MEDIA_TOKEN: ${MEDIA_TOKEN}
+      MEDIA_LOCAL_DIR: /app/library
+      BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
+      BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
+      BWS_API_URL: ${BWS_API_URL}
+      BWS_IDENTITY_URL: ${BWS_IDENTITY_URL}
+      BWS_PROJECT_ID: ${BWS_PROJECT_ID}
+    volumes:
+      - media-runtime:/app/runtime
+      # Bind-mount a real local media directory over the built-in empty
+      # ./library, same "point it at what's actually there" shape as
+      # SPARK_ARTICLES_DIR -- swap the host path for wherever the real
+      # library lives before running `docker compose up`.
+      - ${MEDIA_LOCAL_DIR_HOST:-./media-library}:/app/library
+    ports:
+      - "8086:8086"
+    deploy:
+      resources:
+        limits: { cpus: "0.3", memory: 512m }
+
   hub:
     build: .
     container_name: isconl-hub
     restart: unless-stopped
-    depends_on: [vault, pulse, scope, circle, spark]
+    depends_on: [vault, pulse, scope, circle, spark, media]
     environment:
       HUB_BIND: 0.0.0.0
       HUB_TOKEN: ${HUB_TOKEN}
@@ -161,6 +188,8 @@ services:
       CIRCLE_TOKEN: ${CIRCLE_TOKEN}
       SPARK_URL: http://spark:8085
       SPARK_TOKEN: ${SPARK_TOKEN}
+      MEDIA_URL: http://media:8086
+      MEDIA_TOKEN: ${MEDIA_TOKEN}
       RENDER_API_KEY: ${RENDER_API_KEY}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
@@ -180,3 +209,4 @@ volumes:
   scope-runtime:
   circle-runtime:
   spark-runtime:
+  media-runtime:

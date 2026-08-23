@@ -458,6 +458,11 @@ select option { background:var(--panel); color:var(--text); }
 #nav-group-spaces .nav-item:hover { background:color-mix(in srgb, var(--mc-spaces) 7%, transparent); color:var(--mc-spaces); }
 #nav-group-spaces .nav-item:hover .nav-icon { color:var(--mc-spaces); }
 
+#nav-space-writer.active { background:color-mix(in srgb, var(--mc-writer) 10%, transparent); color:var(--mc-writer); border-left-color:var(--mc-writer); }
+#nav-space-writer.active .nav-icon { color:var(--mc-writer); }
+#nav-space-writer:hover { background:color-mix(in srgb, var(--mc-writer) 7%, transparent); color:var(--mc-writer); }
+#nav-space-writer:hover .nav-icon { color:var(--mc-writer); }
+
 .nav-badge {
   margin-left:auto; font-size:0.62rem; font-family:var(--font-mono);
   background:var(--surface); color:var(--text-3);
@@ -571,7 +576,7 @@ select option { background:var(--panel); color:var(--text); }
    pointer. Leaf-item rules already supply their own background and are
    unaffected; standalone cards with no children (Data health, Day counts)
    still read as hovered via the border + rightward shift alone. */
-.card:hover { border-color:var(--hover-border); transform:translateX(var(--hover-shift)); }
+.card:hover { border-color:color-mix(in srgb, var(--hover-border) 50%, transparent); transform:translateX(var(--hover-shift)); }
 .card-header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.65rem; }
 .card-title { font-size:0.8rem; font-weight:600; color:var(--green-bright); text-transform:uppercase; letter-spacing:0.05em; }
 .card-meta { font-size:0.7rem; color:var(--text-3); font-family:var(--font-mono); }
@@ -589,16 +594,15 @@ select option { background:var(--panel); color:var(--text); }
    icon inside <h1> (checked), so block display costs nothing. */
 .view-head h1 {
   font-family:'Barlow', var(--font-ui);
-  /* Doubled (BR26081803, 18 Aug, Architect: "for more contrast" against the body
-     content below) - was 1.4rem/0.76rem. letter-spacing/line-height/margin
-     left as-is per the row's own instruction unless doubling reads cramped
-     live; not adjusted here. */
-  font-size:2.8rem; font-weight:700; letter-spacing:-0.01em; line-height:1.3;
+  /* RG26082102, 21 Aug: 10% cut off the BR26081803 doubled size (2.8rem ->
+     2.52rem, not a revert to the original 1.4rem). letter-spacing/line-height/
+     margin left as-is per that row's own instruction. */
+  font-size:2.52rem; font-weight:700; letter-spacing:-0.01em; line-height:1.3;
   color:var(--text); text-transform:lowercase;
   margin:0 0 0.35rem;
 }
 .view-head h1::first-letter { text-transform:uppercase; }
-.view-head-meta { font-size:1.52rem; color:var(--text-3); line-height:1.55; text-transform:lowercase; }
+.view-head-meta { font-size:0.76rem; color:var(--text-3); line-height:1.55; text-transform:lowercase; }
 .view-head-meta::first-letter { text-transform:uppercase; }
 
 .cards-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.85rem; margin-bottom:0.85rem; }
@@ -779,7 +783,7 @@ select option { background:var(--panel); color:var(--text); }
    transcript rather than a messaging app. */
 .chat-rail-messages {
   flex:1; overflow-y:auto; padding:1rem 0.95rem 0.85rem;
-  display:flex; flex-direction:column; gap:0.65rem;
+  display:flex; flex-direction:column;
   /* position:relative so the particle network mounted inside it
      (BR26081802, .ctx-net's position:absolute;inset:0) sizes to THIS box,
      not whichever further-up ancestor happens to be positioned. */
@@ -806,7 +810,14 @@ select option { background:var(--panel); color:var(--text); }
   max-width:320px; font-size:0.83rem; line-height:1.5;
   padding:0.65rem 0.8rem; border-radius:var(--r-lg);
   border:1px solid var(--border);
+  /* Per-message margin instead of the container's old flex gap (BM26082010)
+     -- that gap stacked with the grouped rule's negative margin below,
+     leaving consecutive agent bubbles ~0.15rem apart while every other
+     pairing sat at the full 0.65rem. One property owns the vertical rhythm
+     now, in both directions. */
+  margin-top:0.65rem;
 }
+.chat-rail-messages > .chat-msg:first-child { margin-top:0; }
 
 .chat-msg.user {
   align-self:flex-end; color:var(--text-2);
@@ -829,8 +840,11 @@ select option { background:var(--panel); color:var(--text); }
 .chat-msg.agent .msg-role { color:var(--green-dim); }
 .chat-msg.user  .msg-role { display:none; }
 
-/* Consecutive agent turns are one thought continuing, so they close up. */
-.chat-msg.agent + .chat-msg.agent { margin-top:-0.5rem; }
+/* Consecutive turns from the SAME sender are one thought continuing, so
+   they close up -- full Signal parity, both directions (BM26082010; used
+   to be agent-only). */
+.chat-msg.agent + .chat-msg.agent,
+.chat-msg.user + .chat-msg.user { margin-top:0.2rem; }
 .chat-msg.agent + .chat-msg.agent .msg-role { display:none; }
 
 /* The composer reads as ONE control, not a box beside a button: the field and
@@ -2928,7 +2942,7 @@ button.orient-chip:focus-visible { outline:2px solid var(--green); outline-offse
    scoped entirely to tokens on .lesson-body so nothing outside a lesson
    changes. Same structural CSS as before, palette and type swapped. */
 .lesson-body {
-  --lb-serif: Charter, "Iowan Old Style", Georgia, serif;
+  --lb-body: var(--font-ui);
   --lb-accent: #6fc0af;        /* objective banner - teal */
   --lb-accent-bg: rgba(111,192,175,0.10);
   --lb-warm: #d9a259;          /* watch-for / caution - amber */
@@ -2943,7 +2957,7 @@ button.orient-chip:focus-visible { outline:2px solid var(--green); outline-offse
   --lb-research-bg: rgba(110,166,217,0.10);
   --lb-fact: #d9c15c;           /* fun fact - gold, the one playful hue in the family */
   --lb-fact-bg: rgba(217,193,92,0.10);
-  font-family: var(--lb-serif); font-size:1.08rem; line-height:1.82; color:var(--text);
+  font-family: var(--lb-body); font-size:1.14rem; line-height:1.82; color:var(--text);
   max-width:720px; margin:0 auto;
   /* A long unbroken token (a URL, a Confluence path, an id) inside inline
      code has no natural wrap point - on a wide screen the 720px column
@@ -2980,8 +2994,8 @@ body[data-callout-theme="muted"] .lesson-body {
   --lb-research: #82949e; --lb-research-bg: rgba(130,148,158,0.08);
   --lb-fact: #a39b7a; --lb-fact-bg: rgba(163,155,122,0.08);
 }
-.lesson-body h2 { font-family:var(--lb-serif); font-weight:600; font-size:1.36rem; margin:1.1rem 0 0.5rem; letter-spacing:-0.005em; }
-.lesson-body h3 { font-family:var(--lb-serif); font-weight:600; font-size:1.05rem; margin:1.35rem 0 0.35rem; color:var(--text);
+.lesson-body h2 { font-family:var(--lb-body); font-weight:600; font-size:1.4rem; margin:1.1rem 0 0.5rem; letter-spacing:-0.005em; }
+.lesson-body h3 { font-family:var(--lb-body); font-weight:600; font-size:1.08rem; margin:1.35rem 0 0.35rem; color:var(--text);
   padding-bottom:0.25rem; border-bottom:1px solid var(--border); }
 .lesson-body h4 { font-family:system-ui,sans-serif; font-size:0.76rem; font-weight:700; text-transform:uppercase;
   letter-spacing:0.05em; margin:0.9rem 0 0.3rem; color:var(--text-2); }
@@ -3017,7 +3031,7 @@ body[data-callout-theme="muted"] .lesson-body {
   font-size:0.86rem; line-height:1.65; }
 .lesson-book span { display:block; font-size:0.58rem; text-transform:uppercase;
   letter-spacing:0.09em; color:var(--lb-book, #a892d9); margin-bottom:0.2rem; }
-.lesson-book-quote { font-family:var(--lb-serif, Charter, Georgia, serif); font-style:italic;
+.lesson-book-quote { font-family:var(--lb-body, var(--font-ui)); font-style:italic;
   border-left:3px solid var(--lb-quote, #d98a4f); background:var(--lb-quote-bg, rgba(217,138,79,0.08));
   border-radius:0 var(--r-md) var(--r-md) 0; padding:0.65rem 0.95rem; margin:0.5rem 0 0.85rem;
   font-size:0.92rem; line-height:1.6; }
@@ -3077,6 +3091,52 @@ body[data-callout-theme="muted"] .lesson-body {
   border-radius:999px; padding:0.3rem 0.7rem; cursor:pointer; transition:background 0.12s,color 0.12s,border-color 0.12s; }
 .lesson-tool-btn svg { flex-shrink:0; opacity:0.85; }
 .lesson-tool-btn:hover { color:var(--text); border-color:var(--lb-accent, #6fc0af); background:var(--lb-accent-bg, rgba(111,192,175,0.10)); }
+
+/* Floating scroll-to-top control, lesson reader only. `position:fixed`
+   anchored to the viewport was tried first and rejected -- it landed
+   underneath the right-hand Console/Chat rail instead of the lesson
+   column, since the rail sits at the true viewport edge. `position:sticky`
+   bound to #view-container (the actual scrolling ancestor, confirmed via
+   its overflow-y:auto rule above) keeps the button correctly inside the
+   lesson content column instead. The wrapper carries height:0 so it adds
+   no scroll space of its own; pointer-events are re-enabled only on the
+   button so the zero-height wrapper never blocks clicks on content below it. */
+.lesson-scroll-top-wrap {
+  position:sticky; bottom:1.75rem; height:0; z-index:5;
+  display:flex; justify-content:flex-end; pointer-events:none;
+}
+.lesson-scroll-top-btn {
+  pointer-events:none;
+  display:flex; align-items:center; justify-content:center;
+  width:2.4rem; height:2.4rem; border-radius:50%;
+  color:var(--text-2); background:var(--panel); border:1px solid var(--border);
+  box-shadow:var(--shadow-card); cursor:pointer;
+  opacity:0; transform:translateY(0.4rem);
+  transition:opacity 0.15s, transform 0.15s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.lesson-scroll-top-btn.visible { opacity:1; pointer-events:auto; transform:translateY(0); }
+.lesson-scroll-top-btn:hover { color:var(--text); border-color:var(--lb-accent, #6fc0af); background:var(--lb-accent-bg, rgba(111,192,175,0.10)); }
+
+/* BL26082103: minimal checkpoint rail, one dot per section heading. Built
+   and positioned entirely in JS (app.js's learnPositionCheckpoints()) against
+   .lesson-body's real bounding box, not guessed here via a media query --
+   the reading column's horizontal position shifts with the sidebar/chat-rail
+   widths, so a fixed breakpoint would be wrong as often as right. `.visible`
+   is only added once JS confirms there's actual room; default hidden. */
+.lesson-checkpoints {
+  position:fixed; width:2px; display:none;
+  flex-direction:column; align-items:center; justify-content:space-between;
+  z-index:4; background:var(--border); border-radius:1px;
+}
+.lesson-checkpoints.visible { display:flex; }
+.lesson-checkpoint-dot {
+  width:6px; height:6px; border-radius:50%; padding:0; border:none; cursor:pointer;
+  background:var(--border-mid); flex-shrink:0; transition:background 0.15s, transform 0.15s;
+  transform:scale(1);
+}
+.lesson-checkpoint-dot.h3 { width:7px; height:7px; }
+.lesson-checkpoint-dot:hover { background:var(--lb-accent, #6fc0af); transform:scale(1.3); }
+.lesson-checkpoint-dot.active { background:var(--lb-accent, #6fc0af); transform:scale(1.3); }
 
 /* ── JOURNAL ── */
 .jr-compose-row { display:flex; gap:0.5rem; margin-top:0.6rem; flex-wrap:wrap; align-items:center; }
@@ -3439,6 +3499,53 @@ body[data-callout-theme="muted"] .lesson-body {
 .eqcal-day.today .eqcal-num { color:var(--green); }
 .eqcal-greg { font-size:0.58rem; color:var(--text-3); }
 .eqcal-dots { font-size:0.75rem; color:var(--amber); line-height:0.5; letter-spacing:1px; }
+
+/* ── PLANNER CALENDAR (BT26082101) ──
+   Weekly grid, hour rows, day-theme headers, colored day-blocks. Sizing/
+   spacing follows the .eqcal- and .day-rail-block conventions above rather
+   than inventing a new visual language: same border/radius tokens, same
+   gradient-tinted block treatment. */
+.planner { display:flex; gap:0.5rem; overflow-x:auto; }
+.planner-gutter { flex-shrink:0; width:2.6rem; }
+.planner-gutter-spacer { height:3.4rem; }   /* matches .planner-col-head's height */
+.planner-hour-label { font-size:0.6rem; color:var(--text-3); font-family:var(--font-mono);
+  text-align:right; padding-right:0.4rem; box-sizing:border-box;
+  transform:translateY(-0.5em); }
+.planner-grid { display:grid; grid-template-columns:repeat(7, minmax(110px, 1fr)); gap:6px; flex:1; }
+.planner-col { display:flex; flex-direction:column; min-width:0; }
+.planner-col-today .planner-col-head { border-color:var(--green-dim); }
+.planner-col-head {
+  height:3.4rem; box-sizing:border-box; padding:0.35rem 0.5rem;
+  border:1px solid var(--border); border-radius:var(--r-md) var(--r-md) 0 0;
+  border-bottom:none; background:var(--panel);
+}
+.planner-col-day { font-size:0.72rem; font-weight:600; color:var(--text); font-variant-numeric:tabular-nums; }
+.planner-col-today .planner-col-day { color:var(--green); }
+.planner-col-theme { font-size:0.6rem; color:var(--theme-tone, var(--text-3)); text-transform:uppercase; letter-spacing:0.05em; margin-top:0.1rem; }
+.planner-col-allday { border:1px solid var(--border); border-top:none; padding:0.25rem 0.4rem;
+  display:flex; flex-direction:column; gap:2px; background:var(--bg, #0d1117); }
+.planner-allday-item { font-size:0.62rem; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.planner-allday-more { font-size:0.58rem; color:var(--text-3); }
+.planner-col-body {
+  position:relative; border:1px solid var(--border); border-top:none; border-radius:0 0 var(--r-md) var(--r-md);
+  background:var(--bg, #0d1117); cursor:pointer; overflow:hidden;
+}
+.planner-block-band {
+  position:absolute; left:0; right:0; opacity:0.4;
+  background:linear-gradient(90deg,
+    color-mix(in srgb, var(--tone) 72%, #fff) 0%,
+    var(--tone) 55%,
+    color-mix(in srgb, var(--tone) 82%, #000) 100%);
+  border-left:2px solid var(--tone);
+}
+.planner-event-pill {
+  position:absolute; left:2px; right:2px; height:1.1rem; border-radius:2px;
+  font-size:0.6rem; color:var(--text); padding:0 0.3rem; line-height:1.1rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1;
+}
+@media (max-width: 1080px) {
+  .planner-grid { grid-template-columns:repeat(7, minmax(90px, 1fr)); }
+}
 
 /* ── DAY COUNTS ──
    The number is the point, so the number is the design: a large, quiet numeral
@@ -4927,6 +5034,32 @@ input[type="checkbox"]:disabled { opacity:0.45; cursor:not-allowed; }
 .chat-msg-copy:focus-visible { opacity:1; outline:2px solid var(--green); outline-offset:1px; }
 @media (hover:none) { .chat-msg-copy { opacity:0.55; } }
 
+/* BM26082010: hover-only timestamp + 4 more per-bubble controls, alongside
+   Copy. The JS side of this (chatAppend()'s .msg-ts / .chat-msg-actions
+   elements, app.js) shipped without matching CSS -- added here so the
+   timestamp is actually hover-gated (Signal-style, quiet until hovered)
+   instead of permanently visible, and the 4 icon buttons read as the same
+   family of chrome as .chat-msg-copy rather than unstyled raw icons. */
+.msg-ts { position:absolute; bottom:-1.05rem; font-size:0.62rem; color:var(--text-3);
+  font-family:var(--font-mono); opacity:0; pointer-events:none; white-space:nowrap;
+  transition:opacity 0.13s; }
+.chat-msg:hover .msg-ts { opacity:1; }
+.chat-msg.agent .msg-ts { left:0.1rem; }
+.chat-msg.user  .msg-ts { right:0.1rem; }
+
+.chat-msg-actions { position:absolute; top:2px; right:2px; display:flex; gap:0.2rem;
+  padding-right:2.6rem; /* clears .chat-msg-copy, which sits at top:2px;right:2px */ }
+.chat-msg-action { display:flex; align-items:center; justify-content:center;
+  width:1.3rem; height:1.3rem; border-radius:999px; border:1px solid var(--border);
+  background:var(--panel); color:var(--text-3); cursor:pointer; padding:0;
+  opacity:0; transition:opacity 0.13s, color 0.13s, border-color 0.13s; }
+.chat-msg-action svg { width:11px; height:11px; }
+.chat-msg:hover .chat-msg-action { opacity:1; }
+.chat-msg-action:hover { color:var(--green); border-color:var(--green-dim); }
+.chat-msg-action:focus-visible { opacity:1; outline:2px solid var(--green); outline-offset:1px; }
+@media (hover:none) { .chat-msg-action { opacity:0.55; } }
+body.chat-selecting .chat-msg-actions { display:none; }
+
 /* Selection mode: the whole message becomes a target. */
 body.chat-selecting .chat-msg-real { cursor:pointer; border-radius:var(--r-sm);
   box-shadow:inset 0 0 0 1px var(--border); }
@@ -5247,7 +5380,7 @@ textarea.draft-message:focus, textarea.ro-body:focus {
 /* Graduated with the viewport so the main column never starves: the rail is
    as wide as reading needs where there is room, and steps down where there is
    not - but at any given viewport it NEVER changes width, which is the ruling. */
-@media (min-width:1441px) { #app { grid-template-columns: 230px 1fr 480px; } }
+@media (min-width:1441px) { #app { grid-template-columns: 230px 1fr 580px; } }
 @media (min-width:1281px) and (max-width:1440px) { #app { grid-template-columns: 230px 1fr 440px; } }
 @media (min-width:1081px) and (max-width:1280px) { #app { grid-template-columns: 230px 1fr 400px; } }
 /* ≤1080px the rail is an off-canvas sheet (the tablet and phone blocks own the
@@ -5347,6 +5480,41 @@ textarea.draft-message:focus, textarea.ro-body:focus {
 .reader-note { font-size:0.74rem; color:var(--text-3); line-height:1.7; padding:0.4rem 0; }
 .reader-loading { display:flex; align-items:center; gap:0.6rem; color:var(--text-3); font-size:0.76rem; padding:0.6rem 0; }
 
+/* ── MEDIA PLAYER (BE26082009) ── lives in the reader dock, same rhythm as
+   the rest of that panel's chrome (.task-tab source tabs, .reader-note-style
+   rows) rather than a separate visual language. */
+.media-player { display:flex; flex-direction:column; gap:0.7rem; height:100%; }
+.media-source-tabs { flex-shrink:0; }
+.media-browser { flex:1; overflow-y:auto; min-height:80px; border:1px solid var(--border); border-radius:var(--r-md); padding:0.3rem; }
+.media-row { display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.5rem; border-radius:var(--r-sm);
+  font-size:0.78rem; color:var(--text-2); cursor:default; }
+.media-row svg { flex-shrink:0; opacity:0.75; }
+.media-row span:first-of-type { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.media-row-up, .media-row[onclick] { cursor:pointer; }
+.media-row-up:hover, .media-row[onclick]:hover { background:var(--panel-hover, var(--surface)); color:var(--text); }
+.media-row-playable { color:var(--text); }
+.media-row-size { flex:none !important; color:var(--text-3); font-family:var(--font-mono); font-size:0.66rem; }
+
+.media-youtube-add { display:flex; gap:0.4rem; padding:0.4rem; }
+.media-yt-input { flex:1; background:var(--bg, #0d1117); border:1px solid var(--border); border-radius:var(--r-sm);
+  color:var(--text); font-size:0.78rem; padding:0.4rem 0.6rem; }
+
+.media-queue-wrap:empty { display:none; }
+.media-queue { flex-shrink:0; max-height:120px; overflow-y:auto; border-top:1px solid var(--border); padding-top:0.4rem; }
+.media-queue-row { display:flex; align-items:center; gap:0.5rem; padding:0.3rem 0.4rem; border-radius:var(--r-sm); font-size:0.74rem; }
+.media-queue-row-active { background:var(--lb-accent-bg, rgba(111,192,175,0.10)); color:var(--lb-accent, #6fc0af); }
+.media-queue-play, .media-queue-remove { cursor:pointer; display:flex; opacity:0.7; }
+.media-queue-play:hover, .media-queue-remove:hover { opacity:1; }
+.media-queue-title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+.media-transport-wrap:empty { display:none; }
+.media-transport { flex-shrink:0; display:flex; flex-direction:column; gap:0.5rem; border-top:1px solid var(--border); padding-top:0.6rem; }
+.media-video-el { width:100%; max-height:220px; border-radius:var(--r-md); background:#000; }
+.media-transport-controls { display:flex; align-items:center; gap:0.5rem; }
+.media-transport-title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.76rem; color:var(--text-2); }
+.media-yt-embed { position:relative; width:100%; padding-top:56.25%; border-radius:var(--r-md); overflow:hidden; }
+.media-yt-embed iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
+
 /* ── IMAGE SOURCING PROGRESS ─────────────────────────────────────────────────
    A count of files on disk, not a status anyone maintains. One line, one bar,
    quiet green when full, amber while the fleets are still delivering. */
@@ -5445,18 +5613,18 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
   border-radius: 0;
 }
 .day-card .card-header { padding-left: 0; padding-right: 0; }
-/* Same family as every other card header (.card-title: 700 weight, normal
-   tracking) -- "Today" had picked up its own one-off weight/tracking over
-   several edits; reset to match "Alerts"/"Planning" etc, just at double
-   the size (2 * .card-title's 0.8rem) for the contrast Architect wanted on
-   this one specifically, 17 Aug. */
+/* RG26082102, 21 Aug, per Architect: "not an exception, a consistent style
+   across all space heading styling" - matches .view-head h1 exactly
+   (font-family/weight/letter-spacing/line-height) instead of its own
+   one-off rule (was 1.6rem/normal tracking, set 17 Aug). */
 .day-card .day-title {
-  font-size: 1.6rem;
+  font-family:'Barlow', var(--font-ui);
+  font-size: 2.52rem;
   font-weight: 700;
-  letter-spacing: normal;
+  letter-spacing: -0.01em;
   text-transform: none;
   color: var(--text);
-  line-height: 1.15;
+  line-height: 1.3;
   margin-bottom: 0.2rem;
 }
 .day-card .card-sub {
@@ -5833,8 +6001,8 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 .learn-group-card { background:var(--panel); border:1px solid var(--border-mid); border-radius:var(--r-lg); padding:1.15rem; display:flex; flex-direction:column; gap:0.75rem; cursor:pointer; transition:border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease; position:relative; text-align:left; }
 .learn-group-card:hover { border-color:var(--border-light, #7d8590); transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,0.25); }
 .learn-group-card.is-archived { opacity:0.65; border-style:dashed; }
-.learn-group-top { display:flex; align-items:flex-start; justify-content:space-between; gap:0.5rem; }
-.learn-group-icon { font-size:1.5rem; line-height:1; display:flex; align-items:center; justify-content:center; width:42px; height:42px; border-radius:var(--r-md); background:var(--bg-raised); border:1px solid var(--border-mid); flex-shrink:0; }
+.learn-group-top { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; }
+.learn-group-icon { font-size:1.5rem; line-height:1; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .learn-group-title { font-size:0.98rem; font-weight:700; color:var(--text); line-height:1.3; }
 .learn-group-desc { font-size:0.78rem; color:var(--text-2); line-height:1.55; flex:1; }
 .learn-group-stats { font-size:0.7rem; color:var(--text-3); display:flex; align-items:center; justify-content:space-between; }

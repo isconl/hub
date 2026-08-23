@@ -51,6 +51,7 @@ SERVICES=(
   "scope:8083:scope"
   "circle:8084:circle"
   "spark:8085:spark"
+  "media:8086:media"
   "hub:8888:hub"
   "tts:5001:vault/scripts/tts_service.py"
 )
@@ -77,6 +78,7 @@ start_one() {
       export SCOPE_URL="http://127.0.0.1:8083"
       export CIRCLE_URL="http://127.0.0.1:8084"
       export SPARK_URL="http://127.0.0.1:8085"
+      export MEDIA_URL="http://127.0.0.1:8086"
       if [ "$name" = "vault" ]; then
         export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
       fi

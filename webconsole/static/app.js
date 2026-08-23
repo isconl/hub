@@ -48,7 +48,13 @@ const SVG_ICONS = {
   list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
   eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   audio: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>',
-  pin: '<path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6z"/><circle cx="12" cy="8" r="2"/>'
+  pin: '<path d="M12 2a6 6 0 0 0-6 6c0 4.5 6 12 6 12s6-7.5 6-12a6 6 0 0 0-6-6z"/><circle cx="12" cy="8" r="2"/>',
+  play: '<polygon points="5 3 19 12 5 21 5 3"/>',
+  pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
+  skipBack: '<polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/>',
+  skipNext: '<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>',
+  musicNote: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  youtube: '<path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/>',
 };
 
 function svgIcon(name, size=15, cls='', extra='') {
@@ -1490,6 +1496,7 @@ function renderCalendar() {
           <div class="task-tabs" style="margin-right:0.4rem">
             <button class="task-tab${mode === 'gregorian' ? ' on' : ''}" onclick="calMode('gregorian')">Gregorian</button>
             <button class="task-tab${mode === 'eq' ? ' on' : ''}" onclick="calMode('eq')">Equicycle</button>
+            <button class="task-tab${mode === 'planner' ? ' on' : ''}" onclick="calMode('planner')">Planner</button>
           </div>
           ${mode === 'gregorian' ? `
             <button class="btn btn-ghost" onclick="prevMiniMonth()">← Prev</button>
@@ -1498,7 +1505,7 @@ function renderCalendar() {
           <button class="btn btn-primary" onclick="openAddEventModal()">+ Schedule</button>
         </div>
       </div>
-      ${mode === 'eq' ? renderEqCalendar(byDate) : `
+      ${mode === 'eq' ? renderEqCalendar(byDate) : mode === 'planner' ? renderPlannerCalendar(byDate) : `
         <div class="cal-weekdays"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
         <div class="cal-grid">${dayCells.join('')}</div>`}
     </div>
@@ -1559,6 +1566,96 @@ function renderCalendar() {
 }
 
 function calMode(m) { calendarState.mode = m; repaintView('calendar'); }
+
+/**
+ * BT26082101: the Planner view - a weekly grid, columns = days of the week
+ * (Sun-Sat containing today), rows = every hour, day-theme names atop each
+ * column, the day's blocks shown as colored bands. Reads the same `bs` shape
+ * renderDayBlocks() already reads (DAY.blocks / DAY.now.blocks) but anchors
+ * segments to literal midnight (00:00-24:00 top-to-bottom, via midSeg()
+ * below) rather than the day-rail's own 05:00 rotation (seg(), ~line 8862) -
+ * a planner page reads top-of-day to bottom, not "day starts when Protected
+ * does". DAY.blocks is the SAME 12 rows applied to every weekday today (see
+ * BT26082002, not yet shipped) - until that lands, every column legitimately
+ * shows identical bands, which is still correct given today's data model.
+ * DAY_THEMES uses the names BT26082104 (shipped same session) locked, not
+ * the older names this row's own build.md note was scoped against.
+ */
+function renderPlannerCalendar(byDate) {
+  const HOUR_PX = 44;
+  const today = new Date();
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - today.getDay());
+  const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const DAY_THEMES = [
+    { name: 'Architecture', axis: 'rest' },       // Sun
+    { name: 'Innovation',   axis: 'innovator' },  // Mon
+    { name: 'Leadership',   axis: 'visionary' },  // Tue
+    { name: 'Reset',        axis: 'creator' },    // Wed
+    { name: 'Creativity',   axis: 'connection' }, // Thu
+    { name: 'Dispatch',     axis: 'learning' },   // Fri
+    { name: 'Hearth',       axis: 'home' },       // Sat
+  ];
+  const bs = DAY ? (DAY.blocks || (DAY.now && DAY.now.blocks) || []) : [];
+  // Literal-midnight version of renderDayBlocks()'s rail-relative seg() -
+  // a block that wraps midnight (Rest, 21:00-05:00) still splits into two
+  // bands, just anchored to [0,1440] instead of a rotated rail origin.
+  const midSeg = (b) => {
+    const s = b.start, e0 = b.end;
+    const e = e0 <= s ? e0 + 1440 : e0;
+    return e > 1440 ? [[s, 1440], [0, e - 1440]] : [[s, e]];
+  };
+  const pad = n => String(n).padStart(2, '0');
+
+  const cols = DAY_NAMES.map((dn, i) => {
+    const d = new Date(weekStart); d.setDate(weekStart.getDate() + i);
+    const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const isToday = d.toDateString() === today.toDateString();
+    const items = byDate[key] || [];
+    const timed = items.filter(it => it.time);
+    const untimed = items.filter(it => !it.time);
+    const theme = DAY_THEMES[i];
+    const themeTone = toneOf({ axis: theme.axis });
+
+    const bands = bs.flatMap(b => midSeg(b).map(([s, e]) => `
+      <div class="planner-block-band" style="top:${(s / 60 * HOUR_PX).toFixed(1)}px;height:${Math.max(2, (e - s) / 60 * HOUR_PX).toFixed(1)}px;--tone:${toneOf(b)}"
+           title="${escAttr(b.name)} · ${escAttr(b.startClock || '')}-${escAttr(b.endClock || '')}"></div>`
+    )).join('');
+
+    const pills = timed.map(it => {
+      const [h, m] = String(it.time).split(':').map(Number);
+      const mins = (h || 0) * 60 + (m || 0);
+      const tone = it.color || themeTone;
+      return `<div class="planner-event-pill" style="top:${(mins / 60 * HOUR_PX).toFixed(1)}px;background:${escHtml(tone)}22;border-left:2px solid ${escHtml(tone)}"
+                   title="${escAttr(it.title || '')}">${escHtml((it.title || '').slice(0, 26))}</div>`;
+    }).join('');
+
+    return `
+      <div class="planner-col${isToday ? ' planner-col-today' : ''}">
+        <div class="planner-col-head" style="--theme-tone:${themeTone}">
+          <div class="planner-col-day">${DAY_NAMES[i]} ${d.getDate()}</div>
+          <div class="planner-col-theme">${escHtml(theme.name)}</div>
+        </div>
+        ${untimed.length ? `<div class="planner-col-allday">${untimed.slice(0, 3).map(it =>
+          `<div class="planner-allday-item ${escAttr(it.type)}">${escHtml((it.title || '').slice(0, 20))}</div>`).join('')}${
+          untimed.length > 3 ? `<div class="planner-allday-more">+${untimed.length - 3}</div>` : ''}</div>` : ''}
+        <div class="planner-col-body" style="height:${24 * HOUR_PX}px" onclick="openAddEventOnDate('${key}')">${bands}${pills}</div>
+      </div>`;
+  }).join('');
+
+  const gutter = Array.from({ length: 24 }, (_, h) =>
+    `<div class="planner-hour-label" style="height:${HOUR_PX}px">${h === 0 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h - 12) + 'p'}</div>`
+  ).join('');
+
+  return `
+    <div class="planner">
+      <div class="planner-gutter">
+        <div class="planner-gutter-spacer"></div>
+        <div class="planner-hour-labels">${gutter}</div>
+      </div>
+      <div class="planner-grid">${cols}</div>
+    </div>`;
+}
 
 /**
  * The Equicycle month: the current 28-day cycle as two sprint fortnights, each
@@ -2427,11 +2524,13 @@ async function fmPreviewInReader(item) {
     } else if (ext === '.pdf') {
       const rawUrl = `/api/onedrive/raw?id=${encodeURIComponent(item.id)}`;
       readerBody(`<object class="reader-pdf" data="${rawUrl}" type="application/pdf" width="100%" height="100%"><iframe class="reader-pdf" src="${rawUrl}" title="${escAttr(item.name)}"></iframe></object>`);
-    } else if (['.mp3', '.wav', '.m4a', '.ogg', '.aac', '.flac'].includes(ext)) {
-      // Narration files already exist per uploadLarge() -- BG26081806's audio tier.
-      const rawUrl = `/api/onedrive/raw?id=${encodeURIComponent(item.id)}`;
-      readerBody(`<div class="reader-audio-wrap"><audio class="reader-audio" controls preload="metadata" src="${escAttr(rawUrl)}">
-        Your browser can't play this audio inline.</audio></div>`);
+    } else if (PLAYABLE_RE.test(item.name || '') && item.downloadUrl) {
+      // BE26082009: routed through the real media player (transport controls,
+      // queue) instead of BG26081806's bare <audio controls> tag -- same
+      // downloadUrl this branch already had, just handed to the player.
+      MEDIA_QUEUE = [{ title: item.name, src: item.downloadUrl, kind: 'onedrive', video: VIDEO_RE.test(item.name || '') }];
+      MEDIA_INDEX = 0;
+      readerBody(mediaTransportHtml());
     } else if (['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'].includes(ext)) {
       // BG26081806's Office tier -- data.officePreviewUrl comes from Graph's
       // own POST /items/{id}/preview action (vault/lib/onedrive-browse.js),
@@ -3601,8 +3700,8 @@ const MENU_COLOR_GROUPS = [
   { key: 'command',   label: 'Command',    hint: 'Today, Kanban, Calendar' },
   { key: 'flow',      label: 'Channels',   hint: 'Inbox, GitHub, Notifications' },
   { key: 'life',      label: 'Personal',   hint: 'Rhythm, Learning, Ideas' },
-  { key: 'circle',    label: 'Circle',     hint: 'People, Contacts' },
   { key: 'projects',  label: 'Projects',   hint: 'Ventures, deployments' },
+  { key: 'circle',    label: 'Circle',     hint: 'People, Contacts' },
   { key: 'spaces',    label: 'Spaces',     hint: 'Sidebar menu' },
   { key: 'writer',    label: 'Writer',     hint: 'Space cards' },
   { key: 'visionary', label: 'Visionary',  hint: 'Space cards' },
@@ -4444,6 +4543,13 @@ function repaintView(name) {
   // network. A repaint throws that away, so without this the card sits on
   // "Checking for the current build..." for as long as the page stays open.
   if (currentView === name && name === 'settings' && typeof loadApkCard === 'function') loadApkCard();
+  // BL26082103: the lesson-reader checkpoint rail is built/torn down from
+  // this hook, not navigate()'s -- learnOpenLesson() (and every other lesson
+  // entry point) calls repaintView('learning') directly, never navigate().
+  if (currentView === name && name === 'learning') {
+    if (learnOpen.course && learnOpen.file && typeof learnInitCheckpoints === 'function') learnInitCheckpoints();
+    else if (typeof learnTeardownCheckpoints === 'function') learnTeardownCheckpoints();
+  }
   try { if (typeof refreshContextIfActive === 'function') refreshContextIfActive(); } catch {}
 }
 
@@ -9070,6 +9176,16 @@ function ctxSlots() {
   const mins = (m) => m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`;
   const s = [];
 
+  // BM26082010: a message lifted from chat always wins the top slot until
+  // dismissed or replaced by another lift -- score above every computed
+  // signal below (99 is the next-highest, "sync" disconnected).
+  if (typeof CTX_LIFTED !== 'undefined' && CTX_LIFTED) {
+    s.push({ key: 'lifted', score: 999, tone: 'hot',
+      head: 'Lifted from chat', lead: CTX_LIFTED.text.slice(0, 160),
+      meta: `${fmtWhen(CTX_LIFTED.at, { rel: true })} · tap to dismiss`,
+      go: 'ctxClearLifted()' });
+  }
+
   const ms = STATE.services?.msgraph;
   if (ms && ms !== 'connected') s.push({ key: 'sync', score: 99, tone: 'hot',
     head: 'Not syncing', lead: 'OneDrive disconnected',
@@ -9512,6 +9628,219 @@ document.addEventListener('keydown', (e) => {
 });
 
 const READER_KB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+
+// ── MEDIA PLAYER (BE26082009) ────────────────────────────────────────────────
+// Real transport controls + a queue, replacing BG26081806's passive
+// <audio controls> tag. Lives in the reader dock (the "Context" tab) --
+// same surface a document preview opens in, since a media file IS a kind
+// of document preview here. Local files go through the new `media` engine
+// (sandboxed browsing + a short-lived signed streaming ticket, since a
+// <video>/<audio> element's src can't carry an Authorization header);
+// OneDrive files need no new backend at all -- vault's existing
+// onedrive.browse.list already returns each file's Graph downloadUrl, a
+// pre-signed direct link the player can point straight at. YouTube is a
+// client-side iframe embed, no backend involvement.
+//
+// Known limitation, not solved here: playback stops if the reader dock is
+// closed or replaced by another preview -- the <video> element lives in
+// #reader-body, which gets wiped on both. A persistent background player
+// (surviving navigation) would need to move playback out of the dock
+// entirely; out of scope for this pass, and not a regression against the
+// passive preview it replaces, which had the exact same lifecycle.
+const PLAYABLE_RE = /\.(mp3|m4a|aac|flac|ogg|oga|wav|opus|mp4|m4v|webm|mov|mkv)$/i;
+const VIDEO_RE = /\.(mp4|m4v|webm|mov|mkv)$/i;
+let MEDIA_QUEUE = [];       // [{title, src, kind:'local'|'onedrive'|'youtube', video:bool, youtubeId?}]
+let MEDIA_INDEX = -1;
+let MEDIA_BASE_URL = null;  // cached media engine base URL (see /api/media/base-url)
+let MEDIA_SOURCE_TAB = 'local';
+let MEDIA_LOCAL_PATH = '';
+let MEDIA_ONEDRIVE_PATH = 'root';
+
+async function mediaBaseUrl() {
+  if (MEDIA_BASE_URL) return MEDIA_BASE_URL;
+  const r = await fetch('/api/media/base-url');
+  const d = await r.json();
+  if (!r.ok || !d.url) throw new Error(d.error || 'media engine is not configured on this hub');
+  MEDIA_BASE_URL = d.url;
+  return MEDIA_BASE_URL;
+}
+
+function mediaOpenPlayer() {
+  setRailMode('reader');
+  readerShell('Media Player', 'loading…');
+  document.getElementById('reader-download').style.display = 'none';
+  mediaRenderPlayer();
+}
+
+function mediaSwitchSource(tab) { MEDIA_SOURCE_TAB = tab; mediaRenderPlayer(); }
+
+function mediaRenderPlayer() {
+  document.getElementById('reader-name').textContent = 'Media Player';
+  readerMeta(MEDIA_QUEUE.length ? `${MEDIA_QUEUE.length} in queue` : 'nothing queued yet');
+  const tabs = [
+    ['local', 'folder', 'Local'],
+    ['onedrive', 'layers', 'OneDrive'],
+    ['youtube', 'youtube', 'YouTube'],
+  ];
+  readerBody(`
+    <div class="media-player">
+      <div class="media-source-tabs task-tabs">
+        ${tabs.map(([id, icon, label]) => `<button class="task-tab${MEDIA_SOURCE_TAB === id ? ' on' : ''}" onclick="mediaSwitchSource('${id}')">${svgIcon(icon, 13)} ${label}</button>`).join('')}
+      </div>
+      <div class="media-browser" id="media-browser"><div class="reader-loading"><div class="spinner-inline"></div></div></div>
+      <div class="media-queue-wrap" id="media-queue-wrap">${mediaQueueHtml()}</div>
+      <div class="media-transport-wrap" id="media-transport-wrap">${mediaTransportHtml()}</div>
+    </div>`);
+  mediaRenderBrowser();
+}
+
+function mediaListHtml(entries, currentPath, navigateFn, playFn) {
+  const up = currentPath && currentPath !== 'root' && currentPath !== ''
+    ? `<div class="media-row media-row-up" onclick="${navigateFn}('${escAttr(mediaParentPath(currentPath))}')">${svgIcon('arrowLeft', 13)} ..</div>` : '';
+  if (!entries.length) return `${up}<div class="reader-note">Empty folder.</div>`;
+  return up + entries.map(e => {
+    const safeName = escAttr(e.name);
+    const safePath = escAttr(e.path);
+    if (e.type === 'dir') {
+      return `<div class="media-row" onclick="${navigateFn}('${safePath}')">${svgIcon('folder', 14)} <span>${escHtml(e.name)}</span></div>`;
+    }
+    const playable = !!e.playable;
+    return `<div class="media-row${playable ? ' media-row-playable' : ''}" ${playable ? `onclick="${playFn}('${safePath}','${safeName}')"` : ''}>
+      ${svgIcon(playable ? 'musicNote' : 'file', 14)} <span>${escHtml(e.name)}</span>
+      ${e.bytes ? `<span class="media-row-size">${READER_KB(e.bytes)}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+function mediaParentPath(p) {
+  const parts = String(p || '').split('/').filter(Boolean);
+  parts.pop();
+  return parts.join('/');
+}
+
+function mediaLocalNavigate(path) { MEDIA_LOCAL_PATH = path; mediaRenderBrowser(); }
+function mediaOneDriveNavigate(path) { MEDIA_ONEDRIVE_PATH = path || 'root'; mediaRenderBrowser(); }
+
+async function mediaRenderBrowser() {
+  const el = document.getElementById('media-browser');
+  if (!el) return;
+  if (MEDIA_SOURCE_TAB === 'youtube') {
+    el.innerHTML = `
+      <div class="media-youtube-add">
+        <input type="text" id="media-yt-url" class="media-yt-input" placeholder="Paste a YouTube video URL…"
+               onkeydown="if(event.key==='Enter')mediaAddYoutube()"/>
+        <button class="btn btn-primary" onclick="mediaAddYoutube()">Add to queue</button>
+      </div>`;
+    return;
+  }
+  if (MEDIA_SOURCE_TAB === 'local') {
+    try {
+      const r = await fetch(`/api/media/list?path=${encodeURIComponent(MEDIA_LOCAL_PATH)}`);
+      const d = await r.json();
+      if (d.error) { el.innerHTML = `<div class="reader-note">${escHtml(d.error)}</div>`; return; }
+      el.innerHTML = mediaListHtml(d.entries, MEDIA_LOCAL_PATH, 'mediaLocalNavigate', 'mediaPlayLocal');
+    } catch (e) { el.innerHTML = `<div class="reader-note">${escHtml(e.message)}</div>`; }
+    return;
+  }
+  // onedrive -- same /api/onedrive/list endpoint and item shape fmNavigate() already uses.
+  try {
+    const r = await fetch(`/api/onedrive/list?path=${encodeURIComponent(MEDIA_ONEDRIVE_PATH)}`);
+    const d = await r.json();
+    if (d.error) { el.innerHTML = `<div class="reader-note">${escHtml(d.error)}</div>`; return; }
+    const items = d.items || d.value || [];
+    const entries = items.map(i => ({
+      name: i.name,
+      path: i.folder ? (MEDIA_ONEDRIVE_PATH === 'root' ? i.name : `${MEDIA_ONEDRIVE_PATH}/${i.name}`) : i.id,
+      type: i.folder ? 'dir' : 'file',
+      playable: !i.folder && PLAYABLE_RE.test(i.name || ''),
+      bytes: i.size,
+      _downloadUrl: i.downloadUrl,
+      _name: i.name,
+    }));
+    el.innerHTML = mediaListHtml(entries, MEDIA_ONEDRIVE_PATH, 'mediaOneDriveNavigate', 'mediaPlayOneDrive');
+    // downloadUrl/name aren't safe to smuggle through an onclick string
+    // (query strings, quotes) -- stash them keyed by item id instead.
+    MEDIA_ONEDRIVE_CACHE = {};
+    entries.forEach(e => { if (e.type === 'file') MEDIA_ONEDRIVE_CACHE[e.path] = e; });
+  } catch (e) { el.innerHTML = `<div class="reader-note">${escHtml(e.message)}</div>`; }
+}
+let MEDIA_ONEDRIVE_CACHE = {};
+
+async function mediaPlayLocal(path, name) {
+  try {
+    const [ticketRes, baseUrl] = await Promise.all([
+      fetch(`/api/media/ticket?path=${encodeURIComponent(path)}`).then(r => r.json()),
+      mediaBaseUrl(),
+    ]);
+    if (ticketRes.error) { showToast(ticketRes.error, 'error'); return; }
+    mediaEnqueueAndPlay({ title: name, src: `${baseUrl}/stream?t=${encodeURIComponent(ticketRes.ticket)}`, kind: 'local', video: VIDEO_RE.test(name) });
+  } catch (e) { showToast(e.message, 'error'); }
+}
+function mediaPlayOneDrive(id, name) {
+  const e = MEDIA_ONEDRIVE_CACHE[id];
+  if (!e || !e._downloadUrl) { showToast('No direct link for this file (may have expired -- reopen the folder)', 'error'); return; }
+  mediaEnqueueAndPlay({ title: e._name || name, src: e._downloadUrl, kind: 'onedrive', video: VIDEO_RE.test(e._name || name) });
+}
+function mediaAddYoutube() {
+  const input = document.getElementById('media-yt-url');
+  const url = (input?.value || '').trim();
+  const m = url.match(/(?:youtu\.be\/|v=|embed\/)([A-Za-z0-9_-]{11})/);
+  if (!m) { showToast('Not a recognizable YouTube URL', 'error'); return; }
+  mediaEnqueueAndPlay({ title: `YouTube: ${m[1]}`, kind: 'youtube', youtubeId: m[1] });
+  if (input) input.value = '';
+}
+
+function mediaEnqueueAndPlay(track) {
+  MEDIA_QUEUE.push(track);
+  MEDIA_INDEX = MEDIA_QUEUE.length - 1;
+  mediaRenderPlayer();
+}
+function mediaRemoveFromQueue(i) {
+  MEDIA_QUEUE.splice(i, 1);
+  if (MEDIA_INDEX === i) { MEDIA_INDEX = -1; }
+  else if (MEDIA_INDEX > i) { MEDIA_INDEX -= 1; }
+  mediaRenderPlayer();
+}
+function mediaPlayIndex(i) { MEDIA_INDEX = i; mediaRenderPlayer(); }
+function mediaNext() { if (MEDIA_INDEX < MEDIA_QUEUE.length - 1) { MEDIA_INDEX += 1; mediaRenderPlayer(); } }
+function mediaPrev() { if (MEDIA_INDEX > 0) { MEDIA_INDEX -= 1; mediaRenderPlayer(); } }
+function mediaEnded() { mediaNext(); }
+
+function mediaQueueHtml() {
+  if (!MEDIA_QUEUE.length) return '';
+  return `<div class="media-queue">
+    ${MEDIA_QUEUE.map((t, i) => `
+      <div class="media-queue-row${i === MEDIA_INDEX ? ' media-queue-row-active' : ''}">
+        <span class="media-queue-play" onclick="mediaPlayIndex(${i})">${svgIcon(i === MEDIA_INDEX ? 'play' : 'musicNote', 12)}</span>
+        <span class="media-queue-title">${escHtml(t.title)}</span>
+        <span class="media-queue-remove" onclick="mediaRemoveFromQueue(${i})" title="Remove">${svgIcon('x', 11)}</span>
+      </div>`).join('')}
+  </div>`;
+}
+
+function mediaTransportHtml() {
+  if (MEDIA_INDEX < 0 || !MEDIA_QUEUE[MEDIA_INDEX]) return '';
+  const t = MEDIA_QUEUE[MEDIA_INDEX];
+  if (t.kind === 'youtube') {
+    return `<div class="media-transport media-transport-youtube">
+      <div class="media-yt-embed"><iframe src="https://www.youtube-nocookie.com/embed/${escAttr(t.youtubeId)}?autoplay=1"
+        title="${escAttr(t.title)}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>
+      <div class="media-transport-controls">
+        <button class="chat-rail-control-btn" onclick="mediaPrev()" ${MEDIA_INDEX === 0 ? 'disabled' : ''}>${svgIcon('skipBack', 14)}</button>
+        <span class="media-transport-title">${escHtml(t.title)}</span>
+        <button class="chat-rail-control-btn" onclick="mediaNext()" ${MEDIA_INDEX === MEDIA_QUEUE.length - 1 ? 'disabled' : ''}>${svgIcon('skipNext', 14)}</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="media-transport">
+    ${t.video ? `<video id="media-el" class="media-video-el" src="${escAttr(t.src)}" controls autoplay onended="mediaEnded()"></video>`
+               : `<audio id="media-el" src="${escAttr(t.src)}" controls autoplay onended="mediaEnded()" style="width:100%"></audio>`}
+    <div class="media-transport-controls">
+      <button class="chat-rail-control-btn" onclick="mediaPrev()" ${MEDIA_INDEX === 0 ? 'disabled' : ''}>${svgIcon('skipBack', 14)}</button>
+      <span class="media-transport-title">${escHtml(t.title)}</span>
+      <button class="chat-rail-control-btn" onclick="mediaNext()" ${MEDIA_INDEX === MEDIA_QUEUE.length - 1 ? 'disabled' : ''}>${svgIcon('skipNext', 14)}</button>
+    </div>
+  </div>`;
+}
 
 /**
  * EDITING IN THE READER.
@@ -11770,6 +12099,10 @@ async function rechase(id, btn) {
 
 function navigate(viewName, params = {}, opts = {}) {
   if (!viewFns[viewName]) return;
+  // BL26082103: tear down any stale checkpoint rail before switching away
+  // from the lesson reader -- repaintView('learning') rebuilds it if the
+  // destination is still a lesson, this just guards every other view.
+  if (viewName !== 'learning' && typeof learnTeardownCheckpoints === 'function') learnTeardownCheckpoints();
   if (!opts.fromHistory) {
     pushHistory(viewName, params, currentView === viewName && viewName !== 'task');
     trailPush(viewName, params.taskId);
@@ -11831,6 +12164,7 @@ function navigate(viewName, params = {}, opts = {}) {
   if (viewName==='notifications') fetchNotifs();
   if (viewName==='finance')  fetchFinance();
   if (viewName==='planning') fetchPlans();
+  if (viewName==='learning' && learnOpen.course && learnOpen.file && typeof learnInitCheckpoints === 'function') learnInitCheckpoints();
   // Files always opens at the OneDrive root unless a space explicitly handed a
   // path over for this one visit.
   if (viewName==='files')    { const p = fmPendingPath || 'root'; fmPendingPath = null; setTimeout(()=>fmNavigate(p), 100); }
@@ -12171,6 +12505,17 @@ function chatAppend(role, html, opts = {}) {
   body.innerHTML = html;          // callers pass already-escaped/formatted html
   el.appendChild(body);
 
+  // Hover-only timestamp (BM26082010) -- no timestamp shown at all before
+  // this, Signal-style: quiet until you hover, then it's there.
+  if (!opts.transient) {
+    const ts = document.createElement('div');
+    ts.className = 'msg-ts';
+    const at = new Date();
+    ts.textContent = at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    ts.title = at.toLocaleString();
+    el.appendChild(ts);
+  }
+
   // Every message carries its own copy button and can be picked up by the
   // selection bar. Transient messages - the typing indicator, action cards -
   // opt out, so there is never a copy button on something with nothing to copy.
@@ -12184,6 +12529,27 @@ function chatAppend(role, html, opts = {}) {
     act.textContent = 'Copy';
     act.onclick = (e) => { e.stopPropagation(); chatCopyMessage(el, act); };
     el.appendChild(act);
+
+    // Four more per-bubble controls (BM26082010), alongside Copy: lift into
+    // Context, regenerate (agent only), branch from here, reply-to-quote.
+    const actions = document.createElement('div');
+    actions.className = 'chat-msg-actions';
+    const mkBtn = (cls, title, icon, fn) => {
+      const b = document.createElement('button');
+      b.className = `chat-msg-action ${cls}`;
+      b.type = 'button';
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.innerHTML = svgIcon(icon, 12);
+      b.onclick = (e) => { e.stopPropagation(); fn(el); };
+      return b;
+    };
+    actions.appendChild(mkBtn('chat-msg-lift', 'Lift into Context', 'pin', chatLiftToContext));
+    if (role !== 'user') actions.appendChild(mkBtn('chat-msg-regen', 'Regenerate', 'refresh', chatRegenerate));
+    actions.appendChild(mkBtn('chat-msg-branch', 'Branch from here', 'layers', chatBranchFrom));
+    actions.appendChild(mkBtn('chat-msg-quote', 'Reply with quote', 'arrowLeft', chatReplyQuote));
+    el.appendChild(actions);
+
     el.addEventListener('click', () => {
       if (!document.body.classList.contains('chat-selecting')) return;
       el.classList.toggle('picked');
@@ -12239,6 +12605,85 @@ function chatCopyMessage(el, btn) {
     btn.classList.add('done');
     setTimeout(() => { btn.textContent = was; btn.classList.remove('done'); }, 1500);
   });
+}
+
+// ── CHAT: PER-BUBBLE HOVER CONTROLS (BM26082010) ─────────────────────────────
+// Four actions beyond Copy/Select, each on its own bubble, alongside the
+// existing .chat-msg-copy button rather than replacing it.
+
+/** Lifts a message's text into the Context panel as a pinned, top-scoring
+ *  slot (ctxSlots() reads CTX_LIFTED) until dismissed or replaced by another
+ *  lift -- the panel already re-renders from ctxSlots() on demand, so this
+ *  needs no new rendering path, just one more slot source. */
+let CTX_LIFTED = null;
+function ctxClearLifted() { CTX_LIFTED = null; if (typeof renderRailContext === 'function') renderRailContext(); }
+function chatLiftToContext(el) {
+  const text = chatMsgText(el);
+  if (!text) return;
+  CTX_LIFTED = { text, at: new Date().toISOString() };
+  if (typeof renderRailContext === 'function') renderRailContext();
+  showToast('Lifted into Context', 'success');
+}
+
+/** Agent messages only: drop this reply and re-run the turn against the
+ *  user message right before it. Reuses chatRunTurn() (the same code path
+ *  sendRailChat() uses after appending a bubble) rather than duplicating
+ *  the distill/act/stream/fallback routing. */
+async function chatRegenerate(el) {
+  if (!el.classList.contains('agent')) return;
+  const prevUser = el.previousElementSibling;
+  if (!prevUser || !prevUser.classList.contains('user')) {
+    showToast('No prior message to regenerate from', 'warn');
+    return;
+  }
+  const text = chatMsgText(prevUser);
+  if (!text) return;
+  el.remove();
+  await chatRunTurn(text);
+}
+
+/** Quotes this message into the composer ahead of whatever he types next,
+ *  Signal-style reply-to-quote. Purely local -- the quote is just text the
+ *  next real message carries, not a stored reference to the original. */
+function chatReplyQuote(el) {
+  const ta = document.getElementById('chat-rail-textarea');
+  if (!ta) return;
+  const text = chatMsgText(el);
+  if (!text) return;
+  const quoted = text.split('\n').map(l => `> ${l}`).join('\n');
+  ta.value = ta.value ? `${quoted}\n\n${ta.value}` : `${quoted}\n\n`;
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+}
+
+/** Forks a new thread seeded with a LOCAL copy of the transcript up to and
+ *  including this message -- the new thread is real (same /thread/new the
+ *  New Conversation button uses, so it saves going forward normally), but
+ *  the seeded prior messages are display-only, not replayed against the
+ *  agent or persisted individually: there is no bulk-import endpoint for
+ *  "these N messages happened," and resending each one for real would
+ *  trigger duplicate agent turns and side effects. Good enough to branch
+ *  a conversation's direction from a specific point; a real persisted
+ *  branch is a backend change for a future row if he wants full history
+ *  on the branched thread too. */
+async function chatBranchFrom(el) {
+  const box = chatBox();
+  if (!box) return;
+  const prior = Array.from(box.querySelectorAll('.chat-msg-real'));
+  const cut = prior.indexOf(el);
+  if (cut < 0) return;
+  const toReplay = prior.slice(0, cut + 1).map(m => ({
+    role: m.classList.contains('user') ? 'user' : 'agent',
+    html: m.querySelector('.msg-content')?.innerHTML || '',
+  }));
+
+  await fetch('/api/chat/thread/new', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  box.innerHTML = ctxField(ctxFieldRgb());
+  toReplay.forEach(m => chatAppend(m.role, m.html));
+  document.getElementById('chat-history')?.classList.add('hidden');
+  chatScrollToEnd();
+  showToast('Branched into a new conversation from here', 'success');
 }
 
 function chatToggleSelect() {
@@ -12448,6 +12893,17 @@ async function sendRailChat() {
   chatAppend('user', chatFormat(text));
   ta.value = '';
   ta.style.height = '';           // reset autosize
+  await chatRunTurn(text);
+}
+
+/**
+ * Everything sendRailChat() does AFTER the user bubble is already on screen:
+ * distill-or-talk routing, streaming with a non-streaming fallback, error
+ * handling. Split out so chatRegenerate() (BM26082010) can re-run a turn
+ * against an EXISTING user message without appending a duplicate bubble.
+ */
+async function chatRunTurn(text) {
+  if (!chatBox()) { showToast('Chat panel not ready', 'error'); return; }
   chatSetBusy(true);
 
   // Multi-line pasted content that looks like a task list goes to the distiller.
@@ -15235,6 +15691,93 @@ window.addEventListener('scroll', () => {
   }, 1200);
 }, { passive: true });
 
+/** Scroll-to-top button (lesson reader only) - #view-container is the real
+ *  scrollable element (overflow-y:auto, see style.css), not window, so this
+ *  listens/scrolls there rather than on window like the resume-tracker above. */
+document.getElementById('view-container').addEventListener('scroll', () => {
+  const btn = document.getElementById('lesson-scroll-top-btn');
+  if (!btn) return;
+  const c = document.getElementById('view-container');
+  btn.classList.toggle('visible', c.scrollTop > window.innerHeight * 0.6);
+}, { passive: true });
+function learnScrollToTop() {
+  // Plain instant jump, not scrollTo({behavior:'smooth'}) -- smooth scrolling
+  // on this element (via the scrollTo option or CSS scroll-behavior) proved
+  // unreliable after a real scroll gesture during testing 22 Aug 2026
+  // (worked in isolation, silently no-op'd after genuine wheel input).
+  // Direct scrollTop assignment is the one path confirmed reliable every time.
+  const c = document.getElementById('view-container');
+  if (c) c.scrollTop = 0;
+}
+
+// ── LESSON CHECKPOINT RAIL (BL26082103) ─────────────────────────────────────
+// Minimal, label-free vertical rail of dots, one per `##`/`###` heading
+// (rendered <h3>/<h4> by learnMd() above, each with a stable id already).
+// Lives outside the render template entirely -- built/positioned/torn down
+// here in JS against .lesson-body's real, current bounding box rather than
+// guessed via CSS, since the reading column's horizontal position shifts
+// with the sidebar/chat-rail's own widths. Hidden (not just squeezed) when
+// there genuinely isn't room beside the column, per the row's "adaptable"
+// ask -- never fights the reading column for space.
+let learnCheckpointObserver = null;
+function learnTeardownCheckpoints() {
+  if (learnCheckpointObserver) { learnCheckpointObserver.disconnect(); learnCheckpointObserver = null; }
+  document.getElementById('lesson-checkpoints')?.remove();
+  window.removeEventListener('resize', learnPositionCheckpoints);
+}
+function learnInitCheckpoints() {
+  learnTeardownCheckpoints();
+  const body = document.querySelector('.lesson-body');
+  const headings = body ? Array.from(body.querySelectorAll('h3[id], h4[id]')) : [];
+  if (!body || headings.length < 2) return;   // not worth a rail for 0-1 sections
+
+  const rail = document.createElement('div');
+  rail.id = 'lesson-checkpoints';
+  rail.className = 'lesson-checkpoints';
+  headings.forEach(h => {
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = `lesson-checkpoint-dot ${h.tagName.toLowerCase()}`;
+    dot.dataset.target = h.id;
+    dot.title = h.textContent;
+    dot.setAttribute('aria-label', h.textContent);
+    dot.onclick = () => {
+      const c = document.getElementById('view-container');
+      const target = document.getElementById(h.id);
+      if (c && target) c.scrollTop = target.offsetTop - 16;   // instant, matches learnScrollToTop's reasoning
+    };
+    rail.appendChild(dot);
+  });
+  document.body.appendChild(rail);
+
+  learnPositionCheckpoints();
+  window.addEventListener('resize', learnPositionCheckpoints);
+
+  learnCheckpointObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const dot = rail.querySelector(`.lesson-checkpoint-dot[data-target="${entry.target.id}"]`);
+      if (dot) dot.classList.toggle('active', entry.isIntersecting);
+    });
+  }, { root: document.getElementById('view-container'), rootMargin: '-10% 0px -80% 0px' });
+  headings.forEach(h => learnCheckpointObserver.observe(h));
+}
+function learnPositionCheckpoints() {
+  const rail = document.getElementById('lesson-checkpoints');
+  const body = document.querySelector('.lesson-body');
+  const vc = document.getElementById('view-container');
+  if (!rail || !body || !vc) return;
+  const bodyRect = body.getBoundingClientRect();
+  const vcRect = vc.getBoundingClientRect();
+  const railWidth = 28;   // dots + hover-tooltip breathing room
+  const gap = 20;
+  const roomLeft = vcRect.right - bodyRect.right - gap - railWidth;
+  if (roomLeft < 0) { rail.classList.remove('visible'); return; }
+  rail.style.left = `${bodyRect.right + gap}px`;
+  rail.style.top = `${Math.max(vcRect.top, bodyRect.top)}px`;
+  rail.style.height = `${Math.min(vcRect.bottom, bodyRect.bottom) - Math.max(vcRect.top, bodyRect.top)}px`;
+  rail.classList.add('visible');
+}
+
 /** Jump straight back into the exact spot a resume row describes. */
 async function learnResume(course, lesson, pct) {
   learnCourseOpen = course;
@@ -15804,6 +16347,9 @@ function renderLearning() {
               ${next ? `<button class="btn btn-ghost" onclick="learnMark('${escHtml(course.ID)}','${escHtml(lesson.file)}','done',true);learnOpenLesson('${escHtml(course.ID)}','${escHtml(next.file)}')"
                 title="Marks this one done and moves on">${escHtml(next.title.slice(0, 32))} →</button>` : ''}`;
           })()}
+        </div>
+        <div class="lesson-scroll-top-wrap">
+          <button id="lesson-scroll-top-btn" class="lesson-scroll-top-btn" onclick="learnScrollToTop()" title="Scroll to top">${LESSON_ICONS.scrollTop}</button>
         </div>
       </div>
       ${course.ID === 'financial-intelligence' || (learnOpen.content || '').includes('$$') ? renderDynamicFinancialCalculators() : ''}
@@ -16410,7 +16956,18 @@ function renderMapBlock(spec) {
   return `<div class="lesson-map">${spec.label ? `<div class="lesson-chart-title">${escHtml(spec.label)}</div>` : ''}<iframe src="${src}" loading="lazy" title="${escAttr(spec.label || 'map')}"></iframe></div>`;
 }
 
+// BL26082103: stable per-heading ids for the checkpoint rail, reset each
+// learnMd() call (one lesson at a time) so a repeated heading text within
+// the same lesson still gets a unique id instead of colliding.
+let learnHeadingSeen = {};
+function learnHeadingId(text) {
+  const base = writerSlug(text) || 'section';
+  const n = (learnHeadingSeen[base] = (learnHeadingSeen[base] || 0) + 1);
+  return n === 1 ? base : `${base}-${n}`;
+}
+
 function learnMd(src) {
+  learnHeadingSeen = {};
   let rawSrc = String(src || '');
   // Holds any block-level HTML that must survive the escHtml pass below
   // untouched - equations first (7 Aug), charts and maps joined it (14 Aug).
@@ -16571,8 +17128,8 @@ function learnMd(src) {
       i = nextIdx; continue;
     }
     if (/^#### /.test(line)) { out.push(`<h5>${restoreMath(inline(line.slice(5)))}</h5>`); continue; }
-    if (/^### /.test(line)) { out.push(`<h4>${restoreMath(inline(line.slice(4)))}</h4>`); continue; }
-    if (/^## /.test(line))  { closeQuiz(); out.push(`<h3>${restoreMath(inline(line.slice(3)))}</h3>`); continue; }
+    if (/^### /.test(line)) { const t = line.slice(4); out.push(`<h4 id="${learnHeadingId(t)}">${restoreMath(inline(t))}</h4>`); continue; }
+    if (/^## /.test(line))  { closeQuiz(); const t = line.slice(3); out.push(`<h3 id="${learnHeadingId(t)}">${restoreMath(inline(t))}</h3>`); continue; }
     if (/^# /.test(line))   { closeQuiz(); out.push(`<h2>${restoreMath(inline(line.slice(2)))}</h2>`); continue; }
     if (/^\*\*(You will be able to|What you will learn|What will be learnt):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
@@ -16722,6 +17279,7 @@ const LESSON_ICONS = {
   pause:   `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="0.6"/><rect x="9" y="3" width="3" height="10" rx="0.6"/></svg>`,
   share:   `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12.5" cy="3.5" r="1.8"/><circle cx="3.5" cy="8" r="1.8"/><circle cx="12.5" cy="12.5" r="1.8"/><path d="M5.1 7.1l5.8-3.2M5.1 8.9l5.8 3.2"/></svg>`,
   artifact:`<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="9.5" rx="1.3"/><path d="M5.5 14.5h5"/><path d="M8 12v2.5"/></svg>`,
+  scrollTop:`<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12.5V3.5"/><path d="M4 7.5L8 3.5l4 4"/></svg>`,
 };
 
 /** The lesson currently open, resolved fresh each call rather than threaded

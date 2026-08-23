@@ -70,7 +70,6 @@ function shapeServices(keys) {
   return {
     anthropic: flag(one('ANTHROPIC_API_KEY')),
     groq: flag(one('ISCONL_GROQ_API_KEY')),
-    elevenlabs: flag(one('ELEVENLABS_API_KEY')),
     github: flag(one('ISCONL_GITHUB_TOKEN')),
     jira: flag(has('JIRA_HOST', 'JIRA_EMAIL', 'JIRA_API_TOKEN')),
     whatsapp: flag(one('WA_VERIFY_TOKEN')),
@@ -137,6 +136,7 @@ async function main() {
     scope: { url: process.env.SCOPE_URL, token: () => process.env.SCOPE_TOKEN || secretStore.get('SCOPE_TOKEN') || '' },
     circle: { url: process.env.CIRCLE_URL, token: () => process.env.CIRCLE_TOKEN || secretStore.get('CIRCLE_TOKEN') || '' },
     spark: { url: process.env.SPARK_URL, token: () => process.env.SPARK_TOKEN || secretStore.get('SPARK_TOKEN') || '' },
+    media: { url: process.env.MEDIA_URL, token: () => process.env.MEDIA_TOKEN || secretStore.get('MEDIA_TOKEN') || '' },
   };
   const engines = {};
   for (const [name, def] of Object.entries(engineDefs)) {
@@ -442,6 +442,16 @@ async function main() {
         if (!p.capability) return sendJson(res, 400, { ok: false, error: 'capability required' });
         const r = await router.route(p.capability, { params: p.params, query: p.query, body: p.body });
         return sendJson(res, r.status || (r.ok ? 200 : 502), r);
+      }
+
+      // BE26082009: checked BEFORE the generic /api/* catch-all below, which
+      // 404s anything not in api-compat.js's ROUTES table -- this path is
+      // deliberately NOT a routed capability (see its own comment where it's
+      // handled), so it would otherwise 404 before ever reaching that handler.
+      if (pathname === '/api/media/base-url' && req.method === 'GET') {
+        const mediaUrl = process.env.MEDIA_PUBLIC_URL || process.env.MEDIA_URL || '';
+        if (!mediaUrl) return sendJson(res, 502, { error: 'media is not configured on this hub' });
+        return sendJson(res, 200, { url: mediaUrl });
       }
 
       // -- /api/* compatibility layer for the real, already-signed Flutter app --
