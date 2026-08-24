@@ -17452,6 +17452,8 @@ async function learnOpenLesson(course, file, opts = {}) {
       });
     } else {
       window.scrollTo(0, 0);
+      const vc = document.getElementById('view-container');
+      if (vc) vc.scrollTop = 0;
       // Opening a lesson IS the new resume point, even before he scrolls.
       fetch('/api/learning/resume', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ course, lesson: file, scrollPct: 0 }) }).catch(() => {});
