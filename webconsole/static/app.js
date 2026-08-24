@@ -15789,7 +15789,6 @@ async function learnResume(course, lesson, pct) {
 let RHYTHM = null;
 let rhythmFilter = 'all';
 let SPACE_INSIGHTS = {
-  calendar: { title: 'Temporal Alignment & Focus', category: 'Today in History', text: 'On August 1, 1971, the Concert for Bangladesh pioneered global music philanthropy. Structure your day with singular focus.', tone: 'gold' },
   ideas: { title: 'Spark & Innovation Discipline', category: 'Executive Foresight', text: 'Great products come from ruthless iteration. Promoted ideas are 4.2x more likely to ship when paired with a clear Definition of Done.', tone: 'cyan' },
   planning: { title: 'Strategic Execution & Runway', category: 'Execution Discipline', text: 'Runway is measured by delivered software, not drafted roadmaps. Focus on closing open rungs in the fortnight sprint.', tone: 'violet' },
   finance: { title: 'Asset Preservation & 50/30/20 Rule', category: 'Financial Strategy', text: 'Target 50% Needs, 30% Wants, and 20% Savings. Keeping variable wants under target secures a high liquidity buffer.', tone: 'green' },
@@ -15849,6 +15848,44 @@ function planningInsight() {
 function truncateWords(s, n) {
   const words = String(s || '').trim().split(/\s+/);
   return words.length > n ? words.slice(0, n).join(' ') + '…' : words.join(' ');
+}
+
+/**
+ * Real replacement for SPACE_INSIGHTS.calendar's hardcoded "Temporal
+ * Alignment & Focus" placeholder (FC26082401-adjacent found gap, 24 Aug
+ * 2026) -- the old card claimed to be "Today in History" but was a single
+ * static fact ("On August 1, 1971...") that never changed, so it read as
+ * stuck on August 1st every day regardless of the real date. There's no
+ * historical-facts dataset in this repo to drive a real "on this day"
+ * feature, so this pulls from STATE.calendarEvents instead (real,
+ * already-loaded data) -- same pattern as planningInsight()/financeInsight().
+ */
+function calendarInsight() {
+  const today = new Date().toISOString().slice(0, 10);
+  const events = STATE.calendarEvents || [];
+  if (!events.length) {
+    return { title: 'Nothing on the calendar', category: 'Today',
+      text: 'No events loaded yet. Add one to see it here.', tone: 'gold' };
+  }
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const evMin = (e) => { if (!e.time) return null; const [h, m] = e.time.split(':').map(Number); return h * 60 + m; };
+  const todays = events.filter(e => e.date === today).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  if (todays.length) {
+    const next = todays.find(e => evMin(e) === null || evMin(e) >= nowMin) || todays[0];
+    return { title: truncateWords(next.title || 'Untitled event', 10),
+      category: `Today${next.time ? ' · ' + next.time : ''} · ${todays.length} event${todays.length === 1 ? '' : 's'}`,
+      text: todays.length > 1 ? `${todays.length} events today - check the calendar for the full lineup.` : `On today's calendar. Structure the day around it.`,
+      tone: 'gold' };
+  }
+  const upcoming = events.filter(e => e.date > today).sort((a, b) => a.date.localeCompare(b.date))[0];
+  if (upcoming) {
+    const dayGap = Math.round((new Date(upcoming.date) - new Date(today)) / 86400000);
+    return { title: truncateWords(upcoming.title || 'Untitled event', 10),
+      category: `In ${dayGap} day${dayGap === 1 ? '' : 's'} · ${upcoming.date}`,
+      text: `Nothing on today's calendar - this is the next thing coming up.`, tone: 'gold' };
+  }
+  return { title: 'Clear calendar', category: 'Today',
+    text: 'Nothing scheduled today or coming up. A good day to plan ahead.', tone: 'gold' };
 }
 
 /**
@@ -15919,7 +15956,7 @@ function ideasInsight() {
 
 function renderSpaceInsight(space) {
   const ins = space === 'planning' ? planningInsight() : space === 'finance' ? financeInsight()
-    : space === 'ideas' ? ideasInsight() : SPACE_INSIGHTS[space];
+    : space === 'ideas' ? ideasInsight() : space === 'calendar' ? calendarInsight() : SPACE_INSIGHTS[space];
   if (!ins) return '';
   const accentColor = ins.tone === 'gold' ? 'var(--amber)' : ins.tone === 'cyan' ? 'var(--cyan)' : ins.tone === 'violet' ? 'var(--violet)' : 'var(--green)';
   return `
