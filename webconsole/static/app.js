@@ -773,6 +773,7 @@ let STATE = {
     bufferConfig: { hasToken:false },
   },
   feed: [],
+  surfacedTasks: [],
   github: { user:null, repos:[], notifications:[] },
   jiraIssues: [],
   contributions: null,
@@ -4269,6 +4270,7 @@ let inboxChannel = null;   // click a channel chip to filter; click again to cle
 let inboxOpen = {};        // ID -> expanded
 let inboxSelected = new Set(); // ID -> selected for bulk actions
 let inboxPersonKey = null; // grouping key of the open thread (person.ID, or 'sender:<name>' for unlinked rows) - null = show the thread list
+let inboxTab = 'threads';  // 'threads' | 'surfaced' -- BG26082401's distinct tab, separate feed from the person threads above
 let inboxGmailComposeFor = null; // ID of the gmail message currently showing an inline reply box (BM26082011)
 
 /**
@@ -4311,6 +4313,31 @@ function inboxGroups() {
 
 function inboxSelectPerson(key) { inboxPersonKey = key; inboxSelected.clear(); repaintView('inbox'); }
 
+function renderSurfacedTasks() {
+  const items = STATE.surfacedTasks || [];
+  return `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Surfaced</span>
+        <span class="card-meta">${items.length} item${items.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="inbox-thread-list">
+        ${items.length ? items.map(it => `
+          <div class="inbox-item ${it.STATUS === 'new' ? 'unread' : ''}" style="cursor:pointer" onclick="surfacedOpen('${escHtml(it.ID)}')">
+            <div>
+              <div>${escHtml(it.TITLE)}</div>
+              ${it.BODY && it.BODY !== '-' ? `<div style="font-size:0.75rem;color:var(--text-3);margin-top:2px">${escHtml(it.BODY.slice(0, 140))}</div>` : ''}
+              <div style="font-size:0.68rem;color:var(--text-3);margin-top:2px">${escHtml(it.ORIGIN)} · ${escHtml(it.CREATED_AT)}</div>
+            </div>
+            <div onclick="event.stopPropagation()" style="display:flex;gap:0.4rem">
+              ${it.STATUS !== 'seen' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="surfacedSet('${escHtml(it.ID)}','seen')">Mark seen</button>` : ''}
+              <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px" onclick="surfacedSet('${escHtml(it.ID)}','dismissed')">Dismiss</button>
+            </div>
+          </div>`).join('') : `<div class="empty-state">Nothing surfaced right now.</div>`}
+      </div>
+    </div>`;
+}
+
 function renderInbox() {
   const feed = STATE.feed || [];
   const channels = [...new Set(feed.map(i => i.CHANNEL).filter(c => c && c !== '-'))];
@@ -4322,12 +4349,18 @@ function renderInbox() {
   const visibleIds = rows.map(m => m.ID);
   const selectedVisible = visibleIds.filter(id => inboxSelected.has(id));
   const allVisibleSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
+  const surfacedCount = (STATE.surfacedTasks || []).length;
 
   return `
     <div class="view-head">
       <h1>Inbox</h1>
       <div class="view-head-meta">one thread per person, every source - verbatim, exactly as sent</div>
     </div>
+    <div class="inbox-channels">
+      <button class="inbox-chan${inboxTab === 'threads' ? ' on' : ''}" onclick="inboxSetTab('threads')">Threads</button>
+      <button class="inbox-chan${inboxTab === 'surfaced' ? ' on' : ''}" onclick="inboxSetTab('surfaced')">Surfaced${surfacedCount ? ` <span>${surfacedCount}</span>` : ''}</button>
+    </div>
+    ${inboxTab === 'surfaced' ? renderSurfacedTasks() : `
     <div class="card">
       <div class="card-header">
         <span class="card-title">Inbox</span>
@@ -4464,7 +4497,7 @@ function renderInbox() {
           </div>` : `
           <button class="btn btn-ghost" style="font-size:0.72rem" onclick="inboxAddToggle()">+ Capture a message</button>`}
       </div>
-    </div>`;
+    </div>`}`;
 }
 
 let inboxAddOpen = false;
@@ -4498,6 +4531,27 @@ async function inboxSave(btn) {
 }
 
 function inboxFilter(c) { inboxChannel = c; repaintView('inbox'); }
+
+function inboxSetTab(tab) { inboxTab = tab; repaintView('inbox'); }
+
+async function surfacedOpen(id) {
+  const item = (STATE.surfacedTasks || []).find(it => it.ID === id);
+  if (!item) return;
+  if (item.STATUS === 'new') await surfacedSet(item.ID, 'seen', true);
+  if (!item.VIEW || item.VIEW === '-' || !item.REF || item.REF === '-') return;
+  // 'task' has its own opener (fetches full detail); every other VIEW value
+  // deep-links generically via navigate(view, {id}) -- matches the {id}
+  // param shape 'corporate-detail' (the row's own other named example) uses.
+  if (item.VIEW === 'task') openTask(item.REF);
+  else navigate(item.VIEW, { id: item.REF });
+}
+
+async function surfacedSet(id, status, silent) {
+  const d = await (await fetch('/api/surfaced-tasks/update', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) })).json();
+  if (!silent) showToast(d.success ? 'Updated' : (d.error || 'Refused'), d.success ? 'success' : 'error');
+  await fetchState(); repaintView('inbox');
+}
 function inboxToggleSelect(id) {
   if (inboxSelected.has(id)) inboxSelected.delete(id); else inboxSelected.add(id);
   repaintView('inbox');
@@ -15789,6 +15843,7 @@ async function learnResume(course, lesson, pct) {
 let RHYTHM = null;
 let rhythmFilter = 'all';
 let SPACE_INSIGHTS = {
+  calendar: { title: 'Temporal Alignment & Focus', category: 'Today in History', text: 'On August 1, 1971, the Concert for Bangladesh pioneered global music philanthropy. Structure your day with singular focus.', tone: 'gold' },
   ideas: { title: 'Spark & Innovation Discipline', category: 'Executive Foresight', text: 'Great products come from ruthless iteration. Promoted ideas are 4.2x more likely to ship when paired with a clear Definition of Done.', tone: 'cyan' },
   planning: { title: 'Strategic Execution & Runway', category: 'Execution Discipline', text: 'Runway is measured by delivered software, not drafted roadmaps. Focus on closing open rungs in the fortnight sprint.', tone: 'violet' },
   finance: { title: 'Asset Preservation & 50/30/20 Rule', category: 'Financial Strategy', text: 'Target 50% Needs, 30% Wants, and 20% Savings. Keeping variable wants under target secures a high liquidity buffer.', tone: 'green' },
@@ -15848,44 +15903,6 @@ function planningInsight() {
 function truncateWords(s, n) {
   const words = String(s || '').trim().split(/\s+/);
   return words.length > n ? words.slice(0, n).join(' ') + '…' : words.join(' ');
-}
-
-/**
- * Real replacement for SPACE_INSIGHTS.calendar's hardcoded "Temporal
- * Alignment & Focus" placeholder (FC26082401-adjacent found gap, 24 Aug
- * 2026) -- the old card claimed to be "Today in History" but was a single
- * static fact ("On August 1, 1971...") that never changed, so it read as
- * stuck on August 1st every day regardless of the real date. There's no
- * historical-facts dataset in this repo to drive a real "on this day"
- * feature, so this pulls from STATE.calendarEvents instead (real,
- * already-loaded data) -- same pattern as planningInsight()/financeInsight().
- */
-function calendarInsight() {
-  const today = new Date().toISOString().slice(0, 10);
-  const events = STATE.calendarEvents || [];
-  if (!events.length) {
-    return { title: 'Nothing on the calendar', category: 'Today',
-      text: 'No events loaded yet. Add one to see it here.', tone: 'gold' };
-  }
-  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-  const evMin = (e) => { if (!e.time) return null; const [h, m] = e.time.split(':').map(Number); return h * 60 + m; };
-  const todays = events.filter(e => e.date === today).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-  if (todays.length) {
-    const next = todays.find(e => evMin(e) === null || evMin(e) >= nowMin) || todays[0];
-    return { title: truncateWords(next.title || 'Untitled event', 10),
-      category: `Today${next.time ? ' · ' + next.time : ''} · ${todays.length} event${todays.length === 1 ? '' : 's'}`,
-      text: todays.length > 1 ? `${todays.length} events today - check the calendar for the full lineup.` : `On today's calendar. Structure the day around it.`,
-      tone: 'gold' };
-  }
-  const upcoming = events.filter(e => e.date > today).sort((a, b) => a.date.localeCompare(b.date))[0];
-  if (upcoming) {
-    const dayGap = Math.round((new Date(upcoming.date) - new Date(today)) / 86400000);
-    return { title: truncateWords(upcoming.title || 'Untitled event', 10),
-      category: `In ${dayGap} day${dayGap === 1 ? '' : 's'} · ${upcoming.date}`,
-      text: `Nothing on today's calendar - this is the next thing coming up.`, tone: 'gold' };
-  }
-  return { title: 'Clear calendar', category: 'Today',
-    text: 'Nothing scheduled today or coming up. A good day to plan ahead.', tone: 'gold' };
 }
 
 /**
@@ -15956,7 +15973,7 @@ function ideasInsight() {
 
 function renderSpaceInsight(space) {
   const ins = space === 'planning' ? planningInsight() : space === 'finance' ? financeInsight()
-    : space === 'ideas' ? ideasInsight() : space === 'calendar' ? calendarInsight() : SPACE_INSIGHTS[space];
+    : space === 'ideas' ? ideasInsight() : SPACE_INSIGHTS[space];
   if (!ins) return '';
   const accentColor = ins.tone === 'gold' ? 'var(--amber)' : ins.tone === 'cyan' ? 'var(--cyan)' : ins.tone === 'violet' ? 'var(--violet)' : 'var(--green)';
   return `

@@ -389,13 +389,14 @@ async function main() {
       }
 
       if (pathname === '/api/state' && req.method === 'GET') {
-        const [timeR, tasksR, inboxR, ideasR, spacesR, secretsR] = await Promise.all([
+        const [timeR, tasksR, inboxR, ideasR, spacesR, secretsR, surfacedR] = await Promise.all([
           router.route('time.now', {}),
           router.route('tasks.list', {}),
           router.route('vault.read', { params: { collection: 'scope/inbox.tsv' } }),
           router.route('ideas.list', {}),
           router.route('vault.read', { params: { collection: 'space/spaces.tsv' } }),
           router.route('secrets.status', {}),
+          router.route('surfacedTasks.list', { query: { status: 'new' } }),
         ]);
         const inboxRows = inboxR.ok ? (inboxR.data.rows || []) : [];
         return sendJson(res, 200, {
@@ -406,6 +407,7 @@ async function main() {
           spaces: spacesR.ok ? (spacesR.data.rows || []) : [],
           services: shapeServices(secretsR.ok ? (secretsR.data.keys || []) : []),
           feed: inboxRows.slice().reverse(),
+          surfacedTasks: surfacedR.ok ? (surfacedR.data.items || []) : [],
         });
       }
 
