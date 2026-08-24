@@ -6438,7 +6438,17 @@ function writerDocsGroup(docs) {
   return sections;
 }
 
-function writerDocsSearchInput(el) { writerDocsSearch = el.value; repaintView('writer'); }
+// repaintView() does a full innerHTML swap (no diffing), which drops focus
+// and cursor position on every keystroke -- found live testing this row:
+// typing past the first character silently stopped landing. Save/restore
+// both around the repaint so "live as-you-type" actually works continuously.
+function writerDocsSearchInput(el) {
+  const pos = el.selectionStart;
+  writerDocsSearch = el.value;
+  repaintView('writer');
+  const ni = document.getElementById('writer-docs-search');
+  if (ni) { ni.focus(); ni.setSelectionRange(pos, pos); }
+}
 function writerDocsToggleGroup(kind) {
   if (writerDocsCollapsed.has(kind)) writerDocsCollapsed.delete(kind); else writerDocsCollapsed.add(kind);
   repaintView('writer');
@@ -6487,7 +6497,7 @@ function renderWriterDocuments() {
       <select class="task-select" style="font-size:0.72rem" onchange="writerDocsSetFilter({status:this.value})">
         ${['active', 'archived', 'deleted'].map(s => `<option value="${s}" ${writerDocsFilter.status === s ? 'selected' : ''}>${s}</option>`).join('')}
       </select>
-      <input class="task-select" style="font-size:0.72rem;flex:1;min-width:10rem" type="text" placeholder="Search filename, target, or document type…"
+      <input id="writer-docs-search" class="task-select" style="font-size:0.72rem;flex:1;min-width:10rem" type="text" placeholder="Search filename, target, or document type…"
              value="${escAttr(writerDocsSearch)}" oninput="writerDocsSearchInput(this)"/>
       <span style="font-size:0.72rem;color:var(--text-3)">${visible.length} document${visible.length === 1 ? '' : 's'}</span>
     </div>
