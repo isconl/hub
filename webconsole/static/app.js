@@ -6386,6 +6386,8 @@ function writerStartNewDocument() {
 // ── BA26081811: generated-documents list ──────────────────────────────────
 let WRITER_DOCS = null;
 let writerDocsFilter = { archetypeId: '', targetKind: '', status: 'active' };
+let writerDocsSearch = '';               // BA26082401: live client-side filter over the already-loaded WRITER_DOCS
+let writerDocsCollapsed = new Set();     // BA26082401: collapsed TARGET_KIND group keys
 
 async function loadWriterDocs(force = false) {
   if (WRITER_DOCS && !force) return;
@@ -6405,43 +6407,103 @@ async function loadWriterDocs(force = false) {
 }
 function writerDocsSetFilter(patch) { Object.assign(writerDocsFilter, patch); loadWriterDocs(true); }
 
+const WRITER_TARGET_KIND_LABELS = { engagement: 'Engagement', project: 'Project', general: 'General' };
+
+/** BA26082401: group WRITER_DOCS by TARGET_KIND, then by TARGET_LABEL
+ *  within a kind where one is set (multiple engagements/projects can
+ *  share a kind but not a label) -- 'general' docs have no distinct
+ *  label, so they stay a single flat group. Newest-first within each
+ *  leaf group, matching the row's own spec. Project renders empty/omits
+ *  entirely until BA26082402's OneDrive push is live for it -- deliberate,
+ *  not a bug, per this row's own scope note. */
+function writerDocsGroup(docs) {
+  const byKind = new Map();
+  for (const kind of ['engagement', 'project', 'general']) byKind.set(kind, new Map());
+  for (const d of docs) {
+    const kind = byKind.has(d.TARGET_KIND) ? d.TARGET_KIND : 'general';
+    const labelKey = kind === 'general' ? '' : (d.TARGET_LABEL && d.TARGET_LABEL !== '-' ? d.TARGET_LABEL : (d.TARGET_ID || ''));
+    const kindMap = byKind.get(kind);
+    if (!kindMap.has(labelKey)) kindMap.set(labelKey, []);
+    kindMap.get(labelKey).push(d);
+  }
+  const sections = [];
+  for (const kind of ['engagement', 'project', 'general']) {
+    const kindMap = byKind.get(kind);
+    if (!kindMap.size) continue;
+    const subgroups = [...kindMap.entries()]
+      .map(([label, rows]) => ({ label, rows: rows.slice().sort((a, b) => (b.CREATED_AT || '').localeCompare(a.CREATED_AT || '')) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    sections.push({ kind, subgroups, count: subgroups.reduce((n, g) => n + g.rows.length, 0) });
+  }
+  return sections;
+}
+
+function writerDocsSearchInput(el) { writerDocsSearch = el.value; repaintView('writer'); }
+function writerDocsToggleGroup(kind) {
+  if (writerDocsCollapsed.has(kind)) writerDocsCollapsed.delete(kind); else writerDocsCollapsed.add(kind);
+  repaintView('writer');
+}
+
 function renderWriterDocuments() {
   if (!WRITER_DOCS) { loadWriterDocs(); return `<div class="reader-loading"><div class="spinner-inline"></div><div>Reading generated documents…</div></div>`; }
   const archetypeNames = new Map((WRITER_ARCHETYPES || []).map(a => [a.id, a.title]));
+  // TASK_ID -> real title, resolved client-side off the same task list every
+  // other view already has in STATE.tasks (unfiltered -- scope's tasks.list
+  // returns every task, done/archived included) rather than a new batch
+  // route -- Architect's own words, "their tasks clearly shown", not a bare ID.
+  const taskTitles = new Map((STATE.tasks || []).map(t => [t.ID, t.TITLE]));
+
+  const q = writerDocsSearch.trim().toLowerCase();
+  const visible = !q ? WRITER_DOCS : WRITER_DOCS.filter(d => {
+    const title = (archetypeNames.get(d.ARCHETYPE_ID) || d.ARCHETYPE_ID || '').toLowerCase();
+    return (d.FILENAME || '').toLowerCase().includes(q) || (d.TARGET_LABEL || '').toLowerCase().includes(q) || title.includes(q);
+  });
+  const sections = writerDocsGroup(visible);
+
+  const rowHtml = (d) => `
+    <div class="inbox-item">
+      <div class="inbox-head" style="cursor:default">
+        <span class="inbox-sender">${escHtml(archetypeNames.get(d.ARCHETYPE_ID) || d.ARCHETYPE_ID)}</span>
+        <span class="inbox-title">${escHtml(d.FILENAME)}</span>
+        ${d.TASK_ID && d.TASK_ID !== '-' ? `<span class="inbox-tag">${escHtml(taskTitles.get(d.TASK_ID) || `task ${d.TASK_ID}`)}</span>` : ''}
+        <span class="inbox-date">${escHtml(d.CREATED_AT)}</span>
+      </div>
+      <div class="inbox-actions" style="padding:0 0.4rem 0.6rem 0.4rem">
+        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocDownload('${escAttr(d.ID)}')">Download</button>
+        ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-'
+          ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">Edit ↗</a>`
+          : ''}
+        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocEdit('${escAttr(d.ID)}')" title="Reopens the template wizard, re-running field generation">Edit fields</button>
+        ${d.TARGET_KIND === 'project' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocAttach('${escAttr(d.ID)}')">Attach to task</button>`
+          : `<span style="font-size:0.68rem;color:var(--text-3)" title="Only project-target documents can be attached to a task">Attach to task</span>`}
+        ${d.STATUS === 'active' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','archived')">Archive</button>`
+          : d.STATUS === 'archived' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','active')">Restore</button>` : ''}
+        <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerDocSetStatus('${escAttr(d.ID)}','deleted')">Delete</button>
+      </div>
+    </div>`;
 
   return `
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.7rem">
       <select class="task-select" style="font-size:0.72rem" onchange="writerDocsSetFilter({status:this.value})">
         ${['active', 'archived', 'deleted'].map(s => `<option value="${s}" ${writerDocsFilter.status === s ? 'selected' : ''}>${s}</option>`).join('')}
       </select>
-      <select class="task-select" style="font-size:0.72rem" onchange="writerDocsSetFilter({targetKind:this.value})">
-        <option value="">all targets</option>
-        ${['engagement', 'project', 'general'].map(k => `<option value="${k}" ${writerDocsFilter.targetKind === k ? 'selected' : ''}>${k}</option>`).join('')}
-      </select>
-      <span style="font-size:0.72rem;color:var(--text-3);margin-left:auto">${WRITER_DOCS.length} document${WRITER_DOCS.length === 1 ? '' : 's'}</span>
+      <input class="task-select" style="font-size:0.72rem;flex:1;min-width:10rem" type="text" placeholder="Search filename, target, or document type…"
+             value="${escAttr(writerDocsSearch)}" oninput="writerDocsSearchInput(this)"/>
+      <span style="font-size:0.72rem;color:var(--text-3)">${visible.length} document${visible.length === 1 ? '' : 's'}</span>
     </div>
-    ${!WRITER_DOCS.length ? `<div class="empty-state">Nothing here yet. Generate a document and it'll show up in this list.</div>` : `
-      <div class="inbox-list">
-        ${WRITER_DOCS.map(d => `
-          <div class="inbox-item">
-            <div class="inbox-head" style="cursor:default">
-              <span class="inbox-sender">${escHtml(archetypeNames.get(d.ARCHETYPE_ID) || d.ARCHETYPE_ID)}</span>
-              <span class="inbox-title">${escHtml(d.FILENAME)}${d.TARGET_LABEL && d.TARGET_LABEL !== '-' ? ` · ${escHtml(d.TARGET_LABEL)}` : ''}</span>
-              ${d.TASK_ID && d.TASK_ID !== '-' ? `<span class="inbox-tag">task ${escHtml(d.TASK_ID)}</span>` : ''}
-              <span class="inbox-date">${escHtml(d.CREATED_AT)}</span>
-            </div>
-            <div class="inbox-actions" style="padding:0 0.4rem 0.6rem 0.4rem">
-              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocDownload('${escAttr(d.ID)}')">Download</button>
-              <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocEdit('${escAttr(d.ID)}')">Edit</button>
-              ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-' ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">View on OneDrive ↗</a>` : ''}
-              ${d.TARGET_KIND === 'project' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocAttach('${escAttr(d.ID)}')">Attach to task</button>`
-                : `<span style="font-size:0.68rem;color:var(--text-3)" title="Only project-target documents can be attached to a task">Attach to task</span>`}
-              ${d.STATUS === 'active' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','archived')">Archive</button>`
-                : d.STATUS === 'archived' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','active')">Restore</button>` : ''}
-              <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerDocSetStatus('${escAttr(d.ID)}','deleted')">Delete</button>
-            </div>
-          </div>`).join('')}
-      </div>`}
+    ${!WRITER_DOCS.length ? `<div class="empty-state">Nothing here yet. Generate a document and it'll show up in this list.</div>`
+      : !visible.length ? `<div class="empty-state">No documents match "${escHtml(writerDocsSearch)}".</div>`
+      : sections.map(s => `
+        <div class="card" style="margin-bottom:0.6rem">
+          <div class="card-header" style="cursor:pointer" onclick="writerDocsToggleGroup('${s.kind}')">
+            <span class="card-title">${WRITER_TARGET_KIND_LABELS[s.kind]}</span>
+            <span class="card-meta">${s.count} document${s.count === 1 ? '' : 's'} ${writerDocsCollapsed.has(s.kind) ? '▸' : '▾'}</span>
+          </div>
+          ${writerDocsCollapsed.has(s.kind) ? '' : s.subgroups.map(g => `
+            ${g.label ? `<div style="font-size:0.72rem;font-weight:600;color:var(--text-3);margin:0.5rem 0 0.2rem 0.2rem">${escHtml(g.label)}</div>` : ''}
+            <div class="inbox-list">${g.rows.map(rowHtml).join('')}</div>
+          `).join('')}
+        </div>`).join('')}
   `;
 }
 
