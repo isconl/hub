@@ -5577,12 +5577,83 @@ async function fetchCorporate() {
 async function openCorporate(id) {
   corpDetailId = id;
   corpDetail = null;
+  statusBriefState = null;
   navigate('corporate-detail', { id });
   try {
     const r = await fetch(`/api/corporate/detail?id=${encodeURIComponent(id)}`);
     corpDetail = r.ok ? await r.json() : { error: true };
   } catch { corpDetail = { error: true }; }
   if (currentView === 'corporate-detail') repaintView('corporate-detail');
+  fetchStatusBrief(id);
+}
+
+// BA26082420: the weekly status-brief card on an engagement's detail page.
+// Independent fetch (own endpoint, not folded into /api/corporate/detail)
+// -- matches this session's subject registry, not the corporate module.
+let statusBriefState = null;   // null = loading/not linked, or {subject, latest}
+async function fetchStatusBrief(orgId) {
+  statusBriefState = null;
+  try {
+    const subjR = await fetch('/api/active-subjects');
+    const { subjects } = await subjR.json();
+    const subject = (subjects || []).find(s => s.SOURCE_REF === orgId);
+    if (!subject) { statusBriefState = { subject: null }; if (currentView === 'corporate-detail') repaintView('corporate-detail'); return; }
+    const briefR = await fetch(`/api/status-briefs?subjectId=${encodeURIComponent(subject.SUBJECT_ID)}`);
+    const { briefs } = await briefR.json();
+    const latest = (briefs || []).slice().sort((a, b) => b.CREATED_AT.localeCompare(a.CREATED_AT))[0] || null;
+    statusBriefState = { subject, latest };
+  } catch { statusBriefState = { subject: null }; }
+  if (currentView === 'corporate-detail') repaintView('corporate-detail');
+}
+
+async function draftStatusBrief(subjectId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Drafting…'; }
+  try {
+    const r = await fetch('/api/status-briefs/draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subjectId }) });
+    const d = await r.json();
+    if (!d.success) { showToast(d.error || 'Draft failed', 'error'); return; }
+    showToast('Brief drafted', 'success');
+    fetchStatusBrief(corpDetailId);
+  } catch (e) { showToast(e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'Draft this week\'s brief'; } }
+}
+
+async function sendStatusBrief(briefId, btn) {
+  const to = await uiPrompt({ title: 'Send via email', label: 'Send to', placeholder: 'name@example.com' });
+  if (!to) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const r = await fetch('/api/status-briefs/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ briefId, via: 'email', to }) });
+    const d = await r.json();
+    if (!d.success) { showToast(d.error || 'Send failed', 'error'); return; }
+    showToast('Sent', 'success');
+    fetchStatusBrief(corpDetailId);
+  } catch (e) { showToast(e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'Send via email'; } }
+}
+
+function renderStatusBriefCard() {
+  const s = statusBriefState;
+  if (!s || !s.subject) return ''; // no matching subject in the registry yet -- nothing to show
+  const latest = s.latest;
+  return `
+  <div class="card" style="animation:fadeSlideIn 0.5s ease both">
+    <div class="card-header">
+      <span class="card-title">Weekly Status Brief</span>
+      ${latest ? `<span class="card-meta">week of ${escHtml(latest.WEEK_OF)} &middot; ${escHtml(latest.STATUS)}</span>` : ''}
+      <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 10px" onclick="draftStatusBrief('${escHtml(s.subject.SUBJECT_ID)}', this)">Draft this week's brief</button>
+    </div>
+    ${!latest ? `<div class="empty-state">No brief drafted yet.</div>` : `
+      <div style="font-size:0.82rem;line-height:1.5">
+        <div><b>Signal</b><ul>${(latest.SIGNAL || []).map(b => `<li>${escHtml(b)}</li>`).join('') || '<li>(none)</li>'}</ul></div>
+        <div><b>Substance</b><ul>${(latest.SUBSTANCE || []).map(b => `<li>${escHtml(b)}</li>`).join('') || '<li>(none)</li>'}</ul></div>
+        <div><b>Trajectory</b><ul>${(latest.TRAJECTORY || []).map(b => `<li>${escHtml(b)}</li>`).join('') || '<li>(none)</li>'}</ul></div>
+      </div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.4rem">
+        ${latest.STATUS === 'draft' ? `<button class="btn btn-primary" style="font-size:0.72rem;padding:3px 10px" onclick="sendStatusBrief('${escHtml(latest.ID)}', this)">Send via email</button>` : ''}
+      </div>
+    `}
+  </div>`;
 }
 
 const STATUS_PILL = { active: 'confirmed', prospective: 'execution', past: 'verbal' };
@@ -5679,6 +5750,7 @@ function renderCorporateDetail() {
     </div>
 
     <div class="corp-section-grid">
+      ${renderStatusBriefCard()}
       <div class="card" style="animation:fadeSlideIn 0.4s ease both">
         <div class="card-header"><span class="card-title">People</span><span class="card-meta">${(eng.people || []).length}</span></div>
         ${!(eng.people || []).length ? `<div class="empty-state">No one on record yet.</div>` :
