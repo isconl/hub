@@ -12428,7 +12428,7 @@ function navigate(viewName, params = {}, opts = {}) {
   if (viewName==='audit')    loadAuditLog();
   if (viewName==='notifications') fetchNotifs();
   if (viewName==='finance')  fetchFinance();
-  if (viewName==='planning') fetchPlans();
+  if (viewName==='planning') { fetchPlans(); fetchAdherence(); }
   if (viewName==='learning' && learnOpen.course && learnOpen.file && typeof learnInitCheckpoints === 'function') learnInitCheckpoints();
   // Files always opens at the OneDrive root unless a space explicitly handed a
   // path over for this one visit.
@@ -18720,7 +18720,46 @@ function renderPlanning() {
       <div class="card">
         <div class="card-header"><span class="card-title">Closed</span></div>
         ${done.map(p => `<div class="plan-closed">${escHtml(p.TITLE)} <span class="card-meta">${escHtml(p.STATUS)}</span></div>`).join('')}
-      </div>` : ''}`;
+      </div>` : ''}
+
+    ${renderAdherenceCard()}`;
+}
+
+// BT26082414: block-adherence -- real logged time vs. blocks.tsv's 8-8-8
+// structure, lands in Planning per BT26082417/BT26082414's own sequencing.
+let adherenceState = null;   // null = loading, or the /api/planning/adherence response
+async function fetchAdherence() {
+  try {
+    adherenceState = await (await fetch('/api/planning/adherence?days=7')).json();
+  } catch (e) { adherenceState = { error: e.message }; }
+  if (currentView === 'planning') repaintView('planning');
+}
+
+function renderAdherenceCard() {
+  const a = adherenceState;
+  if (!a) return `<div class="card"><div class="card-header"><span class="card-title">Time &amp; Blocks</span></div><div class="empty-state">Loading…</div></div>`;
+  if (a.error) return `<div class="card"><div class="card-header"><span class="card-title">Time &amp; Blocks</span></div><div class="empty-state">${escHtml(a.error)}</div></div>`;
+  const touched = (a.perBlock || []).filter(b => b.sessionCount > 0);
+  return `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Time &amp; Blocks</span>
+        <span class="card-meta">last ${a.days} days · real start/stop data vs. the day's blocks</span>
+      </div>
+      ${!touched.length ? `<div class="empty-state">No logged work sessions in this window yet -- start/stop a task to see adherence here.</div>` : `
+        <div style="display:flex;flex-direction:column;gap:0.35rem;font-size:0.8rem">
+          ${touched.map(b => `
+            <div style="display:flex;align-items:center;gap:0.6rem">
+              <span style="min-width:9rem;color:var(--text-2)">${escHtml(b.day)} ${escHtml(b.name)}</span>
+              <span style="color:var(--text-3);font-size:0.72rem">${Math.round(b.loggedMinutes)}m logged</span>
+              ${b.adherencePct !== null ? `<span class="badge ${b.adherencePct >= 70 ? 'badge-jira' : 'badge-medium'}" style="font-size:0.68rem">${b.adherencePct}% on-purpose</span>` : ''}
+            </div>`).join('')}
+        </div>`}
+      ${(a.recommendations || []).length ? `
+        <div style="margin-top:0.6rem;padding-top:0.5rem;border-top:1px solid var(--border);font-size:0.78rem;color:var(--text-2)">
+          ${a.recommendations.map(r => `<div style="margin-bottom:0.3rem">&middot; ${escHtml(r)}</div>`).join('')}
+        </div>` : ''}
+    </div>`;
 }
 
 async function planAdd(btn) {
