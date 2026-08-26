@@ -10689,6 +10689,7 @@ const viewFns = {
   projects:renderProjects, corporate:renderCorporate, 'corporate-detail':renderCorporateDetail, notifications:renderNotifications, articles:renderArticles,
   rhythm:renderRhythm, personal:renderRhythm, teams:renderTeams,
   contacts:renderContacts, writer:renderWriter,
+  'identity-persona':renderIdentityPersonaRing,
 };
 
 /* ── THE NOTIFICATION CENTRE ──────────────────────────────────────────────────
@@ -12429,6 +12430,7 @@ function navigate(viewName, params = {}, opts = {}) {
   if (viewName==='notifications') fetchNotifs();
   if (viewName==='finance')  fetchFinance();
   if (viewName==='planning') { fetchPlans(); fetchAdherence(); }
+  if (viewName==='identity-persona') fetchPersonaSplit();
   if (viewName==='learning' && learnOpen.course && learnOpen.file && typeof learnInitCheckpoints === 'function') learnInitCheckpoints();
   // Files always opens at the OneDrive root unless a space explicitly handed a
   // path over for this one visit.
@@ -18733,6 +18735,63 @@ async function fetchAdherence() {
     adherenceState = await (await fetch('/api/planning/adherence?days=7')).json();
   } catch (e) { adherenceState = { error: e.message }; }
   if (currentView === 'planning') repaintView('planning');
+}
+
+// BT26082415: 60/30/10 identity-persona ring, own widget on the Identity &
+// Personas facet (spaces.tsv's FC-VIS-IDENTITY, VIEW:identity-persona) --
+// deliberately not duplicated on the day-rail view, per Architect's resolution.
+// Read-only v1; an interactive rebalance is a natural v2, not built here.
+let personaSplitState = null;
+const PERSONA_RING_COLORS = { public: 'var(--green)', inner_circle: 'var(--cyan)', internal_private: 'var(--violet)' };
+const PERSONA_LABELS = { public: 'Public face', inner_circle: 'Inner circle', internal_private: 'Internal / private' };
+async function fetchPersonaSplit(day) {
+  personaSplitState = null;
+  if (currentView === 'identity-persona') repaintView('identity-persona');
+  try {
+    personaSplitState = await (await fetch(`/api/identity/persona-split${day ? `?day=${encodeURIComponent(day)}` : ''}`)).json();
+  } catch (e) { personaSplitState = { error: e.message }; }
+  if (currentView === 'identity-persona') repaintView('identity-persona');
+}
+
+function renderIdentityPersonaRing() {
+  const s = personaSplitState;
+  const dayPicker = (current) => `
+    <select onchange="fetchPersonaSplit(this.value)" style="font-size:0.72rem">
+      ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => `<option value="${d}"${d===current?' selected':''}>${d}</option>`).join('')}
+    </select>`;
+
+  if (!s) return `<div class="view-head"><h1>Identity &amp; Personas</h1></div><div class="card"><div class="empty-state">Loading…</div></div>`;
+  if (s.error) return `<div class="view-head"><h1>Identity &amp; Personas</h1></div><div class="card"><div class="empty-state">${escHtml(s.error)}</div></div>`;
+
+  let acc = 0;
+  const stops = (s.personas || []).map(p => {
+    const from = acc; acc += p.actualPct;
+    return `${PERSONA_RING_COLORS[p.persona] || 'var(--text-3)'} ${from}% ${acc}%`;
+  }).join(', ') || 'var(--border) 0% 100%';
+
+  return `
+    <div class="view-head">
+      <h1>Identity &amp; Personas</h1>
+      <div class="view-head-meta">the day's whole 60/30/10 split -- how much of it was public face, inner circle, and internal/private, ${escHtml(s.day)}</div>
+    </div>
+    <div class="card" style="display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap">
+      <div style="width:140px;height:140px;border-radius:50%;background:conic-gradient(${stops});flex-shrink:0;position:relative">
+        <div style="position:absolute;inset:18px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;flex-direction:column">
+          <div style="font-size:1.1rem;font-weight:700">${Math.round((s.totalMinutes||0)/60*10)/10}h</div>
+          <div style="font-size:0.62rem;color:var(--text-3)">tracked</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0.5rem;flex:1;min-width:220px">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:0.2rem">${dayPicker(s.day)}</div>
+        ${(s.personas || []).length ? s.personas.map(p => `
+          <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem">
+            <span style="width:10px;height:10px;border-radius:50%;background:${PERSONA_RING_COLORS[p.persona] || 'var(--text-3)'};flex-shrink:0"></span>
+            <span style="min-width:9.5rem;color:var(--text-2)">${escHtml(PERSONA_LABELS[p.persona] || p.persona)}</span>
+            <span style="font-weight:600">${p.actualPct}%</span>
+            ${p.targetPct !== null ? `<span style="color:var(--text-3);font-size:0.72rem">(target ${p.targetPct}%)</span>` : ''}
+          </div>`).join('') : `<div class="empty-state">No blocks carry a PERSONA assignment for ${escHtml(s.day)} yet.</div>`}
+      </div>
+    </div>`;
 }
 
 function renderAdherenceCard() {
