@@ -3265,6 +3265,16 @@ function renderSettings() {
       <div class="view-head-meta">all credentials persist to .env - changes apply immediately</div>
     </div>
     <div class="settings-page">
+      <!-- BT26082417: regrouped into 4 named categories, 25-27 Aug 2026 --
+           existing content unchanged, only the grouping is new. Access &
+           App, AI Providers, and Appearance are new headers over existing
+           sections that already sat next to each other; Integrations
+           gathers sections that were previously scattered across the page
+           (Jira/Microsoft 365/Google/Buffer/Telegram/Signal/Connected
+           services all configure an external connection, the same job,
+           just not grouped as one before). -->
+      <div class="settings-group-label">Access &amp; App</div>
+
       <!-- The app itself. It is in no store, so the agent is the store: this
            card serves the actual signed binary, proxied from the private
            release so the phone never needs a GitHub token of its own. -->
@@ -3303,6 +3313,71 @@ function renderSettings() {
         <div id="pin-update-result" class="settings-result hidden"></div>
       </div>
 
+      <div class="settings-group-label">AI Providers</div>
+
+      <!-- Anthropic Claude AI Engine -->
+      <div class="settings-section">
+        <div class="settings-section-title">Anthropic Claude AI (Primary)
+          <span class="badge ${svc.anthropic==='connected'?'badge-jira':'badge-medium'}" style="margin-left:auto">${svc.anthropic==='connected'?'● Connected':'○ No Key'}</span>
+        </div>
+        <p class="settings-hint">Primary sovereign reasoning engine. Auto-discovered or set manually below.</p>
+        <div class="settings-grid">
+          <div class="settings-field"><label>Anthropic API Key</label><input id="s-anthropic-key" type="password" placeholder="${svc.anthropic==='connected'?'Saved - enter to replace':'sk-ant-api...'}"/></div>
+          <div class="settings-field"><label>Model</label>
+            <select id="s-anthropic-model">
+              <option value="claude-3-5-sonnet-20241022" ${(svc.anthropicConfig?.model||'').includes('sonnet')?'selected':''}>Claude 3.5 Sonnet (Recommended)</option>
+              <option value="claude-3-5-haiku-20241022" ${(svc.anthropicConfig?.model||'').includes('haiku')?'selected':''}>Claude 3.5 Haiku (Fast)</option>
+            </select>
+          </div>
+        </div>
+        <div class="settings-actions"><button class="btn btn-primary" onclick="saveSettings('anthropic')">Save Claude Config</button></div>
+      </div>
+
+      <!-- Groq -->
+      <div class="settings-section">
+        <div class="settings-section-title">Groq AI Engine (Fallback)
+          <span class="badge ${gc.hasKey?'badge-jira':'badge-medium'}" style="margin-left:auto">${gc.hasKey?'● Connected':'○ Standby'}</span>
+        </div>
+        <p class="settings-hint">
+          Optional fallback engine. If GitHub OAuth fails on Groq, use <strong>Email signup</strong> at <a href="https://console.groq.com/login" target="_blank" style="color:var(--green)">console.groq.com/login</a>.
+        </p>
+        <div class="settings-grid">
+          <div class="settings-field"><label>Groq API Key</label><input id="s-groq-key" type="password" placeholder="${gc.hasKey?'Saved - enter to replace':'Get free key at console.groq.com'}"/></div>
+          <div class="settings-field"><label>Model</label>
+            <select id="s-groq-model">
+              <option value="llama-3.1-70b-versatile" ${gc.model==='llama-3.1-70b-versatile'?'selected':''}>Llama 3.1 70B Versatile</option>
+              <option value="llama-3.1-8b-instant" ${gc.model==='llama-3.1-8b-instant'?'selected':''}>Llama 3.1 8B Instant</option>
+              <option value="mixtral-8x7b-32768" ${gc.model==='mixtral-8x7b-32768'?'selected':''}>Mixtral 8x7B</option>
+            </select>
+          </div>
+        </div>
+        <div class="settings-actions"><button class="btn btn-primary" onclick="saveSettings('groq')">Save Groq Config</button></div>
+      </div>
+
+      <!-- Service Status -->
+      <div class="settings-section">
+        <div class="settings-section-title">Service Status</div>
+        <div class="service-status-grid">
+          ${statusRows.map(s=>`
+            <div class="service-status-row">
+              <div class="status-dot ${svc[s.key]==='connected'?'active':''}"></div>
+              <span class="service-name">${s.name}</span>
+              <span class="service-status-text ${svc[s.key]==='connected'?'txt-green':'txt-muted'}">${svc[s.key]==='connected'?'Connected':'Disconnected'}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- AI Context Injection -->
+      <div class="settings-section">
+        <div class="settings-section-title">AI Context Injection - Email / Chat → Jira</div>
+        <p class="settings-hint">Paste raw email or chat text. iSconl AI extracts actionable items and creates Jira issues automatically.</p>
+        <textarea id="context-inject-input" rows="5" placeholder="Paste email body or WhatsApp chat thread here…"></textarea>
+        <div class="settings-actions"><button class="btn btn-primary" onclick="injectContext()">Extract and Create Jira Issues</button></div>
+        <div id="inject-result" class="settings-result hidden"></div>
+      </div>
+
+      <div class="settings-group-label">Integrations</div>
+
       ${renderLearnThemeSection()}
 
       <!-- Jira -->
@@ -3331,7 +3406,7 @@ function renderSettings() {
         <p class="settings-hint">
           Connect your Microsoft 365 account to auto-sync <strong>OneDrive files</strong>, <strong>Outlook emails into Inbox</strong>, and <strong>Outlook Calendar events</strong>!
         </p>
-        
+
         <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-md);padding:0.85rem;margin-bottom:0.75rem">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;flex-wrap:wrap">
             <div>
@@ -3396,24 +3471,6 @@ function renderSettings() {
         </div>
       </div>
 
-      <!-- Anthropic Claude AI Engine -->
-      <div class="settings-section">
-        <div class="settings-section-title">Anthropic Claude AI (Primary)
-          <span class="badge ${svc.anthropic==='connected'?'badge-jira':'badge-medium'}" style="margin-left:auto">${svc.anthropic==='connected'?'● Connected':'○ No Key'}</span>
-        </div>
-        <p class="settings-hint">Primary sovereign reasoning engine. Auto-discovered or set manually below.</p>
-        <div class="settings-grid">
-          <div class="settings-field"><label>Anthropic API Key</label><input id="s-anthropic-key" type="password" placeholder="${svc.anthropic==='connected'?'Saved - enter to replace':'sk-ant-api...'}"/></div>
-          <div class="settings-field"><label>Model</label>
-            <select id="s-anthropic-model">
-              <option value="claude-3-5-sonnet-20241022" ${(svc.anthropicConfig?.model||'').includes('sonnet')?'selected':''}>Claude 3.5 Sonnet (Recommended)</option>
-              <option value="claude-3-5-haiku-20241022" ${(svc.anthropicConfig?.model||'').includes('haiku')?'selected':''}>Claude 3.5 Haiku (Fast)</option>
-            </select>
-          </div>
-        </div>
-        <div class="settings-actions"><button class="btn btn-primary" onclick="saveSettings('anthropic')">Save Claude Config</button></div>
-      </div>
-
       <!-- Telegram Bot -->
       <div class="settings-section">
         <div class="settings-section-title">Telegram Bot Integration
@@ -3439,48 +3496,16 @@ function renderSettings() {
         <div class="settings-actions"><button class="btn btn-primary" onclick="saveSettings('signal')">Save Signal Config</button></div>
       </div>
 
-      <!-- Groq -->
+      <!-- Integrations folded in here, 29 Jul. It was its own destination in
+           SYSTEM showing the same service state this page already configures -
+           two places to look at one truth. Settings owns the connections now. -->
       <div class="settings-section">
-        <div class="settings-section-title">Groq AI Engine (Fallback)
-          <span class="badge ${gc.hasKey?'badge-jira':'badge-medium'}" style="margin-left:auto">${gc.hasKey?'● Connected':'○ Standby'}</span>
-        </div>
-        <p class="settings-hint">
-          Optional fallback engine. If GitHub OAuth fails on Groq, use <strong>Email signup</strong> at <a href="https://console.groq.com/login" target="_blank" style="color:var(--green)">console.groq.com/login</a>.
-        </p>
-        <div class="settings-grid">
-          <div class="settings-field"><label>Groq API Key</label><input id="s-groq-key" type="password" placeholder="${gc.hasKey?'Saved - enter to replace':'Get free key at console.groq.com'}"/></div>
-          <div class="settings-field"><label>Model</label>
-            <select id="s-groq-model">
-              <option value="llama-3.1-70b-versatile" ${gc.model==='llama-3.1-70b-versatile'?'selected':''}>Llama 3.1 70B Versatile</option>
-              <option value="llama-3.1-8b-instant" ${gc.model==='llama-3.1-8b-instant'?'selected':''}>Llama 3.1 8B Instant</option>
-              <option value="mixtral-8x7b-32768" ${gc.model==='mixtral-8x7b-32768'?'selected':''}>Mixtral 8x7B</option>
-            </select>
-          </div>
-        </div>
-        <div class="settings-actions"><button class="btn btn-primary" onclick="saveSettings('groq')">Save Groq Config</button></div>
+        <div class="settings-section-title">Connected services</div>
+        <p class="settings-hint">What each integration can reach right now. Configure the credentials in the sections above.</p>
+        ${renderIntegrationsBody()}
       </div>
 
-      <!-- Service Status -->
-      <div class="settings-section">
-        <div class="settings-section-title">Service Status</div>
-        <div class="service-status-grid">
-          ${statusRows.map(s=>`
-            <div class="service-status-row">
-              <div class="status-dot ${svc[s.key]==='connected'?'active':''}"></div>
-              <span class="service-name">${s.name}</span>
-              <span class="service-status-text ${svc[s.key]==='connected'?'txt-green':'txt-muted'}">${svc[s.key]==='connected'?'Connected':'Disconnected'}</span>
-            </div>`).join('')}
-        </div>
-      </div>
-
-      <!-- AI Context Injection -->
-      <div class="settings-section">
-        <div class="settings-section-title">AI Context Injection - Email / Chat → Jira</div>
-        <p class="settings-hint">Paste raw email or chat text. iSconl AI extracts actionable items and creates Jira issues automatically.</p>
-        <textarea id="context-inject-input" rows="5" placeholder="Paste email body or WhatsApp chat thread here…"></textarea>
-        <div class="settings-actions"><button class="btn btn-primary" onclick="injectContext()">Extract and Create Jira Issues</button></div>
-        <div id="inject-result" class="settings-result hidden"></div>
-      </div>
+      <div class="settings-group-label">Appearance</div>
 
       <!-- Interface. Client-side only (localStorage, key isconl.interface) - the
            one toggle here so far is the default hover effect (18 Aug): border
@@ -3585,15 +3610,6 @@ function renderSettings() {
           <button class="btn btn-ghost" onclick="resetBlockColors()">Reset to Defaults</button>
         </div>
         <div id="block-colors-result" class="settings-result hidden"></div>
-      </div>
-
-      <!-- Integrations folded in here, 29 Jul. It was its own destination in
-           SYSTEM showing the same service state this page already configures -
-           two places to look at one truth. Settings owns the connections now. -->
-      <div class="settings-section">
-        <div class="settings-section-title">Connected services</div>
-        <p class="settings-hint">What each integration can reach right now. Configure the credentials in the sections above.</p>
-        ${renderIntegrationsBody()}
       </div>
     </div>`;
 }
