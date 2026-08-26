@@ -7227,6 +7227,7 @@ async function openTask(taskId) {
   draftChannel = null;
   draftTo = null;
   jiraPanel = null;
+  jiraDepth = null;
   taskDocs = null;
   docsOpen = {};
   primeState = null;
@@ -7240,6 +7241,23 @@ async function openTask(taskId) {
   // After paint, not with it - the walk plus a .docx inflate is quick but the rest
   // of the screen has no reason to wait for it.
   fetchTaskDocs(taskId);
+  fetchJiraDepth(taskDetail?.task?.JIRA_KEY);
+}
+
+// BX26082421: compact Jira summary (status/priority/assignee) for an
+// already-linked task -- not a linked-issue list, not inline comments,
+// per Architect's own resolution of this row's scope.
+let jiraDepth = null;   // null = not fetched/not linked, 'loading', or the /api/jira/issue response
+async function fetchJiraDepth(jiraKey) {
+  if (!jiraKey || jiraKey === '-') { jiraDepth = null; return; }
+  jiraDepth = 'loading';
+  if (currentView === 'task') repaintTask();
+  try {
+    const r = await fetch(`/api/jira/issue?key=${encodeURIComponent(jiraKey)}`);
+    const d = await r.json();
+    jiraDepth = d.error ? { error: d.error } : d;
+  } catch (e) { jiraDepth = { error: e.message }; }
+  if (currentView === 'task') repaintTask();
 }
 
 function renderTaskView() {
@@ -7330,6 +7348,7 @@ function renderTaskView() {
 
     ${renderPrimeCard(t)}
 
+    ${renderJiraDepthCard(t)}
     ${renderDocsCard()}
     ${renderDraftCard(career, draft)}
     ${renderPeopleCard(career)}
@@ -7746,6 +7765,38 @@ async function packageImagesNow(btn) {
     await downloadDocument(d.rel, d.name, btn);
   } catch (e) { showToast(e.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = was; }
+}
+
+// BX26082421: compact card only (status/priority/assignee) -- deliberately
+// not a linked-issue list or inline comments, per Architect's own scope for
+// this row. Renders nothing at all when the task has no linked Jira issue.
+function renderJiraDepthCard(t) {
+  const jk = t.JIRA_KEY && t.JIRA_KEY !== '-' ? t.JIRA_KEY : '';
+  if (!jk) return '';
+  if (jiraDepth === 'loading' || jiraDepth === null) {
+    return `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Jira</span></div>
+      <div class="brief-pending"><div class="spinner-inline"></div><div>Loading ${escHtml(jk)}…</div></div>
+    </div>`;
+  }
+  if (jiraDepth.error) {
+    return `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Jira</span></div>
+      <div class="empty-state" style="color:var(--text-3)">${escHtml(jiraDepth.error)}</div>
+    </div>`;
+  }
+  const d = jiraDepth;
+  return `
+  <div class="card">
+    <div class="card-header"><span class="card-title">Jira</span><span class="card-meta">${escHtml(jk)}</span></div>
+    <div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.8rem;padding:0.3rem 0">
+      <div><span style="color:var(--text-3);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.05em">Status</span><br>${escHtml(d.status || '—')}</div>
+      <div><span style="color:var(--text-3);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.05em">Priority</span><br>${escHtml(d.priority || '—')}</div>
+      <div><span style="color:var(--text-3);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.05em">Assignee</span><br>${escHtml(d.assignee?.displayName || 'Unassigned')}</div>
+    </div>
+  </div>`;
 }
 
 function renderDocsCard() {
