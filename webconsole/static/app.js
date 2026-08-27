@@ -9294,6 +9294,7 @@ function renderDayBlocks() {
                     <button class="day-task${t.overdue ? ' overdue' : ''}" onclick="openTask('${escAttr(t.id)}')"
                             title="${escAttr(`placed here because it ${t.why}`)}">
                       <span class="day-task-title">${escHtml(t.title)}</span>
+                      ${t.subBlock ? `<span class="day-task-subblock" style="font-size:0.68rem;color:var(--text-3)">${escHtml(t.subBlock.startClock)}-${escHtml(t.subBlock.endClock)} · ${Math.round(t.subBlock.durationMinutes)}m</span>` : ''}
                       <span class="day-task-meta">${t.overdue ? `overdue ${escHtml(t.due)}`
                         : t.dueToday ? 'due today' : escHtml(t.priority)}</span>
                     </button>`).join('')}
