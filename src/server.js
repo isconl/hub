@@ -492,6 +492,22 @@ async function main() {
         return fs.createReadStream(file).pipe(res);
       }
 
+      // Profile photo binary passthrough -- see api-compat.js's note on why
+      // this one path bypasses the generic JSON router below.
+      if (pathname === '/api/profile/photo' && req.method === 'GET') {
+        if (!engines.vault) return sendJson(res, 502, { error: 'vault is not configured on this hub' });
+        const upstream = await engines.vault.rawStream('GET', '/profile/photo');
+        if (upstream.status === 404) return sendJson(res, 404, { error: 'no photo set' });
+        if (!upstream.ok) return sendJson(res, upstream.status || 502, { error: 'vault did not return the photo' });
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.writeHead(200, {
+          'Content-Type': upstream.headers.get('content-type') || 'application/octet-stream',
+          'Content-Length': buf.length,
+          'Cache-Control': 'private, max-age=86400',
+        });
+        return res.end(buf);
+      }
+
       // -- /api/* compatibility layer for the real, already-signed Flutter app --
       if (pathname.startsWith('/api/')) {
         const route = findRoute(req.method, pathname);
