@@ -9305,12 +9305,13 @@ function renderDayBlocks() {
     const left = (s / DAY_MIN * 100).toFixed(3);
     const width = Math.max(0, (e - s) / DAY_MIN * 100).toFixed(3);
     const state = b.id === currentId ? 'now' : (e <= nowRail ? 'past' : 'ahead');
+    const over = b.placeable && b.slots > 0 && (b.tasks || []).length >= b.slots;
     const load = b.placeable ? `${(b.tasks || []).length}/${b.slots} placed` : 'personal';
     return `<div class="day-rail-block ${state}${b.placeable ? ' work' : ' personal'}"
       style="left:${left}%;width:${width}%;--seg:${toneOf(b)}"
       onmouseenter="dayRailTipShow(this)" onmouseleave="dayRailTipHide()"
       data-name="${escAttr(b.name)}" data-time="${escAttr(`${b.startClock} - ${b.endClock}`)}"
-      data-load="${escAttr(load)}" data-quiet="${b.quiet ? '1' : ''}" data-tone="${escAttr(toneOf(b))}"></div>`;
+      data-load="${escAttr(load)}" data-over="${over ? '1' : ''}" data-quiet="${b.quiet ? '1' : ''}" data-tone="${escAttr(toneOf(b))}"></div>`;
   }));
 
   const slots = bs.reduce((s, b) => s + (b.placeable ? b.slots : 0), 0);
@@ -9350,7 +9351,7 @@ function renderDayBlocks() {
               <span class="day-block-when">${escHtml(b.startClock)} - ${escHtml(b.endClock)}</span>
               ${b.quiet ? '<span class="day-block-quiet" title="No notification, reminder or meeting fires in here">quiet</span>' : ''}
               <span class="day-block-live" data-blk="${escAttr(b.id)}"></span>
-              <span class="day-block-cap">${b.placeable ? `${(b.tasks||[]).length}/${b.slots}` : `${Math.round(b.minutes / 60 * 10) / 10}h`}</span>
+              <span class="day-block-cap${b.placeable && (b.tasks||[]).length >= b.slots ? ' day-block-cap-over' : ''}">${b.placeable ? `${(b.tasks||[]).length}/${b.slots}` : `${Math.round(b.minutes / 60 * 10) / 10}h`}</span>
             </div>
             ${b.id === currentId ? `<div class="day-block-prog" data-blk="${escAttr(b.id)}"><i style="width:0%;background:${toneOf(b)}"></i></div>` : ''}
             ${b.placeable
@@ -9400,11 +9401,11 @@ function dayRailTipShow(el) {
   const tip = document.getElementById('day-rail-tip');
   const rail = document.getElementById('day-rail');
   if (!tip || !rail) return;
-  const { name, time, load, quiet, tone } = el.dataset;
+  const { name, time, load, over, quiet, tone } = el.dataset;
   tip.innerHTML = `
     <div class="day-rail-tip-name" style="--tip-tone:${escHtml(tone || 'var(--text)')}">${escHtml(name)}</div>
     <div class="day-rail-tip-time">${escHtml(time)}</div>
-    <div class="day-rail-tip-load">${escHtml(load)}${quiet ? ' · quiet hours' : ''}</div>`;
+    <div class="day-rail-tip-load${over ? ' over-capacity' : ''}">${escHtml(load)}${quiet ? ' · quiet hours' : ''}</div>`;
 
   const railBox = rail.getBoundingClientRect();
   const segBox = el.getBoundingClientRect();

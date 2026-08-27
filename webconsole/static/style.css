@@ -5758,6 +5758,7 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
   margin-bottom:0.3rem;
 }
 .day-rail-tip-load { font-size:0.7rem; color:var(--text-2); }
+.day-rail-tip-load.over-capacity { color:var(--amber); font-weight:600; }
 
 @media (prefers-reduced-motion:reduce) {
   .day-rail-now, .day-rail-now-bar, .day-block-prog i, .day-rail-block.now,
@@ -5791,6 +5792,7 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 .day-block-name { font-size:0.76rem; font-weight:600; }
 .day-block-when { font-family:var(--font-mono); font-size:0.6rem; color:var(--text-3); }
 .day-block-cap { margin-left:0.45rem; font-family:var(--font-mono); font-size:0.6rem; color:var(--text-3); }
+.day-block-cap-over { color:var(--amber); font-weight:600; }
 .day-block-live {
   font-family:var(--font-mono); font-size:0.6rem; color:var(--text-3);
   margin-left:auto; padding-left:0.4rem; white-space:nowrap;
