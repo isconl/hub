@@ -1637,9 +1637,9 @@ function renderPlannerCalendar(byDate) {
           <div class="planner-col-day">${DAY_NAMES[i]} ${d.getDate()}</div>
           <div class="planner-col-theme">${escHtml(theme.name)}</div>
         </div>
-        ${untimed.length ? `<div class="planner-col-allday">${untimed.slice(0, 3).map(it =>
+        <div class="planner-col-allday">${untimed.slice(0, 3).map(it =>
           `<div class="planner-allday-item ${escAttr(it.type)}">${escHtml((it.title || '').slice(0, 20))}</div>`).join('')}${
-          untimed.length > 3 ? `<div class="planner-allday-more">+${untimed.length - 3}</div>` : ''}</div>` : ''}
+          untimed.length > 3 ? `<div class="planner-allday-more">+${untimed.length - 3}</div>` : ''}</div>
         <div class="planner-col-body" style="height:${24 * HOUR_PX}px" onclick="openAddEventOnDate('${key}')">${bands}${pills}</div>
       </div>`;
   }).join('');
