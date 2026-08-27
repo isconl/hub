@@ -6341,7 +6341,7 @@ async function runAiArticleAction(action, btn) {
 // editable like any other field.
 
 let writerWizardStep = 1;             // BA26081810: 1 target, 2 archetype, 3 studio -- replaces the old flat registry/studio tab-swap
-let writerView = 'wizard';            // BA26081811: 'wizard' | 'documents' -- independent of the wizard step
+let writerView = 'wizard';            // BA26081811: 'wizard' | 'documents' | 'binder' (BA26082403) -- independent of the wizard step
 let writerNamespace = '_common';      // which archetype namespace is loaded
 let WRITER_ARCHETYPES = null;         // cached list for writerNamespace
 let writerActiveArchetype = null;     // the full archetype object (id, title, fields, filenameFields)
@@ -6444,8 +6444,11 @@ function renderWriter() {
     <div class="view-head">
       <h1>Writer</h1>
       <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
-        ${writerView === 'wizard' ? writerBreadcrumb() : `<div class="view-head-meta">Generated documents</div>`}
+        ${writerView === 'wizard' ? writerBreadcrumb() : `<div class="view-head-meta">${writerView === 'binder' ? 'The Decision Architect binder' : 'Generated documents'}</div>`}
         ${writerView === 'wizard' && writerWizardStep > 1 ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="writerStartNewDocument()">+ New document</button>` : ''}
+        ${writerView !== 'wizard' ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px"
+                onclick="writerView='${writerView === 'binder' ? 'documents' : 'binder'}';repaintView('writer')">
+          ${writerView === 'binder' ? 'Documents' : 'Binder'}</button>` : ''}
         <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px;margin-left:${writerView === 'wizard' ? '0' : 'auto'}"
                 onclick="writerView='${writerView === 'wizard' ? 'documents' : 'wizard'}';repaintView('writer')">
           ${writerView === 'wizard' ? 'Documents' : '← Back to Writer'}</button>
@@ -6454,9 +6457,72 @@ function renderWriter() {
 
     <div class="card">
       ${writerView === 'documents' ? renderWriterDocuments()
+        : writerView === 'binder' ? renderWriterBinder()
         : writerWizardStep === 1 ? renderWriterStepTarget()
         : writerWizardStep === 2 ? renderWriterStepArchetype()
         : renderWriterStudio()}
+    </div>`;
+}
+
+// BA26082403: binder-tree first slice -- lists Decision Architect episodes
+// from the real OneDrive canon, compiles a selected one's Section 10.3
+// (already the LinkedIn-ready form) for copy-paste. Deliberately not a
+// corkboard/drafting mode -- explicitly deferred, per the row's own scope.
+let WRITER_BINDER_EPISODES = null;
+let writerBinderCompiled = null; // { episodeId, ...compileEpisode() response } | 'loading' | null
+
+async function loadWriterBinderEpisodes() {
+  try {
+    const r = await (await fetch('/api/writer/binder/episodes')).json();
+    WRITER_BINDER_EPISODES = r.ok ? r.episodes : { error: r.error || 'could not list episodes' };
+  } catch (e) { WRITER_BINDER_EPISODES = { error: e.message }; }
+  if (currentView === 'writer') repaintView('writer');
+}
+
+async function compileWriterBinderEpisode(episodeId, itemId) {
+  writerBinderCompiled = 'loading';
+  repaintView('writer');
+  try {
+    const r = await (await fetch(`/api/writer/binder/compile?itemId=${encodeURIComponent(itemId)}`)).json();
+    writerBinderCompiled = { episodeId, ...(r.ok ? r : { error: r.error || 'compile failed' }) };
+  } catch (e) { writerBinderCompiled = { episodeId, error: e.message }; }
+  repaintView('writer');
+}
+
+function copyWriterBinderPost(btn) {
+  const text = writerBinderCompiled?.linkedinPost || '';
+  const done = () => { const was = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = was; }, 1400); };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done);
+}
+
+function renderWriterBinder() {
+  if (WRITER_BINDER_EPISODES === null) { loadWriterBinderEpisodes(); return `<div class="empty-state">Loading the binder…</div>`; }
+  if (WRITER_BINDER_EPISODES.error) return `<div class="empty-state">${escHtml(WRITER_BINDER_EPISODES.error)}</div>`;
+  const episodes = WRITER_BINDER_EPISODES;
+  return `
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <div style="min-width:220px;flex:1">
+        <div class="card-header"><span class="card-title">Episodes</span><span class="card-meta">${episodes.length}</span></div>
+        ${!episodes.length ? `<div class="empty-state">No episode canvases found yet.</div>` : episodes.map(e => `
+          <div class="corp-person" style="cursor:pointer" onclick="compileWriterBinderEpisode('${escAttr(e.episodeId)}', '${escAttr(e.itemId)}')">
+            <div>
+              <div class="corp-person-name">Episode ${escHtml(e.episodeId)}</div>
+              <div class="corp-person-role">v${escHtml(e.version)} · ${escHtml((e.lastModified || '').slice(0, 10))}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+      <div style="min-width:280px;flex:2">
+        ${writerBinderCompiled === 'loading' ? `<div class="empty-state">Compiling…</div>`
+          : !writerBinderCompiled ? `<div class="empty-state">Pick an episode to compile its LinkedIn post.</div>`
+          : writerBinderCompiled.error ? `<div class="empty-state">${escHtml(writerBinderCompiled.error)}</div>`
+          : `
+            <div class="card-header">
+              <span class="card-title">${escHtml(writerBinderCompiled.title || `Episode ${writerBinderCompiled.episodeId}`)}</span>
+              <span class="card-meta">${escHtml(writerBinderCompiled.status || '')}</span>
+              <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="copyWriterBinderPost(this)">Copy</button>
+            </div>
+            <pre style="white-space:pre-wrap;font-family:inherit;font-size:0.85rem;line-height:1.5">${escHtml(writerBinderCompiled.linkedinPost)}</pre>`}
+      </div>
     </div>`;
 }
 
