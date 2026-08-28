@@ -68,7 +68,18 @@ start_one() {
       cd "$ROOT/vault"
       export TTS_BIND=127.0.0.1
       export TTS_PORT="$port"
-      nohup python3 "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      # `python3` on PATH is not always a real interpreter -- on Windows it's
+      # often the Microsoft Store app-execution-alias stub, which exists on
+      # PATH and passes `command -v` but exits non-zero (with an install nag)
+      # on every invocation, including --version. Probe functionally and
+      # fall back to `python` (found 28 Aug 2026, FI26082801).
+      pybin=python3
+      if ! python3 --version >/dev/null 2>&1; then
+        if python --version >/dev/null 2>&1; then
+          pybin=python
+        fi
+      fi
+      nohup "$pybin" "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
     else
       cd "$ROOT/$dir"
       export "$(echo "${name^^}")_BIND"=127.0.0.1
