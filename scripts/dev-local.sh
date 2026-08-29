@@ -79,7 +79,11 @@ start_one() {
           pybin=python
         fi
       fi
-      nohup "$pybin" "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      if command -v setsid >/dev/null 2>&1; then
+        setsid "$pybin" "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      else
+        nohup "$pybin" "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      fi
     else
       cd "$ROOT/$dir"
       export "$(echo "${name^^}")_BIND"=127.0.0.1
@@ -93,7 +97,11 @@ start_one() {
       if [ "$name" = "vault" ]; then
         export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
       fi
-      nohup node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      if command -v setsid >/dev/null 2>&1; then
+        setsid node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      else
+        nohup node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      fi
     fi
     local p=$!
     disown "$p" 2>/dev/null || true
