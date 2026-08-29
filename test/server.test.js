@@ -43,6 +43,13 @@ async function startHub(fakes, envOverrides = {}) {
   Object.assign(process.env, {
     HUB_PORT: '0', HUB_BIND: '127.0.0.1', HUB_TOKEN: 'test-static-token',
     HUB_LOGS_DIR: logsDir, BWS_ACCESS_TOKEN: '',
+    // Explicit empty override, not a delete -- lib/secrets.js's get()
+    // treats this hasOwnProperty'd '' as authoritative and never falls
+    // through to a real RENDER_API_KEY sitting in this machine's own
+    // environment (FI26082701: the "GET /services" test's
+    // `byName.keyvanos.found === false` assertion assumes no real key is
+    // configured, which isn't actually guaranteed without this).
+    RENDER_API_KEY: '',
     VAULT_URL: `http://127.0.0.1:${fakes.vault.port}`,
     ...(fakes.scope ? { SCOPE_URL: `http://127.0.0.1:${fakes.scope.port}` } : {}),
     ...(fakes.spark ? { SPARK_URL: `http://127.0.0.1:${fakes.spark.port}` } : {}),
@@ -216,7 +223,7 @@ test('a gap /api/* route (no working backend anywhere) reports 501, not a silent
   const { server, port, cleanup } = await startHub({ vault });
   const auth = { Authorization: 'Bearer test-static-token' };
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/teams`, { headers: auth });
+    const res = await fetch(`http://127.0.0.1:${port}/api/refs`, { headers: auth });
     assert.equal(res.status, 501);
   } finally { server.close(); vault.server.close(); cleanup(); }
 });

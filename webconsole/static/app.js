@@ -869,6 +869,32 @@ async function fetchJiraIssues() {
   try { const r = await fetch('/api/jira/issues'); if (r.ok) { const d = await r.json(); STATE.jiraIssues = d.issues || []; } } catch(e) {}
   repaintView(currentView);
 }
+async function fetchJiraPending() {
+  try {
+    const r = await apiFetch('/api/jira/pending');
+    if (r.ok) { const d = await r.json(); STATE.jiraPending = d.pending || []; }
+  } catch(e) {}
+}
+async function approveJiraPending(id) {
+  if (!confirm('Approve this Jira write? The real Jira call will fire immediately.')) return;
+  try {
+    const r = await apiFetch('/api/jira/pending/approve', { method: 'POST', body: JSON.stringify({ id, decidedBy: 'Architect' }) });
+    const d = await r.json();
+    if (d.success) { showToast(`Approved — Jira key: ${d.key || 'done'}`, 'success'); }
+    else { showToast(`Approve failed: ${d.error || 'unknown'}`, 'error'); }
+  } catch(e) { showToast('Approve request failed', 'error'); }
+  await fetchJiraPending(); navigate('jira');
+}
+async function denyJiraPending(id) {
+  if (!confirm('Deny this write? It will be discarded.')) return;
+  try {
+    const r = await apiFetch('/api/jira/pending/deny', { method: 'POST', body: JSON.stringify({ id, decidedBy: 'Architect' }) });
+    const d = await r.json();
+    if (d.success) showToast('Write denied and discarded.', 'success');
+    else showToast(`Deny failed: ${d.error || 'unknown'}`, 'error');
+  } catch(e) { showToast('Deny request failed', 'error'); }
+  await fetchJiraPending(); navigate('jira');
+}
 async function fetchCalendarEvents() {
   try { const r = await fetch('/api/calendar/events'); if (r.ok) { const d = await r.json(); STATE.calendarEvents = d.events || []; } } catch(e) {}
   repaintView(currentView);
@@ -1870,6 +1896,7 @@ function renderJira() {
         <button class="btn btn-primary" onclick="openCreateIssueModal()">+ New Issue</button>
       </div>
     </div>
+    ${renderJiraPendingApprovals()}
     <div class="kanban-board">
       ${columns.map(col=>`
         <div class="kanban-col" data-col="${escHtml(col.id)}"
@@ -1906,6 +1933,32 @@ function renderJira() {
         </div>
       </div>
     </div>`;
+}
+
+function renderJiraPendingApprovals() {
+  const pending = (STATE.jiraPending || []).filter(p => p.status === 'pending');
+  if (!pending.length) return '';
+  const rows = pending.map(p => {
+    const pl = p.payload || {};
+    const label = pl.summary ? escHtml(pl.summary) : escHtml(p.action);
+    const requester = escHtml(p.requester || 'agent');
+    const created = escHtml((p.createdAt || '').slice(0, 16));
+    return `<div class="pending-jira-row">
+      <div class="pending-jira-label">
+        <span class="badge badge-warn">⏳ Pending</span>
+        <strong>${label}</strong>
+        <small style="color:var(--text-muted);margin-left:6px">${escHtml(p.action)} · by ${requester} · ${created}</small>
+      </div>
+      <div class="pending-jira-actions">
+        <button class="btn btn-sm btn-primary" onclick="approveJiraPending('${escHtml(p.id)}')">Approve</button>
+        <button class="btn btn-sm btn-ghost" onclick="denyJiraPending('${escHtml(p.id)}')">Deny</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="pending-jira-section">
+    <div class="section-title" style="color:var(--warn,#f59e0b)">⚠ Pending Jira Approvals (${pending.length})</div>
+    <div class="pending-jira-list">${rows}</div>
+  </div>`;
 }
 
 function renderKanbanCard(issue, currentCol) {
@@ -12492,7 +12545,7 @@ function navigate(viewName, params = {}, opts = {}) {
   // bar follows the view. Both are no-ops on desktop.
   if (typeof mShellClose === 'function') { mShellClose(); }
   if (viewName==='github')   Promise.all([fetchGhSnapshot(), STATE.contributions?Promise.resolve():fetchContributions()]).then(()=>{ if(currentView==='github') container.innerHTML=renderGitHub(); });
-  if (viewName==='jira')     fetchJiraIssues().then(()=>{ if(currentView==='jira') container.innerHTML=renderJira(); });
+  if (viewName==='jira')     Promise.all([fetchJiraIssues(), fetchJiraPending()]).then(()=>{ if(currentView==='jira') container.innerHTML=renderJira(); });
   if (viewName==='settings') fetchState().then(()=>{ if(currentView==='settings') { container.innerHTML=renderSettings(); loadApkCard(); loadPinStatus(); } });
   if (viewName==='audit')    loadAuditLog();
   if (viewName==='notifications') fetchNotifs();
