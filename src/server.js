@@ -70,6 +70,9 @@ function shapeServices(keys) {
   const has = (...names) => names.every(n => keys.includes(n));
   const one = (name) => keys.includes(name);
   const flag = (ok) => (ok ? 'connected' : 'not_connected');
+  const jiraHost = process.env.JIRA_HOST || (keys.includes('JIRA_HOST') ? 'jira.atlassian.net' : '');
+  const jiraProject = process.env.JIRA_PROJECT || (keys.includes('JIRA_PROJECT') ? 'PROJ' : '');
+  const jiraEmail = process.env.JIRA_EMAIL || '';
   return {
     anthropic: flag(one('ANTHROPIC_API_KEY')),
     groq: flag(one('ISCONL_GROQ_API_KEY')),
@@ -80,7 +83,12 @@ function shapeServices(keys) {
     buffer: flag(one('BUFFER_API_KEY_SCONL')),
     telegram: flag(has('ISCONL_TELEGRAM_BOT_TOKEN', 'ISCONL_TELEGRAM_CHAT_ID')),
     signal: 'not_connected',
-    jiraConfig: { hasToken: one('JIRA_API_TOKEN'), host: '', projectKey: '', email: '' },
+    jiraConfig: {
+      hasToken: one('JIRA_API_TOKEN') || !!process.env.JIRA_API_TOKEN,
+      host: jiraHost,
+      projectKey: jiraProject,
+      email: jiraEmail,
+    },
     groqConfig: {},
     msConfig: { hasCreds: has('MSGRAPH_CLIENT_ID', 'MSGRAPH_REFRESH_TOKEN'), tenantId: '' },
     bufferConfig: { hasToken: one('BUFFER_API_KEY_SCONL') },
