@@ -5161,6 +5161,7 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
 .lesson-link { color:var(--lb-accent, #6fc0af); text-decoration:none; border-bottom:1px solid var(--lb-accent, #6fc0af); opacity:0.9; }
 .lesson-link:hover { opacity:1; }
 .lesson-link:focus-visible { outline:2px solid var(--lb-accent, #6fc0af); outline-offset:2px; border-radius:2px; }
+.lesson-img { max-width:100%; height:auto; border-radius:6px; margin:0.75rem 0; display:block; }
 
 /* The course card gains a classroom label and a plainer progress read. */
 .learn-classroom { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.09em;

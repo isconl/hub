@@ -17397,6 +17397,8 @@ function learnMd(src) {
   const closeQuiz = () => { if (inQuiz) { out.push('</div>'); inQuiz = false; } };
 
   const inline = (s) => s
+    .replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_m, alt, src) =>
+      `<img src="${src}" alt="${alt}" class="lesson-img" loading="lazy">`)
     .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_m, label, href) =>
       /^https?:\/\//i.test(href)
         ? `<a href="${href}" class="lesson-link" target="_blank" rel="noreferrer">${label}</a>`
