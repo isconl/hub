@@ -29,12 +29,17 @@ services:
     environment:
       VAULT_BIND: 0.0.0.0
       VAULT_TOKEN: ${VAULT_TOKEN}
-      # Without this, a fresh deploy's vault-memory volume starts empty and
-      # STAYS empty -- nothing ever asks OneDrive for the real data (see
-      # _handoff/migration-log.md, 2026-08-14, "the sync loop"). Set here,
-      # not just in dev-local.sh, so this reproduces on ANY machine that
-      # runs this compose file, not only the one it was first fixed on.
-      VAULT_SYNC_INTERVAL_MS: ${VAULT_SYNC_INTERVAL_MS:-900000}
+      # BI26083005: OneDrive is backup-only now (local-to-remote, one
+      # direction, never populates local data). This interval controls how
+      # often the LIVE local DB gets snapshotted and pushed -- it does NOT
+      # populate a fresh deploy's empty vault-memory volume; that needs an
+      # explicit POST /backup/restore against an existing OneDrive
+      # generation (only meaningful once VAULT_STORE_ENGINE=sqlite, not set
+      # here yet -- this compose file still defaults to 'tsv', matching
+      # server.js's own unmigrated-deployment default). Set here, not just
+      # in dev-local.sh, so this reproduces on ANY machine that runs this
+      # compose file, not only the one it was first configured on.
+      VAULT_BACKUP_INTERVAL_MS: ${VAULT_BACKUP_INTERVAL_MS:-1800000}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
       BWS_API_URL: ${BWS_API_URL}

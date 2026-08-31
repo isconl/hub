@@ -298,8 +298,10 @@ async function main() {
       // real engine-owned data today, just not wrapped in a dedicated
       // capability yet -- reading them via vault.read is not a workaround,
       // it's the same access path circle itself uses internally.
-      // Reshapes vault's real onedrive.sync.status ({running, lastResult:
-      // {ok:[...], failed:[...], startedAt, finishedAt}}) into the shape
+      // BI26083005: reshapes vault's real backup.status ({running,
+      // lastResult: {ok, ref, error, startedAt, finishedAt}} -- was
+      // onedrive.sync.status's {ok:[...], failed:[...]} per-collection
+      // shape before the pull-based sync was retired) into the shape
       // webconsole/static/app.js's checkVaultLink() already expects
       // ({onedrive, status, error}) -- that shape predates this route
       // existing (it was written against the legacy monolith's own
@@ -308,15 +310,14 @@ async function main() {
       // /api/state's own precedent just below, and keeps app.js's contract
       // stable for the real Flutter app which calls this same path.
       if (pathname === '/api/vault/sync/status' && req.method === 'GET') {
-        const r = await router.route('onedrive.sync.status', {});
+        const r = await router.route('backup.status', {});
         if (!r.ok) return sendJson(res, 200, { onedrive: false, status: 'offline', error: r.error || 'vault unreachable' });
         const lr = r.data && r.data.lastResult;
         if (!lr) return sendJson(res, 200, { onedrive: true, status: r.data.running ? 'syncing' : 'idle' });
-        const failed = lr.failed || [];
-        if (failed.length > 0) {
-          return sendJson(res, 200, { onedrive: true, status: 'offline', error: `${failed.length} collection(s) failed: ${failed[0].collection} (${failed[0].error || 'unknown error'})` });
+        if (!lr.ok) {
+          return sendJson(res, 200, { onedrive: true, status: 'offline', error: lr.error || 'backup pass failed' });
         }
-        return sendJson(res, 200, { onedrive: true, status: 'ok', lastSyncedAt: lr.finishedAt, collectionsSynced: lr.ok.length });
+        return sendJson(res, 200, { onedrive: true, status: 'ok', lastSyncedAt: lr.finishedAt, ref: lr.ref });
       }
 
       // File manager delete/move: reshape vault's {ok, error} into the
