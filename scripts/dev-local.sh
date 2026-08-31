@@ -96,6 +96,13 @@ start_one() {
       export MEDIA_URL="http://127.0.0.1:8086"
       if [ "$name" = "vault" ]; then
         export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
+        # BI26083003: cut over the local dev fleet to the encrypted sqlite
+        # engine (migration already run, verified 373/373 collections
+        # matched). Defaults to 'sqlite' HERE (this fleet's own launcher)
+        # -- server.js's own top-level default stays 'tsv' for any other
+        # deployment that hasn't opted in yet. Override with
+        # VAULT_STORE_ENGINE=tsv to roll back.
+        export VAULT_STORE_ENGINE="${VAULT_STORE_ENGINE:-sqlite}"
       fi
       if command -v setsid >/dev/null 2>&1; then
         setsid node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
