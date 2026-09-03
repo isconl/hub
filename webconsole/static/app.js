@@ -2490,6 +2490,61 @@ function fmToggleMenu(e, id) {
 // One outside click dismisses; registered once.
 document.addEventListener('click', fmCloseMenus);
 
+// BL26083104: one shared popup element for every inline jargon term on the
+// page (a lesson can carry dozens of `[[term|definition]]` markers) --
+// created/repositioned on demand rather than one DOM node per term.
+// Definition text is set via textContent, never innerHTML, even though
+// data-def is already escAttr'd at render time: an HTML attribute's value
+// is entity-DECODED the moment the browser parses it, so reading it back
+// with getAttribute() hands back plain text again -- innerHTML-ing that
+// straight into the popup would silently reopen the exact escaping this
+// was meant to close. textContent has no such reinterpretation risk.
+function toggleJargonPopup(el) {
+  if (!el.dataset.jargonId) el.dataset.jargonId = 'jg' + Math.random().toString(36).slice(2);
+  const existing = document.getElementById('jargon-popup');
+  const wasOpenForThis = existing && existing.dataset.forEl === el.dataset.jargonId;
+  closeJargonPopup();
+  if (wasOpenForThis) return; // second click/tap on the same term closes it
+
+  const popup = document.createElement('div');
+  popup.id = 'jargon-popup';
+  popup.className = 'jargon-popup';
+  popup.dataset.forEl = el.dataset.jargonId;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'jargon-popup-close';
+  closeBtn.setAttribute('aria-label', 'Close definition');
+  closeBtn.textContent = '×';
+  closeBtn.onclick = (e) => { e.stopPropagation(); closeJargonPopup(); };
+  const body = document.createElement('div');
+  body.className = 'jargon-popup-body';
+  body.textContent = el.getAttribute('data-def') || '';
+  popup.appendChild(closeBtn);
+  popup.appendChild(body);
+  document.body.appendChild(popup);
+
+  const r = el.getBoundingClientRect();
+  const pw = popup.offsetWidth || 260;
+  let left = r.left + window.scrollX;
+  if (left + pw > window.innerWidth - 12) left = window.innerWidth - pw - 12;
+  if (left < 12) left = 12;
+  popup.style.left = `${Math.max(12, left)}px`;
+  popup.style.top = `${r.bottom + window.scrollY + 6}px`;
+  requestAnimationFrame(() => popup.classList.add('open'));
+}
+function closeJargonPopup() {
+  const existing = document.getElementById('jargon-popup');
+  if (existing) existing.remove();
+}
+document.addEventListener('click', (e) => {
+  const p = document.getElementById('jargon-popup');
+  if (p && !p.contains(e.target) && !e.target.closest('.jargon-term')) closeJargonPopup();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeJargonPopup(); });
+// Reposition/close on scroll or resize rather than leaving a stale popup
+// pointing at nothing once the reading column has moved under it.
+window.addEventListener('scroll', () => closeJargonPopup(), { passive: true, capture: true });
+window.addEventListener('resize', () => closeJargonPopup());
+
 function fmListRow(item) {
   const isFolder = !!item.folder;
   const icon = fmIcon(item, 20);
@@ -17411,7 +17466,19 @@ function learnMd(src) {
   const out = [];
   const closeQuiz = () => { if (inQuiz) { out.push('</div>'); inQuiz = false; } };
 
+  // BL26083104: inline jargon marker, `[[term|definition]]`, usable
+  // anywhere in flowing body text (not just at a paragraph's start, unlike
+  // every other callout) -- replaces the old block-style `**Jargon:** term
+  // - definition` callout going forward. Matched BEFORE the `[label](href)`
+  // link pattern below so a jargon marker's double brackets are never
+  // mistaken for a nested link (the link regex requires a `(href)` right
+  // after `]`, which a jargon marker never has, but ordering it first
+  // keeps the two forms unambiguous regardless). The definition goes into
+  // a data attribute (escAttr'd) rather than inline HTML, since the popup
+  // reads it straight off the DOM -- see toggleJargonPopup() below.
   const inline = (s) => s
+    .replace(/\[\[([^\|\]\n]+)\|([^\]\n]+)\]\]/g, (_m, term, def) =>
+      `<span class="jargon-term" tabindex="0" role="button" aria-haspopup="true" data-def="${escAttr(def.trim())}" onclick="event.stopPropagation();toggleJargonPopup(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleJargonPopup(this)}">${term.trim()}</span>`)
     .replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_m, alt, src) =>
       `<img src="${src}" alt="${alt}" class="lesson-img" loading="lazy">`)
     .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_m, label, href) =>

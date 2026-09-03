@@ -5147,6 +5147,51 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
 .lesson-jargon span { display:block; font-size:0.58rem; text-transform:uppercase;
   letter-spacing:0.09em; color:var(--lb-info, #8aa9d9); margin-bottom:0.2rem; }
 
+/* BL26083104: the inline jargon marker (`[[term|definition]]`) -- a purple,
+   code-styled span sitting right in the sentence, replacing the old
+   full-width .lesson-jargon block for new/rewritten content going
+   forward. Tap/click/hover (desktop) opens .jargon-popup below with the
+   definition; the term itself never carries the definition inline. */
+.jargon-term {
+  font-family:var(--font-mono); color:var(--violet); background:rgba(188,140,255,0.1);
+  border:1px solid rgba(188,140,255,0.3); border-radius:4px; padding:0.03em 0.4em;
+  font-size:0.92em; cursor:pointer; white-space:nowrap;
+}
+.jargon-term:hover, .jargon-term:focus-visible { background:rgba(188,140,255,0.2); outline:none; }
+.jargon-term:focus-visible { outline:2px solid var(--violet); outline-offset:2px; }
+/* Hover-only preview on desktop (a touchscreen has no hover, so click/tap
+   must always work regardless -- toggleJargonPopup() in app.js is the one
+   mechanism both rely on; this is a lighter, no-JS-needed instant preview
+   layered on top for a pointer device). */
+@media (hover:hover) {
+  .jargon-term { position:relative; }
+  .jargon-term:hover::after {
+    content:attr(data-def); position:absolute; left:0; top:calc(100% + 6px);
+    min-width:200px; max-width:280px; white-space:normal; z-index:55;
+    background:var(--panel); border:1px solid var(--violet); border-radius:var(--r-md);
+    box-shadow:var(--shadow-modal, 0 8px 24px rgba(0,0,0,0.45));
+    padding:0.5rem 0.65rem; font-family:system-ui,sans-serif; font-size:0.78rem;
+    line-height:1.5; color:var(--text-2); font-weight:400;
+  }
+}
+.jargon-popup {
+  position:absolute; z-index:9500; min-width:220px; max-width:320px;
+  background:var(--panel); border:1px solid var(--violet); border-radius:var(--r-md);
+  box-shadow:var(--shadow-modal, 0 8px 24px rgba(0,0,0,0.45));
+  padding:0.7rem 0.8rem 0.6rem; opacity:0; transform:translateY(-4px);
+  transition:opacity 0.12s ease, transform 0.12s ease;
+}
+.jargon-popup.open { opacity:1; transform:translateY(0); }
+.jargon-popup-close {
+  float:right; background:none; border:none; color:var(--text-3); font-size:1.1rem;
+  line-height:1; cursor:pointer; padding:0 0.15rem; margin:-0.15rem -0.2rem 0.3rem 0.3rem;
+}
+.jargon-popup-close:hover { color:var(--text); }
+.jargon-popup-body {
+  font-family:system-ui,sans-serif; font-size:0.85rem; line-height:1.6; color:var(--text);
+  clear:both;
+}
+
 .lesson-body h5 { font-family:system-ui,sans-serif; font-size:0.78rem; margin:0.7rem 0 0.2rem; color:var(--text-2);
   text-transform:uppercase; letter-spacing:0.05em; }
 .lesson-body code { background:var(--surface); border:1px solid var(--border);
