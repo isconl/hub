@@ -6677,27 +6677,42 @@ function renderWriterDocuments() {
   });
   const sections = writerDocsGroup(visible);
 
-  const rowHtml = (d) => `
+  // BA26083107: an ONEDRIVE-sourced entry (SOURCE:'onedrive') has no
+  // content.json and was never generated through Writer -- it gets a
+  // narrower action set (Open in OneDrive + Download only, no Edit
+  // fields/Attach/Archive/Delete, none of which have anything to act on
+  // for a row that doesn't exist in generated_docs.tsv) and a visible
+  // badge, rather than a capability gap discovered by clicking a dead
+  // button.
+  const rowHtml = (d) => {
+    const fromOnedrive = d.SOURCE === 'onedrive';
+    return `
     <div class="inbox-item">
       <div class="inbox-head" style="cursor:default">
-        <span class="inbox-sender">${escHtml(archetypeNames.get(d.ARCHETYPE_ID) || d.ARCHETYPE_ID)}</span>
+        <span class="inbox-sender">${fromOnedrive ? '<span class="badge" title="Found in OneDrive, not generated through Writer" style="font-size:0.62rem">OneDrive</span>' : escHtml(archetypeNames.get(d.ARCHETYPE_ID) || d.ARCHETYPE_ID)}</span>
         <span class="inbox-title">${escHtml(d.FILENAME)}</span>
         ${d.TASK_ID && d.TASK_ID !== '-' ? `<span class="inbox-tag">${escHtml(taskTitles.get(d.TASK_ID) || `task ${d.TASK_ID}`)}</span>` : ''}
         <span class="inbox-date">${escHtml(d.CREATED_AT)}</span>
       </div>
       <div class="inbox-actions" style="padding:0 0.4rem 0.6rem 0.4rem">
-        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocDownload('${escAttr(d.ID)}')">Download</button>
-        ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-'
-          ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">Edit ↗</a>`
-          : ''}
-        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocEdit('${escAttr(d.ID)}')" title="Reopens the template wizard, re-running field generation">Edit fields</button>
-        ${d.TARGET_KIND === 'project' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocAttach('${escAttr(d.ID)}')">Attach to task</button>`
-          : `<span style="font-size:0.68rem;color:var(--text-3)" title="Only project-target documents can be attached to a task">Attach to task</span>`}
-        ${d.STATUS === 'active' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','archived')">Archive</button>`
-          : d.STATUS === 'archived' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','active')">Restore</button>` : ''}
-        <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerDocSetStatus('${escAttr(d.ID)}','deleted')">Delete</button>
+        ${fromOnedrive
+          ? `${d.ONEDRIVE_DOWNLOAD_URL ? `<a class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_DOWNLOAD_URL)}" download="${escAttr(d.FILENAME)}">Download</a>` : ''}
+             ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-'
+               ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">Open in OneDrive ↗</a>`
+               : ''}`
+          : `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocDownload('${escAttr(d.ID)}')">Download</button>
+             ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-'
+               ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">Edit ↗</a>`
+               : ''}
+             <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocEdit('${escAttr(d.ID)}')" title="Reopens the template wizard, re-running field generation">Edit fields</button>
+             ${d.TARGET_KIND === 'project' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocAttach('${escAttr(d.ID)}')">Attach to task</button>`
+               : `<span style="font-size:0.68rem;color:var(--text-3)" title="Only project-target documents can be attached to a task">Attach to task</span>`}
+             ${d.STATUS === 'active' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','archived')">Archive</button>`
+               : d.STATUS === 'archived' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','active')">Restore</button>` : ''}
+             <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerDocSetStatus('${escAttr(d.ID)}','deleted')">Delete</button>`}
       </div>
     </div>`;
+  };
 
   return `
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.7rem">
