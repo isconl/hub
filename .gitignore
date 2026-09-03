@@ -4,3 +4,4 @@ runtime/
 .env
 .claude/
 scripts/.dev-pids/
+_handoff/
