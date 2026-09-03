@@ -715,7 +715,7 @@ select option { background:var(--panel); color:var(--text); }
   padding:0.65rem 0.75rem; box-shadow:var(--shadow-card);
   transition:all 0.15s; cursor:default;
 }
-.kanban-card:hover { border-color:var(--green-dim); transform:translateY(-1px); box-shadow:0 4px 16px rgba(0,0,0,0.25); }
+.kanban-card:hover { border-color:var(--hover-border, var(--green-dim)); transform:translateY(-1px); box-shadow:0 4px 16px rgba(0,0,0,0.25); }
 .kanban-card-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.35rem; }
 .kanban-card-key {
   font-size:0.68rem; font-family:var(--font-mono); color:var(--cyan);
@@ -1349,7 +1349,7 @@ select.jira-input,
   background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--r-md);
   padding:0.75rem 0.85rem; margin-bottom:0.5rem; transition:border-color 0.15s;
 }
-.gh-repo-card:hover { border-color:var(--green-dim); }
+.gh-repo-card:hover { border-color:var(--hover-border, var(--green-dim)); }
 .gh-repo-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.3rem; }
 .gh-repo-name { font-size:0.83rem; font-weight:600; color:var(--text); font-family:var(--font-mono); }
 .gh-repo-desc { font-size:0.75rem; color:var(--text-3); line-height:1.4; }
@@ -1976,7 +1976,7 @@ textarea:focus { outline:none; border-color:var(--green-dim); }
      names are already handled by word-break, so nothing else needs clipping. */
   position:relative; overflow:visible;
 }
-.fm-item:hover { background:var(--panel-hover); border-color:var(--green-dim); transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,0.2); }
+.fm-item:hover { background:var(--panel-hover); border-color:var(--hover-border, var(--green-dim)); transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,0.2); }
 /* The card with an open menu must sit above its later siblings, which would
    otherwise paint over the dropdown (each hovered card starts a stacking context). */
 .fm-item:has(.fm-menu.open) { z-index:80; }
@@ -2896,7 +2896,7 @@ button.orient-chip:focus-visible { outline:2px solid var(--green); outline-offse
 .circle-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:0.5rem; }
 .circle-card { border:1px solid var(--border); border-radius:var(--r-md); padding:0.6rem 0.7rem;
   cursor:pointer; transition:border-color 0.12s, background 0.12s; background:var(--bg-raised); }
-.circle-card:hover { border-color:var(--green-dim); background:var(--panel-hover); }
+.circle-card:hover { border-color:var(--hover-border, var(--green-dim)); background:var(--panel-hover); }
 /* Engagement heatmap: a year of weeks. Month labels sit in a grid whose
    columns match the week columns exactly, each label spanning its own weeks -
    so January can never crash into February again. */
@@ -3131,17 +3131,39 @@ body[data-callout-theme="muted"] .lesson-body {
 .lesson-checkpoints {
   position:fixed; width:2px; display:none;
   flex-direction:column; align-items:center; justify-content:space-between;
-  z-index:4; background:var(--border); border-radius:1px;
+  z-index:10; background:var(--border); border-radius:1px;
 }
 .lesson-checkpoints.visible { display:flex; }
+.lesson-checkpoints-fill {
+  position:absolute; top:0; left:0; width:100%; height:0%;
+  background:var(--lb-accent, #6fc0af); border-radius:1px;
+  pointer-events:none; z-index:1;
+  transition:height 0.08s ease-out;
+}
 .lesson-checkpoint-dot {
+  position:relative; z-index:2;
   width:6px; height:6px; border-radius:50%; padding:0; border:none; cursor:pointer;
   background:var(--border-mid); flex-shrink:0; transition:background 0.15s, transform 0.15s;
   transform:scale(1);
 }
 .lesson-checkpoint-dot.h3 { width:7px; height:7px; }
-.lesson-checkpoint-dot:hover { background:var(--lb-accent, #6fc0af); transform:scale(1.3); }
+.lesson-checkpoint-dot:hover, .lesson-checkpoint-dot.passed { background:var(--lb-accent, #6fc0af); }
+.lesson-checkpoint-dot:hover { transform:scale(1.4); }
 .lesson-checkpoint-dot.active { background:var(--lb-accent, #6fc0af); transform:scale(1.3); }
+
+/* RL26082701: Custom hover tooltip showing section title immediately */
+.lesson-checkpoint-tooltip {
+  position:absolute; left:14px; top:50%; transform:translateY(-50%);
+  background:var(--bg-raised, #161B22); color:var(--text, #E6EDF3);
+  font-family:var(--font-sans); font-size:0.68rem; font-weight:550; line-height:1.3;
+  padding:3px 8px; border-radius:var(--r-sm, 4px); border:1px solid var(--border-mid, #3D4450);
+  box-shadow:0 3px 10px rgba(0,0,0,0.35); white-space:nowrap; pointer-events:none;
+  opacity:0; visibility:hidden; transition:opacity 0.12s ease, visibility 0.12s ease;
+  z-index:20;
+}
+.lesson-checkpoint-dot:hover .lesson-checkpoint-tooltip {
+  opacity:1; visibility:visible;
+}
 
 /* ── JOURNAL ── */
 .jr-compose-row { display:flex; gap:0.5rem; margin-top:0.6rem; flex-wrap:wrap; align-items:center; }
@@ -3697,12 +3719,13 @@ body[data-callout-theme="muted"] .lesson-body {
 .jira-override { color:var(--text-3); }
 .jira-override:hover { color:var(--amber); }
 
-.jira-key {
+.id-badge, .jira-key {
   font-family:var(--font-mono); font-size:0.72rem; color:var(--green);
   text-decoration:none; border:1px solid var(--green-dim);
   border-radius:var(--r-sm,4px); padding:1px 6px;
+  display:inline-block; line-height:1.2;
 }
-.jira-key:hover { background:var(--green-bg); }
+.id-badge:hover, .jira-key:hover { background:var(--green-bg); }
 .jira-live { display:flex; gap:0.9rem; flex-wrap:wrap; align-items:center; }
 .jira-live label { display:flex; align-items:center; gap:0.4rem; font-size:0.6rem;
   text-transform:uppercase; letter-spacing:0.07em; color:var(--text-3); }
@@ -5147,6 +5170,51 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
 .lesson-jargon span { display:block; font-size:0.58rem; text-transform:uppercase;
   letter-spacing:0.09em; color:var(--lb-info, #8aa9d9); margin-bottom:0.2rem; }
 
+/* BL26083104: the inline jargon marker (`[[term|definition]]`) -- a purple,
+   code-styled span sitting right in the sentence, replacing the old
+   full-width .lesson-jargon block for new/rewritten content going
+   forward. Tap/click/hover (desktop) opens .jargon-popup below with the
+   definition; the term itself never carries the definition inline. */
+.jargon-term {
+  font-family:var(--font-mono); color:var(--violet); background:rgba(188,140,255,0.1);
+  border:1px solid rgba(188,140,255,0.3); border-radius:4px; padding:0.03em 0.4em;
+  font-size:0.92em; cursor:pointer; white-space:nowrap;
+}
+.jargon-term:hover, .jargon-term:focus-visible { background:rgba(188,140,255,0.2); outline:none; }
+.jargon-term:focus-visible { outline:2px solid var(--violet); outline-offset:2px; }
+/* Hover-only preview on desktop (a touchscreen has no hover, so click/tap
+   must always work regardless -- toggleJargonPopup() in app.js is the one
+   mechanism both rely on; this is a lighter, no-JS-needed instant preview
+   layered on top for a pointer device). */
+@media (hover:hover) {
+  .jargon-term { position:relative; }
+  .jargon-term:hover::after {
+    content:attr(data-def); position:absolute; left:0; top:calc(100% + 6px);
+    min-width:200px; max-width:280px; white-space:normal; z-index:55;
+    background:var(--panel); border:1px solid var(--violet); border-radius:var(--r-md);
+    box-shadow:var(--shadow-modal, 0 8px 24px rgba(0,0,0,0.45));
+    padding:0.5rem 0.65rem; font-family:system-ui,sans-serif; font-size:0.78rem;
+    line-height:1.5; color:var(--text-2); font-weight:400;
+  }
+}
+.jargon-popup {
+  position:absolute; z-index:9500; min-width:220px; max-width:320px;
+  background:var(--panel); border:1px solid var(--violet); border-radius:var(--r-md);
+  box-shadow:var(--shadow-modal, 0 8px 24px rgba(0,0,0,0.45));
+  padding:0.7rem 0.8rem 0.6rem; opacity:0; transform:translateY(-4px);
+  transition:opacity 0.12s ease, transform 0.12s ease;
+}
+.jargon-popup.open { opacity:1; transform:translateY(0); }
+.jargon-popup-close {
+  float:right; background:none; border:none; color:var(--text-3); font-size:1.1rem;
+  line-height:1; cursor:pointer; padding:0 0.15rem; margin:-0.15rem -0.2rem 0.3rem 0.3rem;
+}
+.jargon-popup-close:hover { color:var(--text); }
+.jargon-popup-body {
+  font-family:system-ui,sans-serif; font-size:0.85rem; line-height:1.6; color:var(--text);
+  clear:both;
+}
+
 .lesson-body h5 { font-family:system-ui,sans-serif; font-size:0.78rem; margin:0.7rem 0 0.2rem; color:var(--text-2);
   text-transform:uppercase; letter-spacing:0.05em; }
 .lesson-body code { background:var(--surface); border:1px solid var(--border);
@@ -5161,7 +5229,55 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
 .lesson-link { color:var(--lb-accent, #6fc0af); text-decoration:none; border-bottom:1px solid var(--lb-accent, #6fc0af); opacity:0.9; }
 .lesson-link:hover { opacity:1; }
 .lesson-link:focus-visible { outline:2px solid var(--lb-accent, #6fc0af); outline-offset:2px; border-radius:2px; }
-.lesson-img { max-width:100%; height:auto; border-radius:6px; margin:0.75rem 0; display:block; }
+/* BL26083105 — inline image system: figure wrapper, caption, captured-date, citation, lightbox */
+.lesson-img-wrap { display:block; margin:1.25rem 0; }
+.lesson-img {
+  max-width:100%; height:auto; display:block;
+  border-radius:var(--r-md, 8px);
+  border:1px solid var(--border);
+  box-shadow:0 1px 4px rgba(0,0,0,0.14);
+  cursor:zoom-in;
+  transition:box-shadow 0.15s;
+}
+.lesson-img:hover { box-shadow:0 3px 12px rgba(0,0,0,0.22); }
+.lesson-img-caption {
+  margin-top:0.35rem;
+  font-family:var(--font-ui, system-ui, sans-serif);
+  font-size:0.72rem; color:var(--text-3);
+  line-height:1.45;
+}
+.lesson-img-captured {
+  display:inline-block; margin-top:0.2rem;
+  font-family:var(--font-mono); font-size:0.65rem;
+  color:var(--text-3); opacity:0.8; font-style:italic;
+}
+.lesson-img-cite {
+  font-family:var(--font-mono); font-style:normal; font-size:0.65rem;
+  color:var(--text-3); margin-top:0.2rem; opacity:0.85;
+}
+/* lightbox */
+.lesson-lightbox-overlay {
+  position:fixed; inset:0; z-index:9000;
+  background:rgba(0,0,0,0.88);
+  display:flex; align-items:center; justify-content:center;
+  animation:lb-in 0.18s ease;
+}
+@keyframes lb-in { from { opacity:0 } to { opacity:1 } }
+.lesson-lightbox-overlay img {
+  max-width:92vw; max-height:88vh; border-radius:var(--r-md, 8px);
+  box-shadow:0 8px 40px rgba(0,0,0,0.6);
+  cursor:zoom-out;
+  user-select:none;
+}
+.lesson-lightbox-close {
+  position:fixed; top:1rem; right:1rem;
+  background:rgba(255,255,255,0.12); border:none; border-radius:50%;
+  width:2.5rem; height:2.5rem; cursor:pointer;
+  color:#fff; font-size:1.3rem; display:flex; align-items:center; justify-content:center;
+  transition:background 0.15s;
+}
+.lesson-lightbox-close:hover { background:rgba(255,255,255,0.25); }
+
 
 /* The course card gains a classroom label and a plainer progress read. */
 .learn-classroom { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.09em;

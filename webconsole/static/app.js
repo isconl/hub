@@ -2490,6 +2490,93 @@ function fmToggleMenu(e, id) {
 // One outside click dismisses; registered once.
 document.addEventListener('click', fmCloseMenus);
 
+// BL26083104: one shared popup element for every inline jargon term on the
+// page (a lesson can carry dozens of `[[term|definition]]` markers) --
+// created/repositioned on demand rather than one DOM node per term.
+// Definition text is set via textContent, never innerHTML, even though
+// data-def is already escAttr'd at render time: an HTML attribute's value
+// is entity-DECODED the moment the browser parses it, so reading it back
+// with getAttribute() hands back plain text again -- innerHTML-ing that
+// straight into the popup would silently reopen the exact escaping this
+// was meant to close. textContent has no such reinterpretation risk.
+function toggleJargonPopup(el) {
+  if (!el.dataset.jargonId) el.dataset.jargonId = 'jg' + Math.random().toString(36).slice(2);
+  const existing = document.getElementById('jargon-popup');
+  const wasOpenForThis = existing && existing.dataset.forEl === el.dataset.jargonId;
+  closeJargonPopup();
+  if (wasOpenForThis) return; // second click/tap on the same term closes it
+
+  const popup = document.createElement('div');
+  popup.id = 'jargon-popup';
+  popup.className = 'jargon-popup';
+  popup.dataset.forEl = el.dataset.jargonId;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'jargon-popup-close';
+  closeBtn.setAttribute('aria-label', 'Close definition');
+  closeBtn.textContent = '×';
+  closeBtn.onclick = (e) => { e.stopPropagation(); closeJargonPopup(); };
+  const body = document.createElement('div');
+  body.className = 'jargon-popup-body';
+  body.textContent = el.getAttribute('data-def') || '';
+  popup.appendChild(closeBtn);
+  popup.appendChild(body);
+  document.body.appendChild(popup);
+
+  const r = el.getBoundingClientRect();
+  const pw = popup.offsetWidth || 260;
+  let left = r.left + window.scrollX;
+  if (left + pw > window.innerWidth - 12) left = window.innerWidth - pw - 12;
+  if (left < 12) left = 12;
+  popup.style.left = `${Math.max(12, left)}px`;
+  popup.style.top = `${r.bottom + window.scrollY + 6}px`;
+  requestAnimationFrame(() => popup.classList.add('open'));
+}
+// BL26083105: lesson image lightbox — opens inline image full-screen with close-on-click/Escape.
+// Never navigates away from the lesson; reading position is preserved on close.
+function openLessonImageLightbox(src, alt) {
+  closeLessonImageLightbox();
+  const overlay = document.createElement('div');
+  overlay.className = 'lesson-lightbox-overlay';
+  overlay.id = 'lesson-lightbox';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', alt || 'Image');
+  const img = document.createElement('img');
+  img.src = src; img.alt = alt || '';
+  img.draggable = false;
+  img.onclick = () => closeLessonImageLightbox();
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'lesson-lightbox-close';
+  closeBtn.setAttribute('aria-label', 'Close image');
+  closeBtn.textContent = '×';
+  closeBtn.onclick = (e) => { e.stopPropagation(); closeLessonImageLightbox(); };
+  overlay.appendChild(img);
+  overlay.appendChild(closeBtn);
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLessonImageLightbox(); });
+  document.body.appendChild(overlay);
+  overlay.focus();
+}
+function closeLessonImageLightbox() {
+  const el = document.getElementById('lesson-lightbox');
+  if (el) el.remove();
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLessonImageLightbox();
+});
+
+function closeJargonPopup() {
+  const existing = document.getElementById('jargon-popup');
+  if (existing) existing.remove();
+}
+document.addEventListener('click', (e) => {
+  const p = document.getElementById('jargon-popup');
+  if (p && !p.contains(e.target) && !e.target.closest('.jargon-term')) closeJargonPopup();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeJargonPopup(); });
+// Reposition/close on scroll or resize rather than leaving a stale popup
+// pointing at nothing once the reading column has moved under it.
+window.addEventListener('scroll', () => closeJargonPopup(), { passive: true, capture: true });
+window.addEventListener('resize', () => closeJargonPopup());
+
 function fmListRow(item) {
   const isFolder = !!item.folder;
   const icon = fmIcon(item, 20);
@@ -6677,27 +6764,42 @@ function renderWriterDocuments() {
   });
   const sections = writerDocsGroup(visible);
 
-  const rowHtml = (d) => `
+  // BA26083107: an ONEDRIVE-sourced entry (SOURCE:'onedrive') has no
+  // content.json and was never generated through Writer -- it gets a
+  // narrower action set (Open in OneDrive + Download only, no Edit
+  // fields/Attach/Archive/Delete, none of which have anything to act on
+  // for a row that doesn't exist in generated_docs.tsv) and a visible
+  // badge, rather than a capability gap discovered by clicking a dead
+  // button.
+  const rowHtml = (d) => {
+    const fromOnedrive = d.SOURCE === 'onedrive';
+    return `
     <div class="inbox-item">
       <div class="inbox-head" style="cursor:default">
-        <span class="inbox-sender">${escHtml(archetypeNames.get(d.ARCHETYPE_ID) || d.ARCHETYPE_ID)}</span>
+        <span class="inbox-sender">${fromOnedrive ? '<span class="badge" title="Found in OneDrive, not generated through Writer" style="font-size:0.62rem">OneDrive</span>' : escHtml(archetypeNames.get(d.ARCHETYPE_ID) || d.ARCHETYPE_ID)}</span>
         <span class="inbox-title">${escHtml(d.FILENAME)}</span>
         ${d.TASK_ID && d.TASK_ID !== '-' ? `<span class="inbox-tag">${escHtml(taskTitles.get(d.TASK_ID) || `task ${d.TASK_ID}`)}</span>` : ''}
         <span class="inbox-date">${escHtml(d.CREATED_AT)}</span>
       </div>
       <div class="inbox-actions" style="padding:0 0.4rem 0.6rem 0.4rem">
-        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocDownload('${escAttr(d.ID)}')">Download</button>
-        ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-'
-          ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">Edit ↗</a>`
-          : ''}
-        <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocEdit('${escAttr(d.ID)}')" title="Reopens the template wizard, re-running field generation">Edit fields</button>
-        ${d.TARGET_KIND === 'project' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocAttach('${escAttr(d.ID)}')">Attach to task</button>`
-          : `<span style="font-size:0.68rem;color:var(--text-3)" title="Only project-target documents can be attached to a task">Attach to task</span>`}
-        ${d.STATUS === 'active' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','archived')">Archive</button>`
-          : d.STATUS === 'archived' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','active')">Restore</button>` : ''}
-        <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerDocSetStatus('${escAttr(d.ID)}','deleted')">Delete</button>
+        ${fromOnedrive
+          ? `${d.ONEDRIVE_DOWNLOAD_URL ? `<a class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_DOWNLOAD_URL)}" download="${escAttr(d.FILENAME)}">Download</a>` : ''}
+             ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-'
+               ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">Open in OneDrive ↗</a>`
+               : ''}`
+          : `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocDownload('${escAttr(d.ID)}')">Download</button>
+             ${d.ONEDRIVE_WEBURL && d.ONEDRIVE_WEBURL !== '-'
+               ? `<a class="btn btn-ghost doc-act" style="font-size:0.7rem;padding:2px 9px" href="${escAttr(d.ONEDRIVE_WEBURL)}" target="_blank" rel="noreferrer">Edit ↗</a>`
+               : ''}
+             <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocEdit('${escAttr(d.ID)}')" title="Reopens the template wizard, re-running field generation">Edit fields</button>
+             ${d.TARGET_KIND === 'project' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocAttach('${escAttr(d.ID)}')">Attach to task</button>`
+               : `<span style="font-size:0.68rem;color:var(--text-3)" title="Only project-target documents can be attached to a task">Attach to task</span>`}
+             ${d.STATUS === 'active' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','archived')">Archive</button>`
+               : d.STATUS === 'archived' ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="writerDocSetStatus('${escAttr(d.ID)}','active')">Restore</button>` : ''}
+             <button class="btn btn-ghost danger-btn" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="writerDocSetStatus('${escAttr(d.ID)}','deleted')">Delete</button>`}
       </div>
     </div>`;
+  };
 
   return `
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.7rem">
@@ -9162,7 +9264,7 @@ const toneOf = (b) => BLOCK_TONE[b?.axis] || 'var(--text-3)';
 // (used everywhere a block's color is read) picks it up automatically.
 const BLOCK_COLOR_GROUPS = [
   { key: 'protected',  cssVar: 'wx-protected', label: 'Protected',  hint: '05:00-06:00 · no phone' },
-  { key: 'learning',   cssVar: 'wx-learn',     label: 'Learning',   hint: 'Before the engagement day' },
+  { key: 'learning',   cssVar: 'wx-learn',     label: 'Academia',   hint: 'Before the engagement day' },
   { key: 'flex',       cssVar: 'wx-flex',      label: 'Flex',       hint: 'Commute, unallocated' },
   { key: 'innovator',  cssVar: 'wx-inn',       label: 'Innovator',  hint: 'Systems built and engineered' },
   { key: 'visionary',  cssVar: 'wx-lead',      label: 'Visionary',  hint: 'People, decisions, the record' },
@@ -11141,7 +11243,7 @@ function pushHistory(viewName, params, replace) {
 const VIEW_LABELS = {
   today:'Hub', jira:'Kanban', calendar:'Calendar', inbox:'Inbox', notifications:'Alerts',
   github:'GitHub', files:'File Manager', tasks:'Tasks', spaces:'Spaces',
-  journal:'Journal', learning:'Learning', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
+  journal:'Journal', learning:'Academia', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
   decisions:'Decision Log', risks:'Risk Register', social:'Buffer',
   integrations:'Integrations Hub', audit:'Audit Chain', settings:'Settings',
   task:'Task', 'whatsapp-guide':'WhatsApp', writer:'Writer',
@@ -16112,6 +16214,8 @@ function learnTeardownCheckpoints() {
   if (learnCheckpointObserver) { learnCheckpointObserver.disconnect(); learnCheckpointObserver = null; }
   document.getElementById('lesson-checkpoints')?.remove();
   window.removeEventListener('resize', learnPositionCheckpoints);
+  const vc = document.getElementById('view-container');
+  if (vc) vc.removeEventListener('scroll', learnUpdateCheckpointProgress);
 }
 function learnInitCheckpoints() {
   learnTeardownCheckpoints();
@@ -16122,13 +16226,25 @@ function learnInitCheckpoints() {
   const rail = document.createElement('div');
   rail.id = 'lesson-checkpoints';
   rail.className = 'lesson-checkpoints';
+
+  // RL26082701: continuous scroll progress stroke fill
+  const fill = document.createElement('div');
+  fill.className = 'lesson-checkpoints-fill';
+  rail.appendChild(fill);
+
   headings.forEach(h => {
     const dot = document.createElement('button');
     dot.type = 'button';
     dot.className = `lesson-checkpoint-dot ${h.tagName.toLowerCase()}`;
     dot.dataset.target = h.id;
-    dot.title = h.textContent;
     dot.setAttribute('aria-label', h.textContent);
+
+    // RL26082701: Custom hover tooltip showing section title immediately
+    const tip = document.createElement('span');
+    tip.className = 'lesson-checkpoint-tooltip';
+    tip.textContent = h.textContent;
+    dot.appendChild(tip);
+
     dot.onclick = () => {
       const c = document.getElementById('view-container');
       const target = document.getElementById(h.id);
@@ -16141,6 +16257,12 @@ function learnInitCheckpoints() {
   learnPositionCheckpoints();
   window.addEventListener('resize', learnPositionCheckpoints);
 
+  const vc = document.getElementById('view-container');
+  if (vc) {
+    vc.addEventListener('scroll', learnUpdateCheckpointProgress, { passive: true });
+    learnUpdateCheckpointProgress();
+  }
+
   learnCheckpointObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       const dot = rail.querySelector(`.lesson-checkpoint-dot[data-target="${entry.target.id}"]`);
@@ -16148,6 +16270,29 @@ function learnInitCheckpoints() {
     });
   }, { root: document.getElementById('view-container'), rootMargin: '-10% 0px -80% 0px' });
   headings.forEach(h => learnCheckpointObserver.observe(h));
+}
+function learnUpdateCheckpointProgress() {
+  const rail = document.getElementById('lesson-checkpoints');
+  const fill = rail?.querySelector('.lesson-checkpoints-fill');
+  const body = document.querySelector('.lesson-body');
+  const vc = document.getElementById('view-container');
+  if (!rail || !fill || !body || !vc) return;
+
+  const bodyTop = body.offsetTop;
+  const bodyHeight = body.offsetHeight;
+  const scrollable = bodyHeight - vc.clientHeight;
+  const scrolled = vc.scrollTop - bodyTop;
+  const fraction = scrollable > 0 ? Math.max(0, Math.min(1, scrolled / scrollable)) : 0;
+  fill.style.height = `${(fraction * 100).toFixed(1)}%`;
+
+  const dots = rail.querySelectorAll('.lesson-checkpoint-dot');
+  const railRect = rail.getBoundingClientRect();
+  const fillBottom = railRect.top + (fraction * railRect.height);
+  dots.forEach(dot => {
+    const dotRect = dot.getBoundingClientRect();
+    const isPassed = dotRect.top <= fillBottom + 2;
+    dot.classList.toggle('passed', isPassed);
+  });
 }
 function learnPositionCheckpoints() {
   const rail = document.getElementById('lesson-checkpoints');
@@ -16164,6 +16309,7 @@ function learnPositionCheckpoints() {
   rail.style.top = `${Math.max(vcRect.top, bodyRect.top)}px`;
   rail.style.height = `${Math.min(vcRect.bottom, bodyRect.bottom) - Math.max(vcRect.top, bodyRect.top)}px`;
   rail.classList.add('visible');
+  learnUpdateCheckpointProgress();
 }
 
 /** Jump straight back into the exact spot a resume row describes. */
@@ -16431,7 +16577,7 @@ function renderRhythm() {
   const filters = [
     { id: 'all', label: 'All Activity' },
     { id: 'github', label: 'GitHub' },
-    { id: 'learning', label: 'Learning' },
+    { id: 'learning', label: 'Academia' },
     { id: 'journal', label: 'Journal' },
     { id: 'tasks', label: 'Tasks' },
     { id: 'custom', label: 'Custom' }
@@ -16569,11 +16715,15 @@ function learnRelBadge(rel, note = '') {
 
 function renderLearnGroupCard(g) {
   const isArchived = g.status === 'archived';
-  const groupIcon = g.id === 'inside-the-engagement' ? svgIcon('briefcase', 18)
-                  : g.id === 'platform-and-systems' ? svgIcon('layers', 18)
-                  : g.id === 'business-and-market' ? svgIcon('shield', 18)
-                  : g.id === 'money-that-compounds' ? svgIcon('zap', 18)
-                  : svgIcon('users', 18);
+  const groupIcon = g.id === 'corporate-mandate' ? svgIcon('briefcase', 18)
+                  : g.id === 'sales-persuasion' ? svgIcon('tag', 18)
+                  : g.id === 'medicine-surgery' ? svgIcon('shield', 18)
+                  : g.id === 'markets-economics' ? svgIcon('layers', 18)
+                  : g.id === 'wealth-finance' ? svgIcon('zap', 18)
+                  : g.id === 'platforms-systems' ? svgIcon('grid', 18)
+                  : g.id === 'profiles-psychology' ? svgIcon('users', 18)
+                  : g.id === 'systems-architecture' ? svgIcon('settings', 18)
+                  : svgIcon('folder', 18);
   return `
     <div class="learn-group-card${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
       <div class="learn-group-top">
@@ -16618,31 +16768,21 @@ function renderLearnCourseCard(c) {
 }
 
 const DEFAULT_LEARNING_GROUPS = [
-  { id: 'inside-the-engagement', label: 'Inside the Engagement', description: 'The house, the people, the rules, the mandate, and task execution.', icon: '🏢', color: '#3b82f6', sortOrder: 1, status: 'active' },
-  { id: 'platform-and-systems', label: 'Platform & Systems Architecture', description: 'The two B2B portals, publishing pipeline, and UX journeys.', icon: '⚙️', color: '#10b981', sortOrder: 2, status: 'active' },
-  { id: 'business-and-market', label: 'Business Model & Market Intelligence', description: 'Deal origination, trust badges, competitor analysis, and liquidity.', icon: '🎯', color: '#8b5cf6', sortOrder: 3, status: 'active' },
-  { id: 'money-that-compounds', label: 'Money That Compounds', description: 'Financial intelligence, capital allocation, valuation, and wealth velocity.', icon: '📈', color: '#f59e0b', sortOrder: 4, status: 'active' },
-  { id: 'people-and-mentoring', label: 'People & Mentoring Arc', description: 'Curriculum, assignments, session logging, and capability gates.', icon: '🤝', color: '#ec4899', sortOrder: 5, status: 'active' },
+  { id: 'corporate-mandate', label: 'Corporate & Mandate', description: 'The house, the people, the rules, the mandate, and task execution.', color: '#3b82f6', sortOrder: 1, status: 'active' },
+  { id: 'sales-persuasion', label: 'Sales & Persuasion', description: 'Negotiation, closing, and public speaking - the full persuasion arc.', color: '#ec4899', sortOrder: 2, status: 'active' },
+  { id: 'medicine-surgery', label: 'Medicine & Surgery', description: 'Anatomy, first aid, trauma, clinical conditions, pharmacology, and surgical practice.', color: '#ef4444', sortOrder: 3, status: 'active' },
+  { id: 'markets-economics', label: 'Markets & Economics', description: 'The ten markets and how they actually move.', color: '#8b5cf6', sortOrder: 4, status: 'active' },
+  { id: 'wealth-finance', label: 'Wealth & Finance', description: 'Financial intelligence, capital allocation, valuation, and wealth velocity.', color: '#f59e0b', sortOrder: 5, status: 'active' },
+  { id: 'platforms-systems', label: 'Platforms & Systems', description: 'The B2B portals, publishing pipeline, and UX journeys.', color: '#10b981', sortOrder: 6, status: 'active' },
+  { id: 'profiles-psychology', label: 'Profiles & Psychology', description: 'Reading people, behavior, influence, and profiling - real and archetypal.', color: '#06b6d4', sortOrder: 7, status: 'active' },
+  { id: 'systems-architecture', label: 'Systems & Architecture', description: 'Systems thinking, software architecture, business systems, and scaling.', color: '#6366f1', sortOrder: 8, status: 'active' },
 ];
 
 function getResolvedGroups(courses, backendGroups) {
   const baseGroups = (backendGroups && backendGroups.length) ? backendGroups : DEFAULT_LEARNING_GROUPS;
-  const courseGroupMap = {
-    'viva': 'inside-the-engagement',
-    'viva-role': 'inside-the-engagement',
-    'viva-meetings': 'inside-the-engagement',
-    'viva-tasks': 'inside-the-engagement',
-    'viva-portals': 'platform-and-systems',
-    'wellspring': 'platform-and-systems',
-    'wabba-ux': 'platform-and-systems',
-    'wabba-content': 'platform-and-systems',
-    'viva-model': 'business-and-market',
-    'financial-intelligence': 'money-that-compounds',
-    'jordan-mentoring': 'people-and-mentoring',
-  };
 
   return baseGroups.map(g => {
-    const groupCourses = (courses || []).filter(c => (c.GROUP_ID === g.id) || (!c.GROUP_ID && courseGroupMap[c.ID] === g.id));
+    const groupCourses = (courses || []).filter(c => c.GROUP_ID === g.id);
     const moduleCount = groupCourses.reduce((acc, c) => acc + (c.lessons || []).length, 0);
     const doneCount = groupCourses.reduce((acc, c) => acc + (c.lessons || []).filter(l => l.status === 'done').length, 0);
     const progressPct = moduleCount ? Math.round((doneCount / moduleCount) * 100) : 0;
@@ -16660,23 +16800,10 @@ function renderLearning() {
   if (!LEARN) { fetchLearning(); return `<div class="card"><div class="empty-state">Opening the classroom…</div></div>`; }
   const allCourses = LEARN.courses || [];
   const groups = getResolvedGroups(allCourses, LEARN.groups);
-
-  // Map courses with resolved GROUP_ID if missing
-  const courseGroupMap = {
-    'viva': 'inside-the-engagement',
-    'viva-role': 'inside-the-engagement',
-    'viva-meetings': 'inside-the-engagement',
-    'viva-tasks': 'inside-the-engagement',
-    'viva-portals': 'platform-and-systems',
-    'wellspring': 'platform-and-systems',
-    'wabba-ux': 'platform-and-systems',
-    'wabba-content': 'platform-and-systems',
-    'viva-model': 'business-and-market',
-    'financial-intelligence': 'money-that-compounds',
-    'jordan-mentoring': 'people-and-mentoring',
-  };
+  // Ungrouped courses surface visibly rather than silently defaulting into a group -
+  // a course shipped with no GROUP_ID is a data bug, not something to paper over here.
   for (const c of allCourses) {
-    if (!c.GROUP_ID || c.GROUP_ID === '-') c.GROUP_ID = courseGroupMap[c.ID] || 'inside-the-engagement';
+    if (!c.GROUP_ID || c.GROUP_ID === '-') c.GROUP_ID = 'ungrouped';
   }
 
   // Filter courses based on learnFilter
@@ -16695,7 +16822,7 @@ function renderLearning() {
       <div class="view-head lesson-view-head">
         <h1>${escHtml(lesson.title || 'Lesson')}</h1>
         <div class="view-head-meta crumbs">
-          <a href="#" class="crumb-link" onclick="learnBack();learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Learning</a>
+          <a href="#" class="crumb-link" onclick="learnBack();learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Academia</a>
           ${group ? `<span class="crumb-sep">/</span><a href="#" class="crumb-link" onclick="learnOpenGroup('${escAttr(group.id)}');return false">${escHtml(group.label)}</a>` : ''}
           <span class="crumb-sep">/</span>
           <a href="#" class="crumb-link" onclick="learnBack();return false">${escHtml(course.TITLE || 'Course')}</a>
@@ -16720,7 +16847,7 @@ function renderLearning() {
         </div>
       </div>
       <div class="lesson-reader-container">
-        <div class="lesson-body unboxed">${refChips(learnMd(learnOpen.content))}</div>
+        <div class="lesson-body unboxed">${refChips(learnMd(learnOpen.content, learnOpen.course))}</div>
         <div class="lesson-actions" style="margin-top:2.5rem;padding-top:1.2rem;border-top:1px solid var(--border)">
           ${(() => {
             const ls = course.lessons || [];
@@ -16779,7 +16906,7 @@ function renderLearning() {
           <div>
             <h1>${escHtml(c.TITLE)}</h1>
             <div class="view-head-meta crumbs">
-              <a href="#" class="crumb-link" onclick="learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Learning</a>
+              <a href="#" class="crumb-link" onclick="learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Academia</a>
               ${group ? `<span class="crumb-sep">/</span><a href="#" class="crumb-link" onclick="learnOpenGroup('${escAttr(group.id)}');return false">${escHtml(group.label)}</a>` : ''}
               <span class="crumb-sep">/</span><span class="crumb-here">${done}/${lessons.length} lessons done · updated ${fmtWhen(c.UPDATED_AT, { rel: true })}</span>
             </div>
@@ -16836,7 +16963,7 @@ function renderLearning() {
           <div>
             <h1>${escHtml(group.icon || '📚')} ${escHtml(group.label)}</h1>
             <div class="view-head-meta crumbs">
-              <a href="#" class="crumb-link" onclick="learnCloseGroup();return false">Learning</a>
+              <a href="#" class="crumb-link" onclick="learnCloseGroup();return false">Academia</a>
               <span class="crumb-sep">/</span><span class="crumb-here">Track Overview</span>
             </div>
           </div>
@@ -16873,7 +17000,7 @@ function renderLearning() {
     <div class="view-head">
       <div class="learn-header-bar">
         <div>
-          <h1>Learning</h1>
+          <h1>Academia</h1>
           <div class="view-head-meta">private classroom … classified tracks, living courses, and verifiable competency</div>
         </div>
         <div class="learn-controls">
@@ -16992,7 +17119,7 @@ function renderLearnModals() {
           <div class="modal-body">
             <div style="margin-bottom:0.8rem">
               <strong style="color:var(--text)">${escHtml(c.TITLE || c.ID)}</strong>
-              <div class="card-meta">${c.lessons?.length || 0} modules · ID: ${escHtml(c.ID)}</div>
+              <div class="card-meta">${c.lessons?.length || 0} modules · ID: <span class="id-badge">${escHtml(c.ID)}</span></div>
             </div>
             <label>Assigned Track / Classification</label>
             <select id="modal-course-group" class="jira-input" style="margin-bottom:0.8rem">
@@ -17354,8 +17481,9 @@ function learnHeadingId(text) {
   return n === 1 ? base : `${base}-${n}`;
 }
 
-function learnMd(src) {
+function learnMd(src, courseId) {
   learnHeadingSeen = {};
+  const learnMdCourseId = courseId || '';
   let rawSrc = String(src || '');
   // Holds any block-level HTML that must survive the escHtml pass below
   // untouched - equations first (7 Aug), charts and maps joined it (14 Aug).
@@ -17396,9 +17524,48 @@ function learnMd(src) {
   const out = [];
   const closeQuiz = () => { if (inQuiz) { out.push('</div>'); inQuiz = false; } };
 
+  // BL26083104: inline jargon marker, `[[term|definition]]`, usable
+  // anywhere in flowing body text (not just at a paragraph's start, unlike
+  // every other callout) -- replaces the old block-style `**Jargon:** term
+  // - definition` callout going forward. Matched BEFORE the `[label](href)`
+  // link pattern below so a jargon marker's double brackets are never
+  // mistaken for a nested link (the link regex requires a `(href)` right
+  // after `]`, which a jargon marker never has, but ordering it first
+  // keeps the two forms unambiguous regardless). The definition goes into
+  // a data attribute (escAttr'd) rather than inline HTML, since the popup
+  // reads it straight off the DOM -- see toggleJargonPopup() below.
   const inline = (s) => s
-    .replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_m, alt, src) =>
-      `<img src="${src}" alt="${alt}" class="lesson-img" loading="lazy">`)
+    .replace(/\[\[([^\|\]\n]+)\|([^\]\n]+)\]\]/g, (_m, term, def) =>
+      `<span class="jargon-term" tabindex="0" role="button" aria-haspopup="true" data-def="${escAttr(def.trim())}" onclick="event.stopPropagation();toggleJargonPopup(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleJargonPopup(this)}">${term.trim()}</span>`)
+    .replace(/!\[([^\]\n]*)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)/g, (_m, alt, src, title) => {
+      // Resolve _assets/ paths to the vault-proxied asset endpoint
+      const resolvedSrc = src.startsWith('_assets/')
+        ? `/api/learning/asset?course=${encodeURIComponent(learnMdCourseId)}&file=${encodeURIComponent(src.slice(8))}`
+        : src;
+      // Never serve raw external URLs — flag them visually instead of breaking silently
+      if (/^https?:\/\//i.test(src) && !resolvedSrc.startsWith('/api/')) {
+        return `<span class="lesson-img-caption" style="color:var(--red)">[Image blocked: must be stored in _assets/, not linked externally]</span>`;
+      }
+      // BL26083105: missing/empty alt text is a build-time lint, not a silent
+      // accept — same "cite it or do not claim it" discipline as the book/
+      // research callouts above, applied to alt text instead of a citation.
+      if (!alt.trim()) {
+        return `<span class="lesson-img-caption" style="color:var(--red)">[Image blocked: missing required alt text — add \`![Descriptive alt text](${escHtml(src)})\`]</span>`;
+      }
+      const altEsc = escAttr(alt.trim());
+      const caption = (title || alt || '').trim();
+      // Detect _captured DD Mon YYYY_ pattern anywhere in caption
+      const capturedMatch = caption.match(/_captured\s+([^_]+)_/i);
+      const capturedHtml  = capturedMatch
+        ? `<span class="lesson-img-captured">captured ${escHtml(capturedMatch[1].trim())}</span>`
+        : '';
+      // Remove captured marker from display caption
+      const captionText = caption.replace(/_captured\s+[^_]+_/gi, '').trim();
+      const captionHtml = captionText
+        ? `<span class="lesson-img-caption">${escHtml(captionText)}</span>` : '';
+      const lbSrc = escAttr(resolvedSrc), lbAlt = escAttr(alt.trim());
+      return `<span class="lesson-img-wrap"><img src="${resolvedSrc}" alt="${altEsc}" class="lesson-img" loading="lazy" onclick="openLessonImageLightbox('${lbSrc}','${lbAlt}')">${captionHtml}${capturedHtml}</span>`;
+    })
     .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_m, label, href) =>
       /^https?:\/\//i.test(href)
         ? `<a href="${href}" class="lesson-link" target="_blank" rel="noreferrer">${label}</a>`
@@ -17428,7 +17595,7 @@ function learnMd(src) {
   // This joins every continuation line up to the next blank line or the
   // start of a new block, so the whole sentence - citation included -
   // lands inside the one callout it belongs to.
-  const CALLOUT_OPENER = /^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|Fun fact|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/i;
+  const CALLOUT_OPENER = /^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|Fun fact|Fact|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/i;
   // A book callout ties an idea to a book; a research callout carries the
   // actual number - a named study, dataset or report with its year, so a
   // claim in the lesson traces to a source that can be checked rather than
@@ -17494,7 +17661,7 @@ function learnMd(src) {
     if (/^\*\*(In a book|Book):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
       const m = text.match(/^\*\*(In a book|Book):?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
-      if (m) out.push(`<div class="lesson-book"><span>In a book</span>${restoreMath(inline(m[2]))}<div class="lesson-cite">${restoreMath(inline(m[3]))}</div></div>`);
+      if (m) out.push(`<div class="lesson-book"><span>Book</span>${restoreMath(inline(m[2]))}<div class="lesson-cite">${restoreMath(inline(m[3]))}</div></div>`);
       else out.push(`<p>${restoreMath(inline(text))}</p>`);
       i = nextIdx; continue;
     }
@@ -17505,9 +17672,9 @@ function learnMd(src) {
       else out.push(`<p>${restoreMath(inline(text))}</p>`);
       i = nextIdx; continue;
     }
-    if (/^\*\*Fun fact:?\*\*/i.test(line)) {
+    if (/^\*\*(Fun fact|Fact):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
-      out.push(`<div class="lesson-fun-fact">${restoreMath(inline(text.replace(/^\*\*Fun fact:?\*\*\s*/i, '<span>Fun fact</span>')))}</div>`);
+      out.push(`<div class="lesson-fun-fact">${restoreMath(inline(text.replace(/^\*\*(Fun fact|Fact):?\*\*\s*/i, '<span>Fact</span>')))}</div>`);
       i = nextIdx; continue;
     }
     if (/^\*\*Book quote:?\*\*/i.test(line)) {
@@ -17521,13 +17688,13 @@ function learnMd(src) {
     if (/^### /.test(line)) { const t = line.slice(4); out.push(`<h4 id="${learnHeadingId(t)}">${restoreMath(inline(t))}</h4>`); continue; }
     if (/^## /.test(line))  { closeQuiz(); const t = line.slice(3); out.push(`<h3 id="${learnHeadingId(t)}">${restoreMath(inline(t))}</h3>`); continue; }
     if (/^# /.test(line))   { closeQuiz(); out.push(`<h2>${restoreMath(inline(line.slice(2)))}</h2>`); continue; }
-    if (/^\*\*(You will be able to|What you will learn|What will be learnt):?\*\*/i.test(line)) {
+    if (/^\*\*(You will be able to|What you will learn|What will be learnt|Objective):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
-      out.push(`<div class="lesson-objective">${restoreMath(inline(text.replace(/^\*\*(You will be able to|What you will learn|What will be learnt):?\*\*\s*/i, '<span>What you will learn</span>')))}</div>`);
+      out.push(`<div class="lesson-objective">${restoreMath(inline(text.replace(/^\*\*(You will be able to|What you will learn|What will be learnt|Objective):?\*\*\s*/i, '<span>Objective</span>')))}</div>`);
       i = nextIdx; continue; }
-    if (/^\*\*(Watch for|What to watch for|Watch out for|Careful):?\*\*/i.test(line)) {
+    if (/^\*\*(Watch for|What to watch for|Watch out for|Careful|Failure):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
-      closeQuiz(); out.push(`<div class="lesson-watch">${restoreMath(inline(text.replace(/^\*\*(Watch for|What to watch for|Watch out for|Careful):?\*\*\s*/i, '<span>What to watch for</span>')))}</div>`);
+      closeQuiz(); out.push(`<div class="lesson-watch">${restoreMath(inline(text.replace(/^\*\*(Watch for|What to watch for|Watch out for|Careful|Failure):?\*\*\s*/i, '<span>Failure</span>')))}</div>`);
       i = nextIdx; continue; }
     if (/^\s*(---+|\*\*\*+)\s*$/.test(line)) { closeQuiz(); out.push('<hr class="lesson-rule">'); continue; }
     if (/^&gt;\s?/.test(line)) { out.push(`<blockquote class="lesson-quote">${restoreMath(inline(line.replace(/^&gt;\s?/, '')))}</blockquote>`); continue; }
@@ -17689,7 +17856,7 @@ function learnPlainText(md) {
   return String(md || '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/\$\$[\s\S]*?\$\$/g, '')
-    .replace(/^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|Fun fact|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/gim, '')
+    .replace(/^\*\*(Jargon|In plain language|Plain language|The word|In a book|Book|Research|Book quote|Fun fact|Fact|You will be able to|What you will learn|What will be learnt|Watch for|What to watch for|Watch out for|Careful):?\*\*/gim, '')
     .replace(/^#{1,4}\s*/gm, '')
     .replace(/^##\s*Check yourself.*$/gim, '')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')

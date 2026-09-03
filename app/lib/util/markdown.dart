@@ -21,12 +21,21 @@ enum MarkdownVariant { compact, reading }
 /// horizontal rules, links and tables. No external dependency, fully offline.
 class Markdown extends StatelessWidget {
   const Markdown(this.source,
-      {super.key, this.baseStyle, this.variant = MarkdownVariant.compact});
+      {super.key,
+      this.baseStyle,
+      this.variant = MarkdownVariant.compact,
+      this.courseId = '',
+      this.baseUrl = ''});
   final String source;
   final TextStyle? baseStyle;
   final MarkdownVariant variant;
+  /// If set, `![alt](_assets/file.ext)` paths resolve to
+  /// `$baseUrl/api/learning/asset?course=$courseId&file=file.ext`.
+  final String courseId;
+  final String baseUrl;
 
   bool get _reading => variant == MarkdownVariant.reading;
+
 
   @override
   Widget build(BuildContext context) {
@@ -410,81 +419,171 @@ class Markdown extends StatelessWidget {
     );
   }
 
+  // BL26083105: resolve _assets/ path to the hub's /api/learning/asset endpoint.
+  String _resolveImageUrl(String raw) {
+    if (raw.startsWith('_assets/') && courseId.isNotEmpty && baseUrl.isNotEmpty) {
+      final base = baseUrl.trimRight().replaceAll(RegExp(r'/$'), '');
+      final file = Uri.encodeComponent(raw.substring(8));
+      final cid  = Uri.encodeComponent(courseId);
+      return '$base/api/learning/asset?course=$cid&file=$file';
+    }
+    return raw;
+  }
+
+  // BL26083105: a missing alt or a hot-linked external URL is a build-time
+  // lint, not a silent accept — mirrors learnMd()'s red-flagged inline
+  // callout on web (same "cite it or do not claim it" discipline).
+  Widget _imageLintBlocked(String message) => Container(
+        margin: EdgeInsets.symmetric(vertical: _reading ? 16 : 8),
+        child: Text(message, style: T.small.copyWith(color: C.red)),
+      );
+
   Widget _image(_Block block) {
+    if (block.imageAlt.trim().isEmpty) {
+      return _imageLintBlocked(
+          '[Image blocked: missing required alt text — add `![Descriptive alt text](${block.imageUrl})`]');
+    }
+    final isExternal = RegExp(r'^https?://', caseSensitive: false).hasMatch(block.imageUrl);
+    final isAsset = block.imageUrl.startsWith('_assets/');
+    if (isExternal && !isAsset) {
+      return _imageLintBlocked(
+          '[Image blocked: must be stored in _assets/, not linked externally]');
+    }
+    final resolvedUrl = _resolveImageUrl(block.imageUrl);
+    final rawCaption = block.imageCaption.trim();
+    // Detect _captured DD Mon YYYY_ pattern (mirrors web renderer's convention)
+    final capturedMatch = RegExp(r'_captured\s+([^_]+)_', caseSensitive: false)
+        .firstMatch(rawCaption);
+    final capturedText = capturedMatch?.group(1)?.trim() ?? '';
+    final captionText  = rawCaption
+        .replaceAll(RegExp(r'_captured\s+[^_]+_', caseSensitive: false), '')
+        .trim();
+
+    Widget imgWidget(BuildContext context) => GestureDetector(
+          onTap: () => showDialog<void>(
+            context: context,
+            barrierColor: Colors.black87,
+            builder: (_) => Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.all(12),
+              child: Stack(children: [
+                InteractiveViewer(
+                  panEnabled: true,
+                  minScale: 0.8,
+                  maxScale: 6.0,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      resolvedUrl,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Icon(
+                          Icons.image_not_supported_rounded,
+                          color: Colors.white54, size: 48),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 0, right: 0,
+                  child: IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Sz.rMd),
+              border: Border.all(color: C.border),
+              boxShadow: const [BoxShadow(color: Color(0x1a000000), blurRadius: 4, offset: Offset(0, 1))],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(Sz.rMd),
+              child: Image.network(
+                resolvedUrl,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: C.surface,
+                    borderRadius: BorderRadius.circular(Sz.rMd),
+                    border: Border.all(color: C.border),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.image_not_supported_rounded, size: 20, color: C.text3),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(
+                      captionText.isNotEmpty ? captionText : block.imageUrl,
+                      style: T.small.copyWith(color: C.text3),
+                    )),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        );
+
     return Container(
       margin: EdgeInsets.symmetric(vertical: _reading ? 16 : 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(Sz.rMd),
-            child: Image.network(
-              block.imageUrl,
-              errorBuilder: (context, error, stackTrace) => Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: C.surface,
-                  borderRadius: BorderRadius.circular(Sz.rMd),
-                  border: Border.all(color: C.border),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.image_not_supported_rounded, size: 20, color: C.text3),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        block.imageAlt.isNotEmpty ? block.imageAlt : block.imageUrl,
-                        style: T.small.copyWith(color: C.text3),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (block.imageAlt.isNotEmpty) ...[
+          Builder(builder: imgWidget),
+          if (captionText.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(block.imageAlt, style: T.tiny.copyWith(color: C.text3)),
+            Text(captionText, style: T.tiny.copyWith(color: C.text3)),
+          ],
+          if (capturedText.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text('captured $capturedText',
+                style: T.tiny.copyWith(color: C.text3, fontStyle: FontStyle.italic)),
           ],
         ],
       ),
     );
   }
 
-  /// Inline markdown: **bold**, *italic*, `code`, [text](url).
+
+  /// Inline markdown: **bold**, *italic*, `code`, [text](url), and (BL26083104)
+  /// the `[[term|definition]]` jargon marker -- matched first so its double
+  /// brackets are never mistaken for the `[text](url)` link group below,
+  /// which requires a `(url)` immediately after `]` a jargon marker never has.
   TextSpan _inline(String text, TextStyle style) {
     final spans = <InlineSpan>[];
     final pattern = RegExp(
-        r'(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))');
+        r'(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))');
     var pos = 0;
     for (final match in pattern.allMatches(text)) {
       if (match.start > pos) {
         spans.add(TextSpan(text: text.substring(pos, match.start)));
       }
       if (match.group(1) != null) {
+        spans.add(_jargonTermSpan(match.group(2)!.trim(), match.group(3)!.trim(), style));
+      } else if (match.group(4) != null) {
         spans.add(TextSpan(
-            text: match.group(2),
+            text: match.group(5),
             style: const TextStyle(fontWeight: FontWeight.w600)));
-      } else if (match.group(3) != null) {
+      } else if (match.group(6) != null) {
         spans.add(TextSpan(
-            text: match.group(4),
+            text: match.group(7),
             style: const TextStyle(fontStyle: FontStyle.italic)));
-      } else if (match.group(5) != null) {
+      } else if (match.group(8) != null) {
         spans.add(TextSpan(
-            text: match.group(6),
+            text: match.group(9),
             style: const TextStyle(fontStyle: FontStyle.italic)));
-      } else if (match.group(7) != null) {
+      } else if (match.group(10) != null) {
         spans.add(TextSpan(
-          text: match.group(8),
+          text: match.group(11),
           style: T.mono.copyWith(
               color: C.greenBright,
               fontSize: (style.fontSize ?? 13) - 1,
               backgroundColor: C.surface),
         ));
-      } else if (match.group(9) != null) {
-        final url = match.group(11)!;
+      } else if (match.group(12) != null) {
+        final url = match.group(14)!;
         spans.add(TextSpan(
-          text: match.group(10),
+          text: match.group(13),
           style: const TextStyle(
               color: C.cyan, decoration: TextDecoration.underline,
               decorationColor: C.cyan),
@@ -502,6 +601,83 @@ class Markdown extends StatelessWidget {
     if (pos < text.length) spans.add(TextSpan(text: text.substring(pos)));
     return TextSpan(style: style, children: spans);
   }
+
+  /// BL26083104: a purple, code-styled inline span for a jargon term,
+  /// wherever it appears in flowing text -- replaces the old full-width
+  /// Jargon callout for new/rewritten content. A `Builder` gets a fresh
+  /// `BuildContext` bound right here (rather than threading `context`
+  /// through every `_inline` call site above), which is all
+  /// `showJargonDefinition` below needs to find the enclosing Navigator.
+  WidgetSpan _jargonTermSpan(String term, String definition, TextStyle style) {
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Builder(
+        builder: (context) => GestureDetector(
+          onTap: () => showJargonDefinition(context, term, definition),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: C.violet.withValues(alpha: 0.1),
+              border: Border.all(color: C.violet.withValues(alpha: 0.3)),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              term,
+              style: T.mono.copyWith(
+                color: C.violet,
+                fontSize: (style.fontSize ?? 15.5) - 1,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// BL26083104: the definition popup for an inline jargon term -- a small
+/// dismissible bottom sheet (tap-outside or the close button dismisses,
+/// same "never lose the reader's place" principle as everywhere else this
+/// pattern is used in the app), not the full `showFormSheet` title-heavy
+/// scaffold, since this is a couple of sentences, not a form.
+Future<void> showJargonDefinition(
+    BuildContext context, String term, String definition) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: C.panel,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
+      side: BorderSide(color: C.border),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(term,
+                      style: T.title.copyWith(
+                          color: C.violet, fontFamily: T.mono.fontFamily)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 20, color: C.text3),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  tooltip: 'Close',
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(definition, style: T.body.copyWith(color: C.text, height: 1.5)),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 enum _Kind { paragraph, heading, code, quote, rule, listItem, table, callout, chart, map, equation, image }
@@ -517,16 +693,16 @@ class _Callout {
 }
 
 final _callouts = <_Callout>[
-  _Callout('learn', 'What you will learn', C.callLearn, C.callLearnBg,
-      RegExp(r'^\*\*(?:What you will learn|What will be learnt|You will be able to|Learning outcomes?):?\*\*\s*',
+  _Callout('learn', 'Objective', C.callLearn, C.callLearnBg,
+      RegExp(r'^\*\*(?:What you will learn|What will be learnt|You will be able to|Objective|Learning outcomes?):?\*\*\s*',
           caseSensitive: false)),
   _Callout('jargon', 'Jargon', C.callJargon, C.callJargonBg,
       RegExp(r'^\*\*(?:Jargon|In plain language|Plain language|The word):?\*\*\s*',
           caseSensitive: false)),
-  _Callout('watch', 'What to watch for', C.callWatch, C.callWatchBg,
-      RegExp(r'^\*\*(?:What to watch for|Watch out for|Watch for|Watch|Careful):?\*\*\s*',
+  _Callout('watch', 'Failure', C.callWatch, C.callWatchBg,
+      RegExp(r'^\*\*(?:What to watch for|Watch out for|Watch for|Watch|Failure|Careful):?\*\*\s*',
           caseSensitive: false)),
-  _Callout('book', 'In a book', C.callBook, C.callBookBg,
+  _Callout('book', 'Book', C.callBook, C.callBookBg,
       RegExp(r'^\*\*(?:In a book|Book|From the literature):?\*\*\s*',
           caseSensitive: false)),
   _Callout('quote', 'Book quote', C.callQuote, C.callQuoteBg,
@@ -534,6 +710,8 @@ final _callouts = <_Callout>[
           caseSensitive: false)),
   _Callout('research', 'Research', C.callResearch, C.callResearchBg,
       RegExp(r'^\*\*Research:?\*\*\s*', caseSensitive: false)),
+  _Callout('fact', 'Fact', C.callFact, C.callFactBg,
+      RegExp(r'^\*\*(?:Fun fact|Fact):?\*\*\s*', caseSensitive: false)),
 ];
 
 _Callout? _matchCallout(String line) {
@@ -576,6 +754,7 @@ class _Block {
   String mapLabel = '';
   String imageUrl = '';
   String imageAlt = '';
+  String imageCaption = '';
 }
 
 List<_Block> _parseBlocks(String source) {
@@ -668,12 +847,16 @@ List<_Block> _parseBlocks(String source) {
       continue;
     }
 
-    // Standalone image ![alt](url)
-    final imgMatch = RegExp(r'^!\[([^\]]*)\]\(([^)]+)\)$').firstMatch(trimmed);
+    // Standalone image ![alt](url "caption") — title-syntax caption mirrors
+    // the web renderer's `caption = title || alt` convention (learnMd()).
+    final imgMatch = RegExp(r'^!\[([^\]]*)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)$').firstMatch(trimmed);
     if (imgMatch != null) {
       flushPara();
+      final alt = imgMatch.group(1)!.trim();
+      final title = imgMatch.group(3)?.trim() ?? '';
       blocks.add(_Block(_Kind.image)
-        ..imageAlt = imgMatch.group(1)!.trim()
+        ..imageAlt = alt
+        ..imageCaption = title.isNotEmpty ? title : alt
         ..imageUrl = imgMatch.group(2)!.trim());
       idx++;
       continue;

@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'vault_mirror.dart';
+
 /// Local persistence. The vault ENGINE on the server remains the single
 /// source of truth for this app's data (constitution 2.7); everything here
 /// is cache plus a queue of not-yet-delivered writes -- this contract is
@@ -26,7 +28,18 @@ class AppDb {
         : p.join((await getApplicationDocumentsDirectory()).path, 'isconl.db');
     final db = await openDatabase(
       path,
-      version: 1,
+      // v3 (BN26083103): added lesson_resume, an always-on local table for
+      // offline-safe scroll-position tracking -- separate from the
+      // server-side saveLessonResume() mutation (queueable:false, so an
+      // offline write there is simply dropped, not queued). This table is
+      // written unconditionally, online or offline, since it's on-device;
+      // the server mutation stays best-effort on top of it.
+      // v2 (BN26083107): added the vault-mirror tables (real per-collection
+      // tables matching a slice of vault's own schema -- see
+      // vault_schema.dart) alongside the pre-existing generic snapshot
+      // cache, which stays as-is. onUpgrade only needs to ADD the new
+      // tables for an existing install; onCreate covers both for a fresh one.
+      version: 3,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE snapshots (
@@ -54,6 +67,28 @@ class AppDb {
             meta TEXT,
             ts INTEGER NOT NULL
           )''');
+        await db.execute('''
+          CREATE TABLE lesson_resume (
+            course TEXT NOT NULL,
+            file TEXT NOT NULL,
+            scroll_pct INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (course, file)
+          )''');
+        await ensureVaultMirrorTables(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) await ensureVaultMirrorTables(db);
+        if (oldVersion < 3) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS lesson_resume (
+              course TEXT NOT NULL,
+              file TEXT NOT NULL,
+              scroll_pct INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (course, file)
+            )''');
+        }
       },
     );
     return AppDb._(db);
@@ -185,4 +220,67 @@ class AppDb {
   }
 
   Future<void> clearChat() => _db.delete('chat').then((_) {});
+
+  // ---- lesson resume (BN26083103) ----
+
+  /// Always-on, offline-safe scroll-position write -- unconditional, online
+  /// or offline, since it's purely on-device. This is the real "absolutely
+  /// aware" local source of truth; the server-side saveLessonResume()
+  /// mutation is best-effort on top of it, not a replacement for it.
+  Future<void> saveLessonResumeLocal({
+    required String course,
+    required String file,
+    required int scrollPct,
+  }) async {
+    await _db.insert(
+      'lesson_resume',
+      {
+        'course': course,
+        'file': file,
+        'scroll_pct': scrollPct,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// The saved scroll percentage (0-100) for one lesson, or null if this
+  /// lesson has never had a position saved on this device.
+  Future<int?> lessonResumeLocal({
+    required String course,
+    required String file,
+  }) async {
+    final rows = await _db.query(
+      'lesson_resume',
+      columns: ['scroll_pct'],
+      where: 'course = ? AND file = ?',
+      whereArgs: [course, file],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['scroll_pct'] as int?;
+  }
+
+  // ---- vault mirror (BN26083107) ----
+
+  /// Extracts and upserts whatever `kMirrorSources` declares for this
+  /// snapshot key -- a no-op for the (still-majority) snapshot keys with no
+  /// mirror source declared yet. Called from `Snapshot.refresh()` right
+  /// after a successful fetch, alongside (not instead of) the existing
+  /// `putSnapshot()` blob cache.
+  Future<void> mirrorSnapshot(String snapshotKey, dynamic responseJson) =>
+      mirrorSnapshotIntoVaultTables(_db, snapshotKey, responseJson);
+
+  /// Every row currently mirrored into `table` (see `vault_schema.dart`'s
+  /// `kVaultTables` for the declared columns), same shape a server-side
+  /// `vault.read()` would return.
+  Future<List<VaultRow>> vaultRows(String table) => readVaultRows(_db, table);
+
+  /// Returns `base` (a decoded API response, or the cached blob) with its
+  /// mirrored fields refreshed from the live per-collection tables --
+  /// same JSON shape, per-row merge, never a blind replace. See
+  /// `overlayVaultMirror`'s own doc comment for why. A no-op for a
+  /// snapshot key with no mirror source declared.
+  Future<dynamic> overlayVaultMirror(String snapshotKey, dynamic base) =>
+      overlayVaultMirrorTables(_db, snapshotKey, base);
 }
