@@ -5206,7 +5206,55 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
 .lesson-link { color:var(--lb-accent, #6fc0af); text-decoration:none; border-bottom:1px solid var(--lb-accent, #6fc0af); opacity:0.9; }
 .lesson-link:hover { opacity:1; }
 .lesson-link:focus-visible { outline:2px solid var(--lb-accent, #6fc0af); outline-offset:2px; border-radius:2px; }
-.lesson-img { max-width:100%; height:auto; border-radius:6px; margin:0.75rem 0; display:block; }
+/* BL26083105 — inline image system: figure wrapper, caption, captured-date, citation, lightbox */
+.lesson-img-wrap { display:block; margin:1.25rem 0; }
+.lesson-img {
+  max-width:100%; height:auto; display:block;
+  border-radius:var(--r-md, 8px);
+  border:1px solid var(--border);
+  box-shadow:0 1px 4px rgba(0,0,0,0.14);
+  cursor:zoom-in;
+  transition:box-shadow 0.15s;
+}
+.lesson-img:hover { box-shadow:0 3px 12px rgba(0,0,0,0.22); }
+.lesson-img-caption {
+  margin-top:0.35rem;
+  font-family:var(--font-ui, system-ui, sans-serif);
+  font-size:0.72rem; color:var(--text-3);
+  line-height:1.45;
+}
+.lesson-img-captured {
+  display:inline-block; margin-top:0.2rem;
+  font-family:var(--font-mono); font-size:0.65rem;
+  color:var(--text-3); opacity:0.8; font-style:italic;
+}
+.lesson-img-cite {
+  font-family:var(--font-mono); font-style:normal; font-size:0.65rem;
+  color:var(--text-3); margin-top:0.2rem; opacity:0.85;
+}
+/* lightbox */
+.lesson-lightbox-overlay {
+  position:fixed; inset:0; z-index:9000;
+  background:rgba(0,0,0,0.88);
+  display:flex; align-items:center; justify-content:center;
+  animation:lb-in 0.18s ease;
+}
+@keyframes lb-in { from { opacity:0 } to { opacity:1 } }
+.lesson-lightbox-overlay img {
+  max-width:92vw; max-height:88vh; border-radius:var(--r-md, 8px);
+  box-shadow:0 8px 40px rgba(0,0,0,0.6);
+  cursor:zoom-out;
+  user-select:none;
+}
+.lesson-lightbox-close {
+  position:fixed; top:1rem; right:1rem;
+  background:rgba(255,255,255,0.12); border:none; border-radius:50%;
+  width:2.5rem; height:2.5rem; cursor:pointer;
+  color:#fff; font-size:1.3rem; display:flex; align-items:center; justify-content:center;
+  transition:background 0.15s;
+}
+.lesson-lightbox-close:hover { background:rgba(255,255,255,0.25); }
+
 
 /* The course card gains a classroom label and a plainer progress read. */
 .learn-classroom { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.09em;

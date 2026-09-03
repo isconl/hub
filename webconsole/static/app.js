@@ -2531,6 +2531,38 @@ function toggleJargonPopup(el) {
   popup.style.top = `${r.bottom + window.scrollY + 6}px`;
   requestAnimationFrame(() => popup.classList.add('open'));
 }
+// BL26083105: lesson image lightbox — opens inline image full-screen with close-on-click/Escape.
+// Never navigates away from the lesson; reading position is preserved on close.
+function openLessonImageLightbox(src, alt) {
+  closeLessonImageLightbox();
+  const overlay = document.createElement('div');
+  overlay.className = 'lesson-lightbox-overlay';
+  overlay.id = 'lesson-lightbox';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', alt || 'Image');
+  const img = document.createElement('img');
+  img.src = src; img.alt = alt || '';
+  img.draggable = false;
+  img.onclick = () => closeLessonImageLightbox();
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'lesson-lightbox-close';
+  closeBtn.setAttribute('aria-label', 'Close image');
+  closeBtn.textContent = '×';
+  closeBtn.onclick = (e) => { e.stopPropagation(); closeLessonImageLightbox(); };
+  overlay.appendChild(img);
+  overlay.appendChild(closeBtn);
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLessonImageLightbox(); });
+  document.body.appendChild(overlay);
+  overlay.focus();
+}
+function closeLessonImageLightbox() {
+  const el = document.getElementById('lesson-lightbox');
+  if (el) el.remove();
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLessonImageLightbox();
+});
+
 function closeJargonPopup() {
   const existing = document.getElementById('jargon-popup');
   if (existing) existing.remove();
@@ -16698,12 +16730,12 @@ const DEFAULT_LEARNING_GROUPS = [
 function getResolvedGroups(courses, backendGroups) {
   const baseGroups = (backendGroups && backendGroups.length) ? backendGroups : DEFAULT_LEARNING_GROUPS;
   const courseGroupMap = {
-    'viva': 'inside-the-engagement',
+    'viva-foundations': 'inside-the-engagement',
     'viva-role': 'inside-the-engagement',
     'viva-meetings': 'inside-the-engagement',
     'viva-tasks': 'inside-the-engagement',
     'viva-portals': 'platform-and-systems',
-    'wellspring': 'platform-and-systems',
+    'wellspring-pipeline': 'platform-and-systems',
     'wabba-ux': 'platform-and-systems',
     'wabba-content': 'platform-and-systems',
     'viva-model': 'business-and-market',
@@ -16733,12 +16765,12 @@ function renderLearning() {
 
   // Map courses with resolved GROUP_ID if missing
   const courseGroupMap = {
-    'viva': 'inside-the-engagement',
+    'viva-foundations': 'inside-the-engagement',
     'viva-role': 'inside-the-engagement',
     'viva-meetings': 'inside-the-engagement',
     'viva-tasks': 'inside-the-engagement',
     'viva-portals': 'platform-and-systems',
-    'wellspring': 'platform-and-systems',
+    'wellspring-pipeline': 'platform-and-systems',
     'wabba-ux': 'platform-and-systems',
     'wabba-content': 'platform-and-systems',
     'viva-model': 'business-and-market',
@@ -16790,7 +16822,7 @@ function renderLearning() {
         </div>
       </div>
       <div class="lesson-reader-container">
-        <div class="lesson-body unboxed">${refChips(learnMd(learnOpen.content))}</div>
+        <div class="lesson-body unboxed">${refChips(learnMd(learnOpen.content, learnOpen.course))}</div>
         <div class="lesson-actions" style="margin-top:2.5rem;padding-top:1.2rem;border-top:1px solid var(--border)">
           ${(() => {
             const ls = course.lessons || [];
@@ -17424,8 +17456,9 @@ function learnHeadingId(text) {
   return n === 1 ? base : `${base}-${n}`;
 }
 
-function learnMd(src) {
+function learnMd(src, courseId) {
   learnHeadingSeen = {};
+  const learnMdCourseId = courseId || '';
   let rawSrc = String(src || '');
   // Holds any block-level HTML that must survive the escHtml pass below
   // untouched - equations first (7 Aug), charts and maps joined it (14 Aug).
@@ -17479,8 +17512,29 @@ function learnMd(src) {
   const inline = (s) => s
     .replace(/\[\[([^\|\]\n]+)\|([^\]\n]+)\]\]/g, (_m, term, def) =>
       `<span class="jargon-term" tabindex="0" role="button" aria-haspopup="true" data-def="${escAttr(def.trim())}" onclick="event.stopPropagation();toggleJargonPopup(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleJargonPopup(this)}">${term.trim()}</span>`)
-    .replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_m, alt, src) =>
-      `<img src="${src}" alt="${alt}" class="lesson-img" loading="lazy">`)
+    .replace(/!\[([^\]\n]*)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)/g, (_m, alt, src, title) => {
+      // Resolve _assets/ paths to the vault-proxied asset endpoint
+      const resolvedSrc = src.startsWith('_assets/')
+        ? `/api/learning/asset?course=${encodeURIComponent(learnMdCourseId)}&file=${encodeURIComponent(src.slice(8))}`
+        : src;
+      // Never serve raw external URLs — flag them visually instead of breaking silently
+      if (/^https?:\/\//i.test(src) && !resolvedSrc.startsWith('/api/')) {
+        return `<span class="lesson-img-caption" style="color:var(--red)">[Image blocked: must be stored in _assets/, not linked externally]</span>`;
+      }
+      const altEsc = escAttr(alt.trim());
+      const caption = (title || alt || '').trim();
+      // Detect _captured DD Mon YYYY_ pattern anywhere in caption
+      const capturedMatch = caption.match(/_captured\s+([^_]+)_/i);
+      const capturedHtml  = capturedMatch
+        ? `<span class="lesson-img-captured">captured ${escHtml(capturedMatch[1].trim())}</span>`
+        : '';
+      // Remove captured marker from display caption
+      const captionText = caption.replace(/_captured\s+[^_]+_/gi, '').trim();
+      const captionHtml = captionText
+        ? `<span class="lesson-img-caption">${escHtml(captionText)}</span>` : '';
+      const lbSrc = escAttr(resolvedSrc), lbAlt = escAttr(alt.trim());
+      return `<span class="lesson-img-wrap"><img src="${resolvedSrc}" alt="${altEsc}" class="lesson-img" loading="lazy" onclick="openLessonImageLightbox('${lbSrc}','${lbAlt}')">${captionHtml}${capturedHtml}</span>`;
+    })
     .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_m, label, href) =>
       /^https?:\/\//i.test(href)
         ? `<a href="${href}" class="lesson-link" target="_blank" rel="noreferrer">${label}</a>`
