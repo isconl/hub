@@ -3857,7 +3857,7 @@ const MENU_COLOR_GROUPS = [
   { key: 'command',   label: 'Command',    hint: 'Today, Kanban, Calendar' },
   { key: 'flow',      label: 'Channels',   hint: 'Inbox, GitHub, Notifications' },
   { key: 'projects',  label: 'Projects',   hint: 'Ventures, deployments' },
-  { key: 'life',      label: 'Personal',   hint: 'Rhythm, Learning, Ideas' },
+  { key: 'life',      label: 'Personal',   hint: 'Rhythm, Academia, Ideas' },
   { key: 'circle',    label: 'Circle',     hint: 'People, Contacts' },
   { key: 'spaces',    label: 'Spaces',     hint: 'Sidebar menu' },
   { key: 'writer',    label: 'Writer',     hint: 'Space cards' },
