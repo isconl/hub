@@ -28,6 +28,14 @@ test('findRoute matches on method AND path, returns null for anything unlisted',
   assert.equal(findRoute('GET', '/api/not-a-real-route'), null);
 });
 
+test('FN26082702: jira preview/push are wired to scope\'s real capabilities, compose/schedule/permissions are explicit gaps, not silent 404s', () => {
+  assert.equal(findRoute('POST', '/api/jira/preview').capability, 'jira.preview');
+  assert.equal(findRoute('POST', '/api/jira/push').capability, 'jira.push');
+  assert.equal(findRoute('POST', '/api/jira/compose').gap, true);
+  assert.equal(findRoute('POST', '/api/jira/schedule').gap, true);
+  assert.equal(findRoute('GET', '/api/jira/permissions').gap, true);
+});
+
 test('every real inventoried app call has SOME entry -- the exact set found by grepping the app branch\'s .dart files, 2026-08-09', () => {
   const inventoried = [
     'POST /api/act', 'GET /api/apk/latest',
