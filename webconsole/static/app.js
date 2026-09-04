@@ -55,6 +55,11 @@ const SVG_ICONS = {
   skipNext: '<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>',
   musicNote: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   youtube: '<path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/>',
+  sparkles: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/>',
+  ruler: '<path d="M3 16l5-5 3 3 9-9"/><path d="M14 4l3 3M11 7l2 2M8 10l2 2M5 13l2 2"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  menu: '<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>',
+  star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
 };
 
 function svgIcon(name, size=15, cls='', extra='') {
@@ -831,11 +836,11 @@ async function checkVaultLink() {
     document.body.appendChild(el);
   }
   el.innerHTML = `
-    <span class="vault-banner-icon">⚠</span>
+    <span class="vault-banner-icon">${svgIcon('alert', 15)}</span>
     <span class="vault-banner-body">${escHtml(bad)} <a href="#" class="vault-banner-link" onclick="navigate('settings');return false">Settings →</a></span>
     <div class="vault-banner-actions">
       <button type="button" class="vault-banner-btn" title="Copy error message" id="vault-banner-copy">⧉</button>
-      <button type="button" class="vault-banner-btn" title="Dismiss" id="vault-banner-dismiss">✕</button>
+      <button type="button" class="vault-banner-btn" title="Dismiss" id="vault-banner-dismiss">${svgIcon('x', 12)}</button>
     </div>`;
   const copyBtn = el.querySelector('#vault-banner-copy');
   if (copyBtn) {
@@ -1217,7 +1222,7 @@ function renderToday() {
       <div class="modal-box">
         <div class="modal-header">
           <span class="modal-title">Schedule event</span>
-          <button class="btn btn-ghost" onclick="closeAddEventModal()">✕</button>
+          <button class="btn btn-ghost" onclick="closeAddEventModal()">${svgIcon('x', 12)}</button>
         </div>
         <div class="modal-body">
           <label>Title</label>
@@ -1517,7 +1522,7 @@ function renderCalendar() {
       <div class="modal-box">
         <div class="modal-header">
           <span class="modal-title">Schedule event</span>
-          <button class="btn btn-ghost" onclick="closeAddEventModal()">✕</button>
+          <button class="btn btn-ghost" onclick="closeAddEventModal()">${svgIcon('x', 12)}</button>
         </div>
         <div class="modal-body">
           <label>Title</label><input id="evt-title" type="text" placeholder="What is happening?"/>
@@ -1891,7 +1896,7 @@ function renderJira() {
       <div class="modal-box">
         <div class="modal-header">
           <span class="modal-title">Create Jira Issue</span>
-          <button class="btn btn-ghost" onclick="closeCreateIssueModal()">✕</button>
+          <button class="btn btn-ghost" onclick="closeCreateIssueModal()">${svgIcon('x', 12)}</button>
         </div>
         <div class="modal-body">
           <label>Summary</label><input id="new-issue-summary" type="text" placeholder="Issue summary..."/>
@@ -2242,11 +2247,11 @@ function renderFileManager() {
           }
         </div>
         <div class="fm-header-actions">
-          <button class="btn btn-ghost fm-view-btn" id="fm-toggle-view" onclick="fmToggleView()" title="Toggle list/grid view">⊞</button>
-          <button class="btn btn-ghost" onclick="fmRefresh()" title="Refresh">⟳</button>
+          <button class="btn btn-ghost fm-view-btn" id="fm-toggle-view" onclick="fmToggleView()" title="Toggle list/grid view">${svgIcon('grid', 13)}</button>
+          <button class="btn btn-ghost" onclick="fmRefresh()" title="Refresh">${svgIcon('refresh', 13)}</button>
           ${connected ? `
             <label class="btn btn-primary" style="cursor:pointer" title="Upload file">
-              ⬆ Upload
+              ${svgIcon('upload', 13)} Upload
               <input type="file" id="fm-upload-input" style="display:none" onchange="fmUploadFile(this)">
             </label>
             <button class="btn btn-ghost" onclick="fmNewFolder()">+ Folder</button>
@@ -2322,7 +2327,7 @@ async function fmNavigate(folderPath, label) {
       // A dead or renamed path must not strand the view - fall back to the root
       // once rather than displaying an error nobody can act on.
       if (folderPath !== 'root') { showToast('That folder is unreachable - showing OneDrive root', 'warn'); return fmNavigate('root'); }
-      body.innerHTML = `<div class="empty-state" style="color:var(--red)">⚠ ${escHtml(data.error)}</div>`;
+      body.innerHTML = `<div class="empty-state" style="color:var(--red)">${svgIcon('alert', 13)} ${escHtml(data.error)}</div>`;
       return;
     }
     // The endpoint normalizes Graph's `.value` into `.items`. This used to read
@@ -2465,7 +2470,7 @@ function fmFilterItems(val) {
 function fmToggleView() {
   fmViewMode = fmViewMode === 'grid' ? 'list' : 'grid';
   const btn = document.getElementById('fm-toggle-view');
-  if (btn) btn.textContent = fmViewMode === 'grid' ? '⊞' : '☰';
+  if (btn) btn.innerHTML = svgIcon(fmViewMode === 'grid' ? 'grid' : 'menu', 13);
   renderFmItems(fileManagerItems);
 }
 
@@ -3015,7 +3020,7 @@ function renderSocial() {
                  placeholder="Search posts..." value="${escAttr(bufferSearchQuery)}" oninput="bufferSearchPosts(this.value)"/>
           ${bufferChannelFilter ? `
             <button class="btn btn-ghost" style="font-size:0.68rem;padding:2px 8px" onclick="bufferFilterProfile(null)">
-              Clear Filter (${escHtml(channels.find(c => c.id === bufferChannelFilter)?.displayName || 'Selected Profile')}) ✕
+              Clear Filter (${escHtml(channels.find(c => c.id === bufferChannelFilter)?.displayName || 'Selected Profile')}) ${svgIcon('x', 11)}
             </button>` : ''}
         </div>
       </div>
@@ -4883,7 +4888,7 @@ function paintCoverage(d) {
       ${gaps.slice(0, 8).map(t => `
         <button class="gap-chip${t.superior ? ' superior' : ''}" onclick="openTask('${escAttr(t.id)}')"
                 title="${escAttr(t.title)}${t.assignedBy ? ` - tabled by ${escAttr(t.assignedBy)}` : ''}">
-          ${escHtml(t.id)}${t.superior ? ' ★' : ''} · ${escHtml(t.gaps[0])}
+          ${escHtml(t.id)}${t.superior ? ' ' + svgIcon('star', 10) : ''} · ${escHtml(t.gaps[0])}
         </button>`).join('')}
       ${gaps.length > 8 ? `<span class="card-meta">+${gaps.length - 8} more</span>` : ''}
     </div>`;
@@ -6109,10 +6114,10 @@ function renderArticleStudio() {
 
               <div style="font-size:0.75rem;color:var(--text-3)">Refining Current Text:</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem">
-                <button class="btn btn-ghost" style="font-size:0.72rem;padding:5px 8px;text-align:left" onclick="runAiArticleAction('polish', this)">✨ Polish & Improve Flow</button>
-                <button class="btn btn-ghost" style="font-size:0.72rem;padding:5px 8px;text-align:left" onclick="runAiArticleAction('enforce_register', this)">📏 Enforce Deadpan Voice</button>
-                <button class="btn btn-ghost" style="font-size:0.72rem;padding:5px 8px;text-align:left" onclick="runAiArticleAction('expand', this)">➕ Expand Current Text</button>
-                <button class="btn btn-ghost" style="font-size:0.72rem;padding:5px 8px;text-align:left" onclick="runAiArticleAction('summarize', this)">📌 Executive Summary</button>
+                <button class="btn btn-ghost" style="font-size:0.72rem;padding:5px 8px;text-align:left" onclick="runAiArticleAction('polish', this)">${svgIcon('sparkles', 12)} Polish & Improve Flow</button>
+                <button class="btn btn-ghost" style="font-size:0.72rem;padding:5px 8px;text-align:left" onclick="runAiArticleAction('enforce_register', this)">${svgIcon('ruler', 12)} Enforce Deadpan Voice</button>
+                <button class="btn btn-ghost" style="font-size:0.72rem;padding:5px 8px;text-align:left" onclick="runAiArticleAction('expand', this)">${svgIcon('plus', 12)} Expand Current Text</button>
+                <button class="btn btn-ghost" style="font-size:0.72rem;padding:5px 8px;text-align:left" onclick="runAiArticleAction('summarize', this)">${svgIcon('pin', 12)} Executive Summary</button>
               </div>
 
               <div id="art-ai-result" class="hidden" style="margin-top:0.5rem;background:var(--bg);padding:0.6rem;border-radius:var(--r-sm);font-size:0.75rem"></div>
@@ -6577,7 +6582,7 @@ function uiSelectPrompt({ title, options, confirmLabel = 'Choose' }) {
     ov.innerHTML = `
       <div class="modal-box ui-dialog">
         <div class="modal-header"><span class="modal-title">${escHtml(title)}</span>
-          <button class="btn btn-ghost" data-no>✕</button></div>
+          <button class="btn btn-ghost" data-no>${svgIcon('x', 12)}</button></div>
         <div class="modal-body">
           <select id="ui-prompt-select" class="input">
             ${options.map(o => `<option value="${escAttr(o.value)}">${escHtml(o.label)}</option>`).join('')}
@@ -6836,7 +6841,7 @@ function renderWriterField(field) {
       <div style="display:flex;align-items:center;gap:0.4rem">
         <label style="font-size:0.72rem;color:var(--text-3)">${label}</label>
         <button class="writer-ai-field-btn" title="Research this field with AI, using the brief above"
-                onclick="writerResearchField('${escAttr(field.name)}',this)">✨</button>
+                onclick="writerResearchField('${escAttr(field.name)}',this)">${svgIcon('sparkles', 12)}</button>
       </div>
       ${control}
     </div>`;
@@ -6901,7 +6906,7 @@ function renderWriterStudio() {
         <textarea id="writer-brief" class="input" style="font-size:0.78rem;flex:1;min-height:2.2rem"
                   placeholder="Brief for AI assist (used by both the per-field ✨ buttons and Full draft below) — what is this document about?"
                   oninput="writerBrief=this.value">${escHtml(writerBrief)}</textarea>
-        <button class="btn btn-ghost" id="writer-full-draft-btn" style="font-size:0.75rem;padding:4px 10px;white-space:nowrap" onclick="writerFullDraft(this)">✨ Full draft (all fields)</button>
+        <button class="btn btn-ghost" id="writer-full-draft-btn" style="font-size:0.75rem;padding:4px 10px;white-space:nowrap" onclick="writerFullDraft(this)">${svgIcon('sparkles', 12)} Full draft (all fields)</button>
       </div>
 
       <div class="art-studio-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:0.85rem">
@@ -7788,7 +7793,7 @@ function renderDocsCard() {
              <button class="btn btn-ghost doc-act" onclick="deliveryRelink(this)">Relink the board</button>
            </div>`}
 
-      ${bag.dead?.length ? `<div class="doc-dead">⚠ ${bag.dead.length} linked file${bag.dead.length > 1 ? 's' : ''} no longer on disk:
+      ${bag.dead?.length ? `<div class="doc-dead">${svgIcon('alert', 12)} ${bag.dead.length} linked file${bag.dead.length > 1 ? 's' : ''} no longer on disk:
         ${bag.dead.map(x => `<code>${escHtml(x)}</code>`).join(' ')}
         <button class="btn btn-ghost doc-act" onclick="deliveryRelink(this)">repair</button></div>` : ''}
 
@@ -10761,7 +10766,7 @@ function notifDetail(id, ev) {
           <span class="notif-icon sev-${escHtml(n.SEVERITY)}">${NOTIF_SOURCE_ICON[n.SOURCE] || '•'}</span>
           ${escHtml(n.SOURCE)} · ${escHtml(n.KIND)}
         </span>
-        <button class="btn btn-ghost" onclick="document.getElementById('notif-detail').remove()">✕</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('notif-detail').remove()">${svgIcon('x', 12)}</button>
       </div>
       <div class="modal-body">
         <div class="nd-title">${refChips(escHtml(n.TITLE))}</div>
@@ -11872,7 +11877,7 @@ function uiPrompt({ title, label = '', value = '', placeholder = '', hint = '', 
     ov.innerHTML = `
       <div class="modal-box ui-dialog">
         <div class="modal-header"><span class="modal-title">${escHtml(title)}</span>
-          <button class="btn btn-ghost" data-no>✕</button></div>
+          <button class="btn btn-ghost" data-no>${svgIcon('x', 12)}</button></div>
         <div class="modal-body">
           ${label ? `<label for="ui-prompt-field">${escHtml(label)}</label>` : ''}
           ${multiline
@@ -11914,7 +11919,7 @@ function uiForm(title, fields, submit) {
   ov.innerHTML = `
     <div class="modal-box" style="max-width:420px">
       <div class="modal-header"><span class="modal-title">${escHtml(title)}</span>
-        <button class="btn btn-ghost" onclick="document.getElementById('fin-form-overlay').remove()">✕</button></div>
+        <button class="btn btn-ghost" onclick="document.getElementById('fin-form-overlay').remove()">${svgIcon('x', 12)}</button></div>
       <div class="modal-body">
         ${fields.map(f => `
           <label for="ff-${f.id}">${escHtml(f.label)}</label>
@@ -12533,7 +12538,7 @@ function showToast(msg, type='info') {
     copyBtn.onclick = () => {
       navigator.clipboard?.writeText(msg).then(() => { copyBtn.textContent = '✓'; setTimeout(() => copyBtn.textContent = '⧉', 1200); });
     };
-    const dismissBtn = mkBtn('✕', 'Dismiss');
+    const dismissBtn = mkBtn(svgIcon('x', 12), 'Dismiss');
     dismissBtn.onclick = () => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); };
     btnRow.append(copyBtn, dismissBtn);
     t.append(msgSpan, btnRow);
@@ -12892,7 +12897,7 @@ async function chatToggleHistory() {
         <span class="chat-hist-title">${escHtml(t.TITLE)}</span>
         <span class="chat-hist-meta">${fmtWhen(t.UPDATED_AT)} · ${t.COUNT} message${t.COUNT === '1' ? '' : 's'}</span>
         <button class="chat-hist-del" title="Delete this conversation"
-                onclick="event.stopPropagation();chatDeleteThread('${escHtml(t.ID)}')">✕</button>
+                onclick="event.stopPropagation();chatDeleteThread('${escHtml(t.ID)}')">${svgIcon('x', 12)}</button>
       </div>`).join('')
       : `<div class="chat-hist-empty">No stored conversations yet. This one is being saved as you go.</div>`;
   } catch {
@@ -16448,7 +16453,7 @@ function renderLearning() {
           ${lesson.words ? `<span class="lesson-meta-sep">·</span><div class="lesson-meta-item">${lesson.words} words, ~${Math.max(1, Math.round(lesson.words / 200))} min read</div>` : ''}
           ${lesson.touchedAt ? `<span class="lesson-meta-sep">·</span><div class="lesson-meta-item">last read ${fmtWhen(lesson.touchedAt, { rel: true })}</div>` : ''}
           ${lesson.vaultPath ? `<span class="lesson-meta-sep">·</span><a href="#" class="learn-artifact" title="Open the source file in the vault" onclick="learnOpenSource('${escHtml(lesson.vaultPath)}');return false">${LESSON_ICONS.source} source</a>` : ''}
-          <button class="lesson-gear-btn" onclick="learnShowModuleModal('${escAttr(course.ID)}','${escAttr(lesson.file)}')">⚙ Edit Metadata</button>
+          <button class="lesson-gear-btn" onclick="learnShowModuleModal('${escAttr(course.ID)}','${escAttr(lesson.file)}')">${svgIcon('settings', 12)} Edit Metadata</button>
         </div>
         <div class="lesson-toolbar">
           <button class="lesson-tool-btn" onclick="learnDownloadPdf()" title="Save this lesson as a PDF (print dialogue)">${LESSON_ICONS.pdf}<span>PDF</span></button>
@@ -16522,7 +16527,7 @@ function renderLearning() {
               <span class="crumb-sep">/</span><span class="crumb-here">${done}/${lessons.length} lessons done · updated ${fmtWhen(c.UPDATED_AT, { rel: true })}</span>
             </div>
           </div>
-          <button class="btn btn-ghost" onclick="learnShowCourseModal('${escAttr(c.ID)}')">⚙ Course Settings</button>
+          <button class="btn btn-ghost" onclick="learnShowCourseModal('${escAttr(c.ID)}')">${svgIcon('settings', 12)} Course Settings</button>
         </div>
       </div>
       <div class="card">
@@ -16550,7 +16555,7 @@ function renderLearning() {
                 ${learnRelBadge(l.relevance, l.relevanceNote)}
                 <span class="learn-version-tag">${escHtml(l.version || 'v0.0.0')}</span>
                 <span class="learn-lesson-meta">${l.reviewedAt ? `rev ${fmtWhen(l.reviewedAt)}` : (l.revisedAt ? `rev ${fmtWhen(l.revisedAt)}` : '')}</span>
-                <button class="learn-gear-btn-sm" onclick="event.stopPropagation();learnShowModuleModal('${escAttr(c.ID)}','${escAttr(l.file)}')" title="Edit module metadata">⚙</button>
+                <button class="learn-gear-btn-sm" onclick="event.stopPropagation();learnShowModuleModal('${escAttr(c.ID)}','${escAttr(l.file)}')" title="Edit module metadata">${svgIcon('settings', 12)}</button>
               </div>
             </div>`).join('')}
         </div>` : `<div class="empty-state">No lessons visible. Vault sync brings content down on next pass.</div>`}
@@ -16579,7 +16584,7 @@ function renderLearning() {
             </div>
           </div>
           <div style="display:flex;gap:0.4rem">
-            <button class="btn btn-ghost" onclick="learnShowGroupModal('${escAttr(group.id)}')">⚙ Edit Track</button>
+            <button class="btn btn-ghost" onclick="learnShowGroupModal('${escAttr(group.id)}')">${svgIcon('settings', 12)} Edit Track</button>
             <button class="btn btn-ghost" onclick="learnCloseGroup()">← All Tracks</button>
           </div>
         </div>
@@ -16652,7 +16657,7 @@ function renderLearning() {
         return `
           <div class="learn-section-head" style="display:flex;align-items:center;justify-content:space-between">
             <span>${escHtml(g.icon || '📚')} ${escHtml(g.label)}</span>
-            <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">⚙ Track Settings</button>
+            <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">${svgIcon('settings', 11)} Track Settings</button>
           </div>
           <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-bottom:1.5rem">
             ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
@@ -16680,7 +16685,7 @@ function renderLearnModals() {
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">${isNew ? 'Create New Learning Track' : 'Edit Learning Track'}</span>
-            <button class="btn btn-ghost" onclick="learnCloseModal()">✕</button>
+            <button class="btn btn-ghost" onclick="learnCloseModal()">${svgIcon('x', 12)}</button>
           </div>
           <div class="modal-body">
             <label>Track ID (slug)</label>
@@ -16725,7 +16730,7 @@ function renderLearnModals() {
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">Course Lifecycle & Settings</span>
-            <button class="btn btn-ghost" onclick="learnCloseModal()">✕</button>
+            <button class="btn btn-ghost" onclick="learnCloseModal()">${svgIcon('x', 12)}</button>
           </div>
           <div class="modal-body">
             <div style="margin-bottom:0.8rem">
@@ -16759,7 +16764,7 @@ function renderLearnModals() {
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">Module Metadata & Relevance</span>
-            <button class="btn btn-ghost" onclick="learnCloseModal()">✕</button>
+            <button class="btn btn-ghost" onclick="learnCloseModal()">${svgIcon('x', 12)}</button>
           </div>
           <div class="modal-body">
             <div style="margin-bottom:0.8rem">
@@ -17894,7 +17899,7 @@ function ideaCard(i) {
           <button class="btn btn-ghost" style="font-size:0.68rem;padding:3px 11px"
                   onclick="ideaToTask('${escHtml(i.ID)}',this)" title="Put it on the board as a task">To task</button>
           <button class="btn btn-ghost danger-btn" style="font-size:0.68rem;padding:3px 9px"
-                  onclick="ideaDelete('${escHtml(i.ID)}')" title="Delete this idea">✕</button>
+                  onclick="ideaDelete('${escHtml(i.ID)}')" title="Delete this idea">${svgIcon('x', 12)}</button>
         </span>
       </div>
     </div>` : `
@@ -18124,7 +18129,7 @@ function renderJournal() {
             <button class="btn btn-ghost" style="font-size:0.68rem;padding:2px 9px"
                     onclick="journalReflect('${escHtml(e.ID)}',this)">${e.AI_NOTE ? 'Reflect again' : 'Reflect'}</button>
             <button class="btn btn-ghost" style="font-size:0.68rem;padding:2px 9px"
-                    onclick="journalDelete('${escHtml(e.ID)}')" title="Delete this entry">✕</button>
+                    onclick="journalDelete('${escHtml(e.ID)}')" title="Delete this entry">${svgIcon('x', 12)}</button>
           </span>
         </div>
         <div class="jr-body-view" id="jr-body-view-${escHtml(e.ID)}">
