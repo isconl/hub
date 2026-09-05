@@ -1767,11 +1767,16 @@ function renderDatesPanel() {
             const kindColor = { birthday: '#bc8cff', anniversary: '#3fb950', graduation: '#3fb950', 'first graduation': '#3fb950', 'first job': '#58a6ff',
                                 first: '#58a6ff', deadline: '#d29922' }[(d.KIND || '').toLowerCase()] || '#8b949e';
             const c = /^#[0-9a-f]{6}$/i.test(d.COLOR || '') ? d.COLOR : kindColor;
+            // Display-label override, storage KIND unchanged (BT26090402,
+            // 5 Sep 2026, per Sconl): "First Graduation" -> "Bachelors
+            // Graduation" for the badge only -- kindColor/dropdown value
+            // stay 'first graduation' so nothing else needs to change.
+            const kindLabel = { 'first graduation': 'Bachelors Graduation' }[(d.KIND || '').toLowerCase()] || d.KIND;
             return `
             <div class="date-card" title="${escHtml(d.NOTE !== '-' ? d.NOTE : d.DATE)}"
                  style="background:${c}14;border-color:${c}55">
               <div class="date-card-top">
-                <span class="date-kind" style="color:${c}">${escHtml(d.KIND)}</span>
+                <span class="date-kind" style="color:${c}">${escHtml(kindLabel)}</span>
                 <button class="date-del" title="Remove" onclick="deleteImportantDate('${escHtml(d.ID)}')">×</button>
               </div>
               <div class="date-num">${Number(big).toLocaleString('en-KE')}</div>
