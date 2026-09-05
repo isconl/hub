@@ -63,7 +63,8 @@
   --mc-flow:      var(--cyan);
   --mc-life:      var(--amber);
   --mc-circle:    var(--violet);
-  --mc-projects:  var(--cyan);
+  --mc-projects:  #6fc0af;
+  --mc-system:    #5b7a9e;
   /* One accent for the whole SPACES menu (18 Aug, Architect: every other group
      is one color throughout, SPACES showing four broke that pattern) - the
      four --mc-visionary/innovator/creator/writer vars below stay in place
@@ -248,10 +249,12 @@ body[data-axis="AX-CRE"] #view-container {
   --hover-border: var(--mc-creator);
   --hover-bg: color-mix(in srgb, var(--mc-creator) 8%, transparent);
 }
-/* System (File Manager, Audit Chain) and Settings have no --mc-* home of
-   their own (System is explicitly "exempt from the rule of three" per
-   index.html's own comment) - left off this list on purpose, so they keep
-   the fixed green default rather than inventing an accent nothing else uses. */
+/* Settings has no --mc-* home of its own (System is explicitly "exempt
+   from the rule of three" per index.html's own comment, but got a real
+   --mc-system accent of its own on 5 Sep 2026, RG26090501 - a muted
+   steel-blue distinct from --red/--text-3, see :root above) - Settings is
+   left off this list on purpose, so it keeps the fixed green default
+   rather than inventing an accent nothing else uses. */
 
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
 html { height:100%; }
@@ -452,6 +455,11 @@ select option { background:var(--panel); color:var(--text); }
 #nav-group-projects .nav-item.active .nav-icon { color:var(--mc-projects); }
 #nav-group-projects .nav-item:hover { background:color-mix(in srgb, var(--mc-projects) 7%, transparent); color:var(--mc-projects); }
 #nav-group-projects .nav-item:hover .nav-icon { color:var(--mc-projects); }
+
+#nav-group-system .nav-item.active { background:color-mix(in srgb, var(--mc-system) 10%, transparent); color:var(--mc-system); border-left-color:var(--mc-system); }
+#nav-group-system .nav-item.active .nav-icon { color:var(--mc-system); }
+#nav-group-system .nav-item:hover { background:color-mix(in srgb, var(--mc-system) 7%, transparent); color:var(--mc-system); }
+#nav-group-system .nav-item:hover .nav-icon { color:var(--mc-system); }
 
 #nav-group-spaces .nav-item.active { background:color-mix(in srgb, var(--mc-spaces) 10%, transparent); color:var(--mc-spaces); border-left-color:var(--mc-spaces); }
 #nav-group-spaces .nav-item.active .nav-icon { color:var(--mc-spaces); }
@@ -2927,7 +2935,7 @@ button.orient-chip:focus-visible { outline:2px solid var(--green); outline-offse
 /* ── LEARNING ── */
 .learn-goal { font-size:0.82rem; color:var(--text-2); line-height:1.6; margin-bottom:0.7rem; }
 .learn-lessons { display:flex; flex-direction:column; }
-.learn-lesson { display:flex; gap:0.6rem; align-items:baseline; padding:0.42rem 0.3rem;
+.learn-lesson { display:flex; gap:0.6rem; align-items:flex-start; padding:0.42rem 0.3rem;
   border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.12s; }
 .learn-lesson:last-child { border-bottom:none; }
 .learn-lesson:hover { background:var(--panel-hover); }
@@ -3085,7 +3093,10 @@ body[data-callout-theme="muted"] .lesson-body {
   color:var(--text-3); border-bottom:none; margin:0.8rem 0 0.15rem; }
 .insight h2 { font-size:0.95rem; margin:0.5rem 0 0.3rem; }
 .lesson-actions { margin-top:1rem; padding-top:0.8rem; border-top:1px solid var(--border);
-  display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center; }
+  display:grid; grid-template-columns:1fr auto 1fr; gap:0.5rem; align-items:center; }
+.lesson-actions > *:first-child { justify-self:start; }
+.lesson-actions > *:nth-child(2) { justify-self:center; }
+.lesson-actions > *:last-child { justify-self:end; }
 
 /* The toolbar above the reading column: PDF, Listen, Share, View as artifact.
    Icon-first, ghost until hovered, so it reads as chrome rather than more
@@ -3650,9 +3661,9 @@ body[data-callout-theme="muted"] .lesson-body {
 }
 .task-tab + .task-tab { border-left:1px solid var(--border); }
 .task-tab span { font-size:0.62rem; color:var(--text-3); font-family:var(--font-mono); }
-.task-tab:hover { color:var(--text); }
-.task-tab.on { color:var(--text); background:var(--surface); font-weight:600; }
-.task-tab.on span { color:var(--green-bright); }
+.task-tab:hover { color:var(--space-accent, var(--mc-rail)); background:color-mix(in srgb, var(--space-accent, var(--mc-rail)) 10%, transparent); }
+.task-tab.on { color:var(--space-accent, var(--mc-rail)); background:color-mix(in srgb, var(--space-accent, var(--mc-rail)) 16%, var(--surface)); font-weight:600; }
+.task-tab.on span { color:var(--space-accent, var(--mc-rail)); }
 
 /* Right-rail Console/Chat/Context tabs - each carries its own accent (18
    Aug, Architect: "assign the right panel menus a color"). .task-tab is reused
@@ -4017,10 +4028,10 @@ body.focus-mode-off .view-container[data-card-focus] .card {
 .ct-day { width:100%; aspect-ratio:1; border-radius:2px; background:var(--surface); }
 .ct-empty { background:transparent; }
 .ct-l0 { background:#161b22; border:1px solid rgba(255,255,255,0.04); }
-.ct-l1 { background:#0e4429; }
-.ct-l2 { background:#006d32; }
-.ct-l3 { background:#26a641; }
-.ct-l4 { background:#39d353; }
+.ct-l1 { background:color-mix(in srgb, var(--space-accent, var(--green-bright)) 30%, var(--bg)); }
+.ct-l2 { background:color-mix(in srgb, var(--space-accent, var(--green-bright)) 55%, var(--bg)); }
+.ct-l3 { background:color-mix(in srgb, var(--space-accent, var(--green-bright)) 78%, var(--bg)); }
+.ct-l4 { background:color-mix(in srgb, var(--space-accent, var(--green-bright)) 100%, var(--bg)); }
 .ct-day:hover { outline:1px solid var(--text-3); outline-offset:1px; }
 
 /* AM1 (18 Aug): the Less->More legend strip is gone (the five shades read
@@ -5193,7 +5204,7 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
     min-width:200px; max-width:280px; white-space:normal; z-index:55;
     background:var(--panel); border:1px solid var(--violet); border-radius:var(--r-md);
     box-shadow:var(--shadow-modal, 0 8px 24px rgba(0,0,0,0.45));
-    padding:0.5rem 0.65rem; font-family:system-ui,sans-serif; font-size:0.78rem;
+    padding:0.5rem 0.65rem; font-family:system-ui,sans-serif; font-size:0.85rem;
     line-height:1.5; color:var(--text-2); font-weight:400;
   }
 }
@@ -5211,7 +5222,7 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
 }
 .jargon-popup-close:hover { color:var(--text); }
 .jargon-popup-body {
-  font-family:system-ui,sans-serif; font-size:0.85rem; line-height:1.6; color:var(--text);
+  font-family:system-ui,sans-serif; font-size:0.92rem; line-height:1.6; color:var(--text);
   clear:both;
 }
 
@@ -6178,7 +6189,7 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 .lesson-gear-btn { background:transparent; border:1px solid var(--border-mid); color:var(--text-3); font-size:0.68rem; padding:3px 9px; border-radius:var(--r-sm); cursor:pointer; transition:all 120ms ease; margin-left:auto; }
 .lesson-gear-btn:hover { background:var(--panel-hover); color:var(--text); border-color:var(--text-3); }
 
-.learn-lesson-badges { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-left:auto; }
+.learn-lesson-badges { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-left:auto; align-self:flex-start; }
 .learn-gear-btn-sm { background:transparent; border:none; color:var(--text-3); font-size:0.75rem; padding:2px 5px; border-radius:var(--r-sm); cursor:pointer; opacity:0.3; transition:opacity 120ms ease, color 120ms ease; }
 .learn-lesson:hover .learn-gear-btn-sm { opacity:1; }
 .learn-gear-btn-sm:hover { color:var(--text); background:var(--bg-raised); }
