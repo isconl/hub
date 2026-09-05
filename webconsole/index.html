@@ -166,7 +166,13 @@
 
           <div class="nav-section-label nav-group-head" data-group="projects">PROJECTS <span class="nav-caret">▾</span></div>
           <div class="nav-group-body" id="nav-group-projects">
-          <button class="nav-item" data-view="projects" data-cat="portfolio" id="nav-projects-portfolio">
+          <!-- BA26090501: repointed from the old client-sites Projects
+               category (that content folded into Products below, since
+               ventures.tsv had zero CATEGORY=portfolio rows to migrate --
+               confirmed by audit, not assumed) to Sconl's own always-
+               updated CVs/resumes/portfolio documents, a standalone space
+               rather than a Projects sub-tab. -->
+          <button class="nav-item" data-view="portfolio" id="nav-projects-portfolio">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
             Portfolio
           </button>

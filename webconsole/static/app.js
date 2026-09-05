@@ -11034,7 +11034,7 @@ const viewFns = {
   files:renderFileManager, social:renderSocial, spaces:renderSpaces,
   task:renderTaskView, finance:renderFinance, planning:renderPlanning,
   journal:renderJournal, learning:renderLearning, circle:renderCircle, ideas:renderIdeas,
-  projects:renderProjects, corporate:renderCorporate, 'corporate-detail':renderCorporateDetail, notifications:renderNotifications, articles:renderArticles,
+  projects:renderProjects, portfolio:renderPortfolio, corporate:renderCorporate, 'corporate-detail':renderCorporateDetail, notifications:renderNotifications, articles:renderArticles,
   rhythm:renderRhythm, personal:renderRhythm, teams:renderTeams,
   contacts:renderContacts, writer:renderWriter,
   'identity-persona':renderIdentityPersonaRing,
@@ -14868,7 +14868,69 @@ async function circleDraft(id) {
 
 let PROJECTS = null;
 let projectOpen = null;
-let projectCat = 'all';   // the sidebar menu selection: all / portfolio / product / platform
+let projectCat = 'all';   // the sidebar menu selection: all / product / platform
+
+// ── PORTFOLIO: Sconl's own CVs/resumes/portfolio documents (BA26090501) ────
+// Phase 1: a simple curated link list, editable in place. Phase 2 (a real
+// "live portfolio" product) is a future, separate build.
+let PORTFOLIO = null;
+
+async function fetchPortfolio() {
+  try { PORTFOLIO = await (await fetch('/api/portfolio')).json(); }
+  catch { PORTFOLIO = { items: [] }; }
+  if (currentView === 'portfolio') repaintView('portfolio');
+}
+
+async function portfolioAdd() {
+  const title = document.getElementById('pf-title')?.value.trim();
+  const url = document.getElementById('pf-url')?.value.trim();
+  if (!title || !url) { showToast('Title and link are both required', 'error'); return; }
+  const items = [...((PORTFOLIO && PORTFOLIO.items) || []), { title, url }];
+  await portfolioSave(items);
+}
+
+async function portfolioRemove(idx) {
+  const items = ((PORTFOLIO && PORTFOLIO.items) || []).filter((_, i) => i !== idx);
+  await portfolioSave(items);
+}
+
+async function portfolioSave(items) {
+  try {
+    const d = await (await fetch('/api/portfolio', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }) })).json();
+    PORTFOLIO = { items: d.items || items };
+    repaintView('portfolio');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function renderPortfolio() {
+  if (!PORTFOLIO) { fetchPortfolio(); return `<div class="card"><div class="empty-state">Loading portfolio…</div></div>`; }
+  const items = PORTFOLIO.items || [];
+  return `
+    <div class="view-head">
+      <h1>Portfolio</h1>
+      <div class="view-head-meta">Sconl's own CVs, resumes, and portfolio documents - always the latest version</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Documents</span>
+        <span class="card-meta">${items.length} link${items.length === 1 ? '' : 's'}</span></div>
+      ${items.length ? `
+        <div class="circle-grid">
+          ${items.map((it, i) => `
+            <div class="circle-card">
+              <div class="circle-name"><a href="${escAttr(it.url)}" target="_blank" rel="noreferrer">${escHtml(it.title)}</a></div>
+              ${it.note ? `<div class="circle-meta">${escHtml(it.note)}</div>` : ''}
+              <button class="btn btn-ghost" style="margin-top:0.5rem;font-size:0.72rem;padding:2px 8px" onclick="portfolioRemove(${i})">Remove</button>
+            </div>`).join('')}
+        </div>` : `<div class="empty-state">Nothing added yet.</div>`}
+      <div class="jr-compose-row" style="margin-top:0.9rem">
+        <input id="pf-title" class="jira-input" style="flex:1;min-width:160px" placeholder="Title, e.g. Resume 2026"/>
+        <input id="pf-url" class="jira-input" style="flex:2;min-width:220px" placeholder="Live document link (OneDrive/Google)"/>
+        <button class="btn btn-primary" style="padding:6px 14px" onclick="portfolioAdd()">Add</button>
+      </div>
+    </div>
+    <div class="card-meta" style="margin-top:0.6rem">Phase 1: a simple curated link list. A live, public-facing portfolio product is a future build, not this.</div>`;
+}
 
 async function fetchProjects() {
   try { PROJECTS = await (await fetch('/api/projects')).json(); }
@@ -14910,9 +14972,11 @@ function renderProjects() {
           <button class="btn btn-primary" style="padding:6px 14px" onclick="projectSetUrl('${escHtml(open.ID)}')">Save</button></div></div>`}`;
   }
 
-  // Three sections, three purposes: Portfolio is work delivered for others,
-  // Products are his own monetizable systems (they surface in Finance as
-  // alternative income sources), Platforms are the business websites.
+  // Two sections now (BA26090501, 5 Sep 2026): Portfolio moved out to its
+  // own space (Sconl's own CVs/resumes, not client work) -- Products are
+  // his own monetizable systems PLUS client-built sites (folded in from
+  // the old Portfolio category; they surface in Finance as alternative
+  // income sources), Platforms are the business websites.
   const card = (v) => `
       <div class="circle-card" onclick="projectOpen='${escHtml(v.ID)}';repaintView('projects')">
         <div class="circle-name">${v.live ? `<span class="ring-dot sm" style="background:${v.live.up ? 'var(--green)' : 'var(--red)'}"></span>` : '<span class="ring-dot sm" style="background:var(--text-3)"></span>'}${escHtml(v.NAME)}</div>
@@ -14929,14 +14993,23 @@ function renderProjects() {
         <div class="circle-grid">${items.map(card).join('')}</div>
       </div>`;
   };
-  const uncat = list.filter(v => !['portfolio', 'product', 'platform'].includes(v.CATEGORY));
+  // Legacy portfolio-tagged rows (pre BA26090501) still render under
+  // Products rather than vanishing, in case any exist on a data source
+  // this session didn't see -- confirmed 0 in the live ventures.tsv at
+  // build time, but this keeps the fold-in honest either way.
+  const products = list.filter(v => (v.CATEGORY || '-') === 'product' || (v.CATEGORY || '-') === 'portfolio');
+  const uncat = list.filter(v => !['product', 'platform', 'portfolio'].includes(v.CATEGORY));
   return `
     <div class="view-head">
       <h1>Projects</h1>
       <div class="view-head-meta">status checked from the agent, never guessed</div>
     </div>
-    ${projectCat === 'all' || projectCat === 'portfolio' ? section('Portfolio', 'portfolio', 'built for clients and users') : ''}
-    ${projectCat === 'all' || projectCat === 'product' ? section('Products', 'product', 'own IP · monetizable · registered in Finance as alternative income sources') : ''}
+    ${projectCat === 'all' || projectCat === 'product' ? (products.length ? `
+      <div class="card">
+        <div class="card-header"><span class="card-title">Products</span>
+          <span class="card-meta">own IP · monetizable · built for clients and users · registered in Finance as alternative income sources</span></div>
+        <div class="circle-grid">${products.map(card).join('')}</div>
+      </div>` : '') : ''}
     ${projectCat === 'all' || projectCat === 'platform' ? section('Platforms', 'platform', 'the business websites - Acexoft Dynamics and kin') : ''}
     ${uncat.length ? `<div class="card"><div class="card-header"><span class="card-title">Uncategorised</span></div>
       <div class="circle-grid">${uncat.map(card).join('')}</div></div>` : ''}
