@@ -120,10 +120,10 @@ const BrandConfig = {
   fontAccent: "'JetBrains Mono', 'Fira Code', monospace",
 
   // Three-part wordmark for "iSconlhub": bold "i" (with the brand node as its
-  // dot), light "Architect", bold "hub" -- adapted from QSpace's two-part
+  // dot), light "Sconl", bold "hub" -- adapted from QSpace's two-part
   // wordBold/wordLight split to the three-part mark this brand actually uses.
   wordI:    'i',
-  wordMid:  'Architect',
+  wordMid:  'Sconl',
   wordHub:  'hub',
 };
 

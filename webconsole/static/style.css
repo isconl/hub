@@ -341,13 +341,13 @@ select option { background:var(--panel); color:var(--text); }
 /* A single status dot (e.g. the chat rail's "iSconl Assistant" title) -
    the old 3-dot decorative cluster lived here too, retired now that the
    sidebar brand mark is the wordmark below instead. */
-/* Same gradient as the wordmark's "Architect" and the eq-meter progress bars -
+/* Same gradient as the wordmark's "Sconl" and the eq-meter progress bars -
    one gradient, used everywhere the brand's green shows up as a fill. */
 .brand-dot { width:8px; height:8px; border-radius:50%; background:linear-gradient(135deg, var(--green-dim), var(--green)); }
 .brand-text { display:flex; flex-direction:column; }
 .tagline { font-size:0.65rem; color:var(--text-3); font-family:var(--font-mono); margin-top:-2px; }
 
-/* ── Horizontal wordmark: bold "i" + light "Architect" + bold "hub" = "iSconlhub" ──
+/* ── Horizontal wordmark: bold "i" + light "Sconl" + bold "hub" = "iSconlhub" ──
    Ported pattern from QSpace's _BrandLogoTypographic (bold/light wordmark
    split, hero-font, light half at reduced opacity), adapted from a 2-part
    split to this brand's 3-part one. Colors come from brand-system.js's

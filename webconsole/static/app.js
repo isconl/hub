@@ -3830,8 +3830,8 @@ function getBrandingConfig() {
 }
 
 /**
- * The one horizontal brandmark component - bold "i" + light "Architect" + bold
- * "Hub" (capital H, per Architect 17 Aug), same 3-part split and colors as the
+ * The one horizontal brandmark component - bold "i" + light "Sconl" + bold
+ * "hub", same 3-part split and colors as the
  * sidebar's static markup (index.html's .wordmark), but built here so it
  * can be reused anywhere else a brandmark is needed (the auth/login gate
  * is the first of those) without copy-pasting the split across files.
@@ -3842,7 +3842,7 @@ function getBrandingConfig() {
  */
 function renderBrandmarkHorizontal(size = '1.45rem') {
   return `<div class="wordmark" style="font-size:${size}">
-    <span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">Hub</span>
+    <span class="wordmark-i">i</span><span class="wordmark-mid">Sconl</span><span class="wordmark-suffix">hub</span>
   </div>`;
 }
 function renderBrandmarkIcon(sizePx = 40) {
