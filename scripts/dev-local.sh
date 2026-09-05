@@ -52,9 +52,28 @@ SERVICES=(
   "circle:8084:circle"
   "spark:8085:spark"
   "media:8086:media"
+  "ops:8087:ops"
   "hub:8888:hub"
   "tts:5001:vault/scripts/tts_service.py"
 )
+
+# FI26090403: local dev must always run each repo's `dev` branch, never
+# whatever happens to be checked out -- see STANDING-RULES.md's "Branch
+# workflow" section. Auto-switches a clean checkout to `dev`; only warns
+# (never force-switches) if the repo has uncommitted tracked changes.
+ensure_dev_branch() {
+  local repo_dir="$1"
+  [ -d "$ROOT/$repo_dir/.git" ] || return 0
+  local cur
+  cur="$(git -C "$ROOT/$repo_dir" branch --show-current 2>/dev/null)"
+  [ "$cur" = "dev" ] && return 0
+  if [ -n "$(git -C "$ROOT/$repo_dir" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    echo "WARNING: $repo_dir is on '$cur' with uncommitted tracked changes -- not auto-switching. Local dev should run 'dev' per standing policy (see STANDING-RULES.md)." >&2
+    return 0
+  fi
+  echo "NOTICE: $repo_dir was on '$cur' -- switching to 'dev' (standing policy: local dev always runs 'dev')." >&2
+  git -C "$ROOT/$repo_dir" checkout dev --quiet 2>/dev/null || echo "  could not checkout dev in $repo_dir" >&2
+}
 
 start_one() {
   local name="$1" port="$2" dir="$3"
@@ -62,6 +81,11 @@ start_one() {
   if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
     echo "$name already running (pid $(cat "$pidfile"))"
     return
+  fi
+  if [ "$name" = "tts" ]; then
+    ensure_dev_branch "vault"
+  else
+    ensure_dev_branch "$dir"
   fi
   (
     if [ "$name" = "tts" ]; then
@@ -94,6 +118,23 @@ start_one() {
       export CIRCLE_URL="http://127.0.0.1:8084"
       export SPARK_URL="http://127.0.0.1:8085"
       export MEDIA_URL="http://127.0.0.1:8086"
+      # FI26090402: vault (Gmail) and pulse (Calendar) both fan out one
+      # client per label in this comma-separated list; unset it defaults
+      # to a single 'default' label, leaving 5 of 6 connected accounts
+      # unused even once their tokens are valid. Decided 4 Sep 2026, per
+      # Sconl: list all 6.
+      export GOOGLE_ACCOUNTS="${GOOGLE_ACCOUNTS:-ACE_BRAND,ACE_CLIENTS,ACE_DESIGN,FORMAL,PERSONAL,VIVA}"
+      export OPS_URL="http://127.0.0.1:8087"
+      if [ "$name" = "ops" ]; then
+        # Bare-node dev-local.sh has no docker-compose deployment for ops
+        # to control -- point it at the local dev docker-compose.yml
+        # anyway (so `docker compose ...` calls resolve to something real
+        # if the reader also happens to have that stack up in Docker), but
+        # this mode is really ops's secondary target; see docker-compose.yml/
+        # docker-compose.vm.yml for the real deployed shape.
+        export OPS_COMPOSE_FILE="${OPS_COMPOSE_FILE:-$HERE/docker-compose.yml}"
+        export OPS_REPOS_DIR="${OPS_REPOS_DIR:-$ROOT}"
+      fi
       if [ "$name" = "vault" ]; then
         export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
         # BI26083003: cut over the local dev fleet to the encrypted sqlite

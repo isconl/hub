@@ -3859,6 +3859,7 @@ const MENU_COLOR_GROUPS = [
   { key: 'projects',  label: 'Projects',   hint: 'Ventures, deployments' },
   { key: 'life',      label: 'Personal',   hint: 'Rhythm, Academia, Ideas' },
   { key: 'circle',    label: 'Circle',     hint: 'People, Contacts' },
+  { key: 'system',    label: 'Systems',    hint: 'Files, Audit Chain' },
   { key: 'spaces',    label: 'Spaces',     hint: 'Sidebar menu' },
   { key: 'writer',    label: 'Writer',     hint: 'Space cards' },
   { key: 'visionary', label: 'Visionary',  hint: 'Space cards' },
@@ -16713,17 +16714,26 @@ function learnRelBadge(rel, note = '') {
   return `<span class="learn-rel-pill rel-${escAttr(r)}" title="${escAttr(note || label)}">${ic} ${escHtml(label)}</span>`;
 }
 
+// Shared monochrome track/group icon mapping -- used by both the tracks-grid
+// card (renderLearnGroupCard) and the track-detail header (renderLearning's
+// Level 1B) so opening a track never shows a different icon style than the
+// grid it was opened from. Takes an explicit size since the two callers render
+// at different scales.
+function learnGroupIcon(g, size) {
+  return g.id === 'corporate-mandate' ? svgIcon('briefcase', size)
+       : g.id === 'sales-persuasion' ? svgIcon('tag', size)
+       : g.id === 'medicine-surgery' ? svgIcon('shield', size)
+       : g.id === 'markets-economics' ? svgIcon('layers', size)
+       : g.id === 'wealth-finance' ? svgIcon('zap', size)
+       : g.id === 'platforms-systems' ? svgIcon('grid', size)
+       : g.id === 'profiles-psychology' ? svgIcon('users', size)
+       : g.id === 'systems-architecture' ? svgIcon('settings', size)
+       : svgIcon('folder', size);
+}
+
 function renderLearnGroupCard(g) {
   const isArchived = g.status === 'archived';
-  const groupIcon = g.id === 'corporate-mandate' ? svgIcon('briefcase', 18)
-                  : g.id === 'sales-persuasion' ? svgIcon('tag', 18)
-                  : g.id === 'medicine-surgery' ? svgIcon('shield', 18)
-                  : g.id === 'markets-economics' ? svgIcon('layers', 18)
-                  : g.id === 'wealth-finance' ? svgIcon('zap', 18)
-                  : g.id === 'platforms-systems' ? svgIcon('grid', 18)
-                  : g.id === 'profiles-psychology' ? svgIcon('users', 18)
-                  : g.id === 'systems-architecture' ? svgIcon('settings', 18)
-                  : svgIcon('folder', 18);
+  const groupIcon = learnGroupIcon(g, 18);
   return `
     <div class="learn-group-card${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
       <div class="learn-group-top">
@@ -16756,8 +16766,8 @@ function renderLearnCourseCard(c) {
   return `
     <div class="circle-card${isArchived ? ' is-archived' : ''}" onclick="learnCourseOpen='${escHtml(c.ID)}';repaintView('learning')">
       <div class="circle-name" style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem">
-        <span>${escHtml(c.TITLE)}</span>
-        <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.6rem" onclick="event.stopPropagation();learnShowCourseModal('${escAttr(c.ID)}')" title="Course settings">${svgIcon('settings', 12)}</button>
+        <span style="display:flex;align-items:center;gap:0.4rem;min-width:0">${learnGroupIcon({ id: c.GROUP_ID }, 15)}<span>${escHtml(c.TITLE)}</span></span>
+        <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.6rem;flex-shrink:0" onclick="event.stopPropagation();learnShowCourseModal('${escAttr(c.ID)}')" title="Course settings">${svgIcon('settings', 12)}</button>
       </div>
       ${c.LEVEL && c.LEVEL !== '-' ? `<span class="learn-level" title="Course progression level">${escHtml(c.LEVEL.replace(/-/g, ' '))}</span>` : ''}
       ${c.SUBTITLE && c.SUBTITLE !== '-' ? `<div class="circle-role">${escHtml(c.SUBTITLE)}</div>` : ''}
@@ -16961,7 +16971,7 @@ function renderLearning() {
       <div class="view-head">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem">
           <div>
-            <h1>${escHtml(group.icon || '📚')} ${escHtml(group.label)}</h1>
+            <h1 style="display:flex;align-items:center;gap:0.5rem">${learnGroupIcon(group, 22)} ${escHtml(group.label)}</h1>
             <div class="view-head-meta crumbs">
               <a href="#" class="crumb-link" onclick="learnCloseGroup();return false">Academia</a>
               <span class="crumb-sep">/</span><span class="crumb-here">Track Overview</span>
