@@ -52,6 +52,7 @@ SERVICES=(
   "circle:8084:circle"
   "spark:8085:spark"
   "media:8086:media"
+  "ops:8087:ops"
   "hub:8888:hub"
   "tts:5001:vault/scripts/tts_service.py"
 )
@@ -123,6 +124,17 @@ start_one() {
       # unused even once their tokens are valid. Decided 4 Sep 2026, per
       # Sconl: list all 6.
       export GOOGLE_ACCOUNTS="${GOOGLE_ACCOUNTS:-ACE_BRAND,ACE_CLIENTS,ACE_DESIGN,FORMAL,PERSONAL,VIVA}"
+      export OPS_URL="http://127.0.0.1:8087"
+      if [ "$name" = "ops" ]; then
+        # Bare-node dev-local.sh has no docker-compose deployment for ops
+        # to control -- point it at the local dev docker-compose.yml
+        # anyway (so `docker compose ...` calls resolve to something real
+        # if the reader also happens to have that stack up in Docker), but
+        # this mode is really ops's secondary target; see docker-compose.yml/
+        # docker-compose.vm.yml for the real deployed shape.
+        export OPS_COMPOSE_FILE="${OPS_COMPOSE_FILE:-$HERE/docker-compose.yml}"
+        export OPS_REPOS_DIR="${OPS_REPOS_DIR:-$ROOT}"
+      fi
       if [ "$name" = "vault" ]; then
         export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
         # BI26083003: cut over the local dev fleet to the encrypted sqlite

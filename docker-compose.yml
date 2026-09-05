@@ -175,11 +175,31 @@ services:
       resources:
         limits: { cpus: "0.3", memory: 512m }
 
+  ops:
+    build: ../ops
+    container_name: isconl-ops
+    restart: unless-stopped
+    environment:
+      OPS_BIND: 0.0.0.0
+      OPS_TOKEN: ${OPS_TOKEN}
+      OPS_COMPOSE_FILE: /isconl-docker/hub/docker-compose.yml
+      OPS_REPOS_DIR: /isconl-docker
+    volumes:
+      # Same sibling-container-control shape as the VM deploy
+      # (docker-compose.vm.yml) -- see ops/README.md.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ..:/isconl-docker:ro
+    ports:
+      - "8087:8087"
+    deploy:
+      resources:
+        limits: { cpus: "0.2", memory: 256m }
+
   hub:
     build: .
     container_name: isconl-hub
     restart: unless-stopped
-    depends_on: [vault, pulse, scope, circle, spark, media]
+    depends_on: [vault, pulse, scope, circle, spark, media, ops]
     environment:
       HUB_BIND: 0.0.0.0
       HUB_TOKEN: ${HUB_TOKEN}
@@ -195,6 +215,8 @@ services:
       SPARK_TOKEN: ${SPARK_TOKEN}
       MEDIA_URL: http://media:8086
       MEDIA_TOKEN: ${MEDIA_TOKEN}
+      OPS_URL: http://ops:8087
+      OPS_TOKEN: ${OPS_TOKEN}
       RENDER_API_KEY: ${RENDER_API_KEY}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}

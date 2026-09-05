@@ -148,6 +148,7 @@ async function main() {
     circle: { url: process.env.CIRCLE_URL, token: () => process.env.CIRCLE_TOKEN || secretStore.get('CIRCLE_TOKEN') || '' },
     spark: { url: process.env.SPARK_URL, token: () => process.env.SPARK_TOKEN || secretStore.get('SPARK_TOKEN') || '' },
     media: { url: process.env.MEDIA_URL, token: () => process.env.MEDIA_TOKEN || secretStore.get('MEDIA_TOKEN') || '' },
+    ops: { url: process.env.OPS_URL, token: () => process.env.OPS_TOKEN || secretStore.get('OPS_TOKEN') || '' },
   };
   const engines = {};
   for (const [name, def] of Object.entries(engineDefs)) {
