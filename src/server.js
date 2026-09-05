@@ -501,6 +501,48 @@ async function main() {
         return fs.createReadStream(file).pipe(res);
       }
 
+      // FI26090501: chat's real answer path. Bypasses the generic /api/
+      // router below (like /api/profile/photo) because /api/chat/stream
+      // needs to write raw SSE frames to `res`, not one JSON body -- and
+      // both need their {message} body reshaped into spark's {messages}
+      // shape, which the generic router deliberately never does.
+      // Thread persistence (/api/chat/thread/*, /api/chat/threads) is
+      // still `legacy: true` below -- out of scope for this fix, tracked
+      // separately (see fix.md's FI26090501 note).
+      if (pathname === '/api/chat' && req.method === 'POST') {
+        if (!engines.spark) return sendJson(res, 502, { error: 'spark is not configured on this hub' });
+        const p = JSON.parse(await readBody(req) || '{}');
+        const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: [{ role: 'user', content: p.message || '' }] } });
+        if (r.status !== 200) return sendJson(res, r.status || 502, { error: (r.data && r.data.error) || 'spark did not answer' });
+        return sendJson(res, 200, { response: r.data.response, captured: [] });
+      }
+      if (pathname === '/api/chat/stream' && req.method === 'POST') {
+        if (!engines.spark) return sendJson(res, 502, { error: 'spark is not configured on this hub' });
+        const p = JSON.parse(await readBody(req) || '{}');
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        });
+        try {
+          const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: [{ role: 'user', content: p.message || '' }] } });
+          if (r.status !== 200) {
+            res.write(`event: error\ndata: ${JSON.stringify({ error: (r.data && r.data.error) || 'spark did not answer' })}\n\n`);
+          } else {
+            // spark's chatComplete is one-shot, not token-streamed -- send
+            // the whole answer as a single 'token' frame (still satisfies
+            // streamChat()'s paint()/frame parser) followed by 'done'.
+            // Real token-by-token streaming is a future refinement, not
+            // this fix's scope (restoring an answer at all).
+            res.write(`event: token\ndata: ${JSON.stringify({ t: r.data.response })}\n\n`);
+            res.write(`event: done\ndata: ${JSON.stringify({ response: r.data.response, captured: [] })}\n\n`);
+          }
+        } catch (e) {
+          res.write(`event: error\ndata: ${JSON.stringify({ error: String(e.message || e) })}\n\n`);
+        }
+        return res.end();
+      }
+
       // Profile photo binary passthrough -- see api-compat.js's note on why
       // this one path bypasses the generic JSON router below.
       if (pathname === '/api/profile/photo' && req.method === 'GET') {
