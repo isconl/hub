@@ -23,6 +23,7 @@ const path = require('path');
 const servicesRegistry = require('../lib/services-registry');
 const manifest = require('../lib/manifest');
 const apk = require('../lib/apk');
+const { createChatThreadStore } = require('../lib/chat-threads');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
 const BIND = process.env.HUB_BIND || '127.0.0.1';
@@ -163,6 +164,7 @@ async function main() {
   const registry = createRegistry({ engines, auditLog });
   const router = createRouter({ registry, engines, auditLog });
   const authProxy = createAuthProxy({ vault: engines.vault });
+  const chatThreads = createChatThreadStore(engines.vault);
 
   // The legacy monolith (Sconl/isconl-agent) is retired -- deleted locally
   // 2026-08-15, no longer deployed anywhere. hub is self-contained now:
@@ -515,6 +517,7 @@ async function main() {
         const p = JSON.parse(await readBody(req) || '{}');
         const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: [{ role: 'user', content: p.message || '' }] } });
         if (r.status !== 200) return sendJson(res, r.status || 502, { error: (r.data && r.data.error) || 'spark did not answer' });
+        try { await chatThreads.appendTurn(p.message || '', r.data.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
         return sendJson(res, 200, { response: r.data.response, captured: [] });
       }
       if (pathname === '/api/chat/stream' && req.method === 'POST') {
@@ -537,11 +540,32 @@ async function main() {
             // this fix's scope (restoring an answer at all).
             res.write(`event: token\ndata: ${JSON.stringify({ t: r.data.response })}\n\n`);
             res.write(`event: done\ndata: ${JSON.stringify({ response: r.data.response, captured: [] })}\n\n`);
+            try { await chatThreads.appendTurn(p.message || '', r.data.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
           }
         } catch (e) {
           res.write(`event: error\ndata: ${JSON.stringify({ error: String(e.message || e) })}\n\n`);
         }
         return res.end();
+      }
+      // BI26090505: real per-thread storage, replacing the 501-stub
+      // legacy:true routes in api-compat.js (bypasses the generic router
+      // the same way /api/chat above does -- these need chatThreads'
+      // in-memory current-thread state, not a stateless capability call).
+      if (pathname === '/api/chat/thread/new' && req.method === 'POST') {
+        return sendJson(res, 200, await chatThreads.newThread());
+      }
+      if (pathname === '/api/chat/thread/open' && req.method === 'POST') {
+        const p = JSON.parse(await readBody(req) || '{}');
+        const r = await chatThreads.openThread(p.id);
+        return sendJson(res, r.success ? 200 : 404, r);
+      }
+      if (pathname === '/api/chat/threads' && req.method === 'GET') {
+        return sendJson(res, 200, await chatThreads.listThreads());
+      }
+      if (pathname === '/api/chat/thread/delete' && req.method === 'POST') {
+        const p = JSON.parse(await readBody(req) || '{}');
+        const r = await chatThreads.deleteThread(p.id);
+        return sendJson(res, r.success ? 200 : 404, r);
       }
 
       // Profile photo binary passthrough -- see api-compat.js's note on why
