@@ -94,6 +94,27 @@ test('a protected route with no credential fails closed (silent 404)', async () 
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
 
+// BS26090501: dev-only auth bypass, loopback-gated. Confirms the flag actually
+// bypasses (else the escape hatch is useless) AND that leaving it unset keeps
+// the fail-closed behavior above -- a future refactor can't silently invert this.
+test('ISCONL_DEV_NO_AUTH=1 bypasses auth on loopback', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault }, { ISCONL_DEV_NO_AUTH: '1' });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/engines`);
+    assert.notEqual(res.status, 404);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('ISCONL_DEV_NO_AUTH unset still fails closed with no credential', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/engines`);
+    assert.equal(res.status, 404);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
 test('the static HUB_TOKEN authenticates a request without needing a vault session', async () => {
   const vault = await startFakeEngine({ name: 'vault' });
   const { server, port, cleanup } = await startHub({ vault });
