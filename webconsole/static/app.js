@@ -10893,6 +10893,130 @@ function paintAudit() {
   }).join('') : '<div class="empty-state">Nothing at this tier … which is the good outcome.</div>';
 }
 
+/**
+ * Ops: the live control surface for the fleet + the OCI VM (BI26090502).
+ * Status/VM-stats/deploy-status are read-only polls; restart/stop/start hit
+ * the ops engine directly through hub's /api/ops/* proxy; destroy asks for a
+ * typed confirm (the exact service name) before it fires, matching the row's
+ * own "type-to-confirm guard" spec -- ops's own server enforces the same
+ * check again, so a UI bug here can't skip it.
+ */
+let opsStatus = null, opsStats = null, opsDeploy = null, opsLogsFor = null, opsLogsText = '';
+
+async function loadOpsStatus() {
+  try {
+    const [s, v, d] = await Promise.all([
+      fetch('/api/ops/status').then(r => r.json()),
+      fetch('/api/ops/vm-stats').then(r => r.json()),
+      fetch('/api/ops/deploy-status').then(r => r.json()),
+    ]);
+    opsStatus = s.services || [];
+    opsStats = v;
+    opsDeploy = d.services || [];
+  } catch { opsStatus = opsStatus || []; }
+  if (currentView === 'ops') document.getElementById('view-container').innerHTML = renderOps();
+}
+
+async function opsServiceAction(name, action) {
+  if (action === 'destroy') {
+    const typed = prompt(`Type "${name}" to confirm destroying its container (image/data are untouched -- this only removes the running container):`);
+    if (typed !== name) return;
+  }
+  try {
+    const r = await fetch(`/api/ops/service/${action}?service=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: action === 'destroy' ? JSON.stringify({ confirm: name }) : undefined,
+    });
+    const data = await r.json();
+    if (!r.ok || data.ok === false) alert(`${action} ${name} failed: ${data.error || data.stderr || 'unknown error'}`);
+  } catch (e) { alert(`${action} ${name} failed: ${e.message}`); }
+  loadOpsStatus();
+}
+
+async function opsShowLogs(name) {
+  opsLogsFor = name;
+  opsLogsText = 'Loading…';
+  document.getElementById('view-container').innerHTML = renderOps();
+  try {
+    const r = await fetch(`/api/ops/logs?service=${encodeURIComponent(name)}&lines=200`);
+    const data = await r.json();
+    opsLogsText = data.log || '(empty)';
+  } catch (e) { opsLogsText = `Failed to load logs: ${e.message}`; }
+  if (currentView === 'ops' && opsLogsFor === name) document.getElementById('view-container').innerHTML = renderOps();
+}
+
+function opsCloseLogs() { opsLogsFor = null; document.getElementById('view-container').innerHTML = renderOps(); }
+
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return `${n.toFixed(1)} ${u[i]}`;
+}
+function fmtUptime(s) {
+  if (!s) return '-';
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+
+function renderOps() {
+  const deployByService = new Map((opsDeploy || []).map(d => [d.service, d]));
+  const rows = (opsStatus || []).map(s => {
+    const dep = deployByService.get(s.service) || {};
+    return `
+    <div class="audit-row ${s.running ? '' : 'broken'}">
+      <span class="audit-tier-dot" style="background:${s.running ? 'var(--green-bright,#2ecc71)' : 'var(--red)'}"></span>
+      <div class="audit-main">
+        <div class="audit-row-top">
+          <span class="audit-name">${escHtml(s.service)}</span>
+          <span class="audit-when">${s.running ? 'running' : (s.exists ? 'stopped' : 'not deployed')}${dep.commit ? ` · ${escHtml(dep.commit)} (${escHtml(dep.branch || '?')})` : ''}</span>
+        </div>
+        <div class="audit-detail">
+          <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','restart')">Restart</button>
+          <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','stop')">Stop</button>
+          <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','start')">Start</button>
+          <button class="btn btn-ghost" onclick="opsShowLogs('${s.service}')">Logs</button>
+          <button class="btn btn-ghost" style="color:var(--red)" onclick="opsServiceAction('${s.service}','destroy')">Destroy</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty-state">Loading…</div>';
+
+  const stats = opsStats;
+  const statsHtml = stats ? `
+    <div class="card-meta">
+      ${stats.cpuCount} CPU · load ${stats.loadAvg1?.toFixed(2)} ·
+      mem ${fmtBytes(stats.memTotalBytes - stats.memFreeBytes)} / ${fmtBytes(stats.memTotalBytes)} (${stats.memUsedPct}%) ·
+      disk ${stats.disk ? `${stats.disk.used} / ${stats.disk.total} (${stats.disk.usedPct})` : '-'} ·
+      up ${fmtUptime(stats.uptimeSeconds)}
+    </div>` : '<div class="card-meta">Loading VM stats…</div>';
+
+  const logsPanel = opsLogsFor ? `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">${escHtml(opsLogsFor)} — last 200 lines</span>
+        <button class="btn btn-ghost" onclick="opsCloseLogs()">Close</button>
+      </div>
+      <pre style="max-height:400px;overflow:auto;white-space:pre-wrap;font-size:0.8rem">${escHtml(opsLogsText)}</pre>
+    </div>` : '';
+
+  return `
+    <div class="view-head">
+      <h1>Ops</h1>
+      <div class="view-head-meta">the fleet + the OCI VM, live — restart/stop/start/destroy a service, tail its logs, see what's actually deployed</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">VM</span></div>
+      ${statsHtml}
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Services</span></div>
+      <div class="audit-rail">${rows}</div>
+    </div>
+    ${logsPanel}`;
+}
+
 // ── ROUTER ────────────────────────────────────────────────────────────────────
 
 const VIEWS = {
@@ -10906,7 +11030,7 @@ const viewFns = {
   today:renderToday, jira:renderJira,
   calendar:renderCalendar, settings:renderSettings, github:renderGitHub,
   inbox:renderInbox, tasks:renderTasks, decisions:renderDecisions,
-  risks:renderRisks, 'whatsapp-guide':renderWhatsAppGuide, audit:renderAudit,
+  risks:renderRisks, 'whatsapp-guide':renderWhatsAppGuide, audit:renderAudit, ops:renderOps,
   files:renderFileManager, social:renderSocial, spaces:renderSpaces,
   task:renderTaskView, finance:renderFinance, planning:renderPlanning,
   journal:renderJournal, learning:renderLearning, circle:renderCircle, ideas:renderIdeas,
@@ -12651,6 +12775,7 @@ function navigate(viewName, params = {}, opts = {}) {
   if (viewName==='jira')     Promise.all([fetchJiraIssues(), fetchJiraPending()]).then(()=>{ if(currentView==='jira') container.innerHTML=renderJira(); });
   if (viewName==='settings') fetchState().then(()=>{ if(currentView==='settings') { container.innerHTML=renderSettings(); loadApkCard(); loadPinStatus(); } });
   if (viewName==='audit')    loadAuditLog();
+  if (viewName==='ops')      { opsLogsFor = null; loadOpsStatus(); }
   if (viewName==='notifications') fetchNotifs();
   if (viewName==='finance')  fetchFinance();
   if (viewName==='planning') { fetchPlans(); fetchAdherence(); }
