@@ -11031,7 +11031,24 @@ const VIEWS = {
   risks:'renderRisks', 'whatsapp-guide':'renderWhatsAppGuide', audit:'renderAudit',
   files:'renderFileManager', social:'renderSocial', articles:'renderArticles',
 };
+// PS26090501: stub view only -- dead-hand remote wipe + future hardening
+// work, held in plan.md, not yet scoped. Nav position confirmed by Sconl
+// 5 Sep 2026 (Ops, Files, Media, Security, Audit); the view itself is
+// intentionally a placeholder until that row is picked up.
+function renderSecurity() {
+  return `
+    <div class="view-head">
+      <h1>Security</h1>
+      <div class="view-head-meta">not yet scoped - held in plan.md as PS26090501</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Coming later</span></div>
+      <div class="empty-state">Flagship item: dead-hand remote wipe of data from any logged-in device. Needs its own design pass before this space has real content.</div>
+    </div>`;
+}
+
 const viewFns = {
+  security:renderSecurity,
   today:renderToday, jira:renderJira,
   calendar:renderCalendar, settings:renderSettings, github:renderGitHub,
   inbox:renderInbox, tasks:renderTasks, decisions:renderDecisions,
