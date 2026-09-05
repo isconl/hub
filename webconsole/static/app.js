@@ -16267,6 +16267,7 @@ let learnCourseOpen = null;   // course id when browsing its modules
 let learnGroupOpen = null;    // group id when browsing a specific track
 let learnViewMode = 'groups'; // 'groups' (track cards) | 'flat' (all courses)
 let learnFilter = 'active';   // 'active' | 'all' | 'archived'
+let learnSpaceTab = 'campus'; // 'campus' | 'tracks' | 'commission' -- BL26090401 space-header tab row
 let learnModalState = null;   // active modal for group/course/module
 let learnNote = { text: '', loadedFor: null, savedAt: null, timer: null };
 let learnRestorePct = null;   // scroll depth to restore once the lesson paints
@@ -16577,9 +16578,28 @@ function ideasInsight() {
     tone: 'cyan' };
 }
 
+/**
+ * Academia's "Carry on from where you left" callout (BL26090401) - reuses
+ * the same LEARN.resume data the Level 1A resume banner and Level 2's
+ * "Continue exactly where you left off" button already read, surfaced
+ * through the same renderSpaceInsight() template every other space uses.
+ */
+function learningInsight() {
+  const resume = (LEARN && LEARN.resume || [])[0];
+  const course = resume && (LEARN.courses || []).find(c => c.ID === resume.COURSE_ID);
+  const lesson = course && (course.lessons || []).find(l => l.file === resume.LESSON);
+  if (!course || !lesson) {
+    return { title: 'Nothing in progress', category: 'Continue learning',
+      text: 'Open a course from Academia to start tracking progress here.', tone: 'cyan' };
+  }
+  const pct = parseInt(resume.SCROLL_PCT, 10) || 0;
+  return { title: truncateWords(lesson.title, 10), category: 'Continue learning',
+    text: `${course.TITLE}${pct ? ` · ${pct}% in` : ''}. Carry on exactly where you left off.`, tone: 'cyan' };
+}
+
 function renderSpaceInsight(space) {
   const ins = space === 'planning' ? planningInsight() : space === 'finance' ? financeInsight()
-    : space === 'ideas' ? ideasInsight() : SPACE_INSIGHTS[space];
+    : space === 'ideas' ? ideasInsight() : space === 'learning' ? learningInsight() : SPACE_INSIGHTS[space];
   if (!ins) return '';
   const accentColor = ins.tone === 'gold' ? 'var(--amber)' : ins.tone === 'cyan' ? 'var(--cyan)' : ins.tone === 'violet' ? 'var(--violet)' : 'var(--green)';
   return `
@@ -16721,7 +16741,7 @@ function renderRhythm() {
     ${renderSpaceInsight('rhythm')}
 
     <div class="card-header" style="margin-bottom:0.6rem">
-      <div class="task-tabs">
+      <div class="task-tabs control-style">
         ${filters.map(f => `<button class="task-tab${rhythmFilter === f.id ? ' on' : ''}" onclick="setRhythmFilter('${f.id}')">${f.label}</button>`).join('')}
       </div>
     </div>
@@ -17133,61 +17153,74 @@ function renderLearning() {
 
   return `
     <div class="view-head">
-      <div class="learn-header-bar">
-        <div>
-          <h1>Academia</h1>
-          <div class="view-head-meta">private classroom … classified tracks, living courses, and verifiable competency</div>
-        </div>
-        <div class="learn-controls">
-          <div class="learn-toggle-group">
-            <button class="learn-toggle-btn${learnViewMode === 'groups' ? ' active' : ''}" onclick="learnSetViewMode('groups')">Classified Tracks</button>
-            <button class="learn-toggle-btn${learnViewMode === 'flat' ? ' active' : ''}" onclick="learnSetViewMode('flat')">All Courses</button>
-          </div>
-          <div class="learn-toggle-group">
-            <button class="learn-toggle-btn${learnFilter === 'active' ? ' active' : ''}" onclick="learnSetFilter('active')">Active</button>
-            <button class="learn-toggle-btn${learnFilter === 'all' ? ' active' : ''}" onclick="learnSetFilter('all')">All</button>
-            <button class="learn-toggle-btn${learnFilter === 'archived' ? ' active' : ''}" onclick="learnSetFilter('archived')">Archived</button>
-          </div>
-          <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="learnShowGroupModal(null)">+ New Track</button>
-        </div>
+      <h1>Academia</h1>
+      <div class="view-head-meta" style="display:flex;justify-content:space-between;align-items:center;width:100%">
+        <span>private classroom … classified tracks, living courses, and verifiable competency</span>
+        <button class="btn btn-ghost" onclick="navigate('today')" style="font-size:0.75rem">Go to Dashboard ↗</button>
       </div>
     </div>
 
-    <!-- CAMPUS: Context-Aware Advice Board — shown first -->
-    ${renderCampus(resumeBanner)}
+    ${renderSpaceInsight('learning')}
 
-    ${LEARN.contrib && LEARN.contrib.days ? `
-    <div class="card" style="margin-bottom:1.5rem">
-      <div class="card-header"><span class="card-title">Learning activity</span>
-        <span class="card-meta">last 52 weeks</span></div>
-      ${contribGridHtml({ days: LEARN.contrib.days }).html}
-    </div>` : ''}
-
-    <!-- LEARNING TRACKS: Classified groups and course cards -->
-    ${learnViewMode === 'groups' ? `
-      <div class="learn-section-head" style="margin-bottom:0.75rem">Learning Tracks & Classifications</div>
-      <div class="learn-groups-grid" style="margin-bottom:1.5rem">
-        ${groups.map(renderLearnGroupCard).join('')}
+    <div class="card-header" style="margin-bottom:0.6rem">
+      <div class="task-tabs control-style">
+        <button class="task-tab${learnSpaceTab === 'campus' ? ' on' : ''}" onclick="learnSetSpaceTab('campus')">Campus</button>
+        <button class="task-tab${learnSpaceTab === 'tracks' ? ' on' : ''}" onclick="learnSetSpaceTab('tracks')">Tracks</button>
+        <button class="task-tab${learnSpaceTab === 'commission' ? ' on' : ''}" onclick="learnSetSpaceTab('commission')">Commission New Course</button>
       </div>
-    ` : `
-      ${groups.map(g => {
-        const groupCourses = courses.filter(c => c.GROUP_ID === g.id);
-        if (!groupCourses.length && learnFilter === 'active') return '';
-        return `
-          <div class="learn-section-head" style="display:flex;align-items:center;justify-content:space-between">
-            <span>${escHtml(g.icon || '📚')} ${escHtml(g.label)}</span>
-            <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">⚙ Track Settings</button>
-          </div>
-          <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-bottom:1.5rem">
-            ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
-          </div>`;
-      }).join('')}
-    `}
-
-    <div class="card" style="margin-top:1.5rem">
-      <div class="card-header"><span class="card-title">Commission a new course</span></div>
-      <div class="learn-goal">Name a topic in the chat or during a work session — courses are built from the ground up, with strict verification callouts (Research, In a Book, Fun fact, Jargon, Watch for, and Objectives), live versioning, and dated reviews.</div>
     </div>
+
+    ${learnSpaceTab === 'campus' ? `
+      <!-- Activity map first, Campus advice board below (BL26090401) -->
+      ${LEARN.contrib && LEARN.contrib.days ? `
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><span class="card-title">Learning activity</span>
+          <span class="card-meta">last 52 weeks</span></div>
+        ${contribGridHtml({ days: LEARN.contrib.days }).html}
+      </div>` : ''}
+      ${renderCampus(resumeBanner)}
+    ` : ''}
+
+    ${learnSpaceTab === 'tracks' ? `
+      <div class="card-header" style="margin-bottom:0.75rem">
+        <div class="learn-toggle-group">
+          <button class="learn-toggle-btn${learnViewMode === 'groups' ? ' active' : ''}" onclick="learnSetViewMode('groups')">Classified Tracks</button>
+          <button class="learn-toggle-btn${learnViewMode === 'flat' ? ' active' : ''}" onclick="learnSetViewMode('flat')">All Courses</button>
+        </div>
+        <div class="learn-toggle-group">
+          <button class="learn-toggle-btn${learnFilter === 'active' ? ' active' : ''}" onclick="learnSetFilter('active')">Active</button>
+          <button class="learn-toggle-btn${learnFilter === 'all' ? ' active' : ''}" onclick="learnSetFilter('all')">All</button>
+          <button class="learn-toggle-btn${learnFilter === 'archived' ? ' active' : ''}" onclick="learnSetFilter('archived')">Archived</button>
+        </div>
+      </div>
+      ${learnViewMode === 'groups' ? `
+        <div class="learn-section-head" style="margin-bottom:0.75rem">Learning Tracks & Classifications</div>
+        <div class="learn-groups-grid" style="margin-bottom:1.5rem">
+          ${groups.map(renderLearnGroupCard).join('')}
+        </div>
+      ` : `
+        ${groups.map(g => {
+          const groupCourses = courses.filter(c => c.GROUP_ID === g.id);
+          if (!groupCourses.length && learnFilter === 'active') return '';
+          return `
+            <div class="learn-section-head" style="display:flex;align-items:center;justify-content:space-between">
+              <span>${escHtml(g.icon || '📚')} ${escHtml(g.label)}</span>
+              <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">⚙ Track Settings</button>
+            </div>
+            <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-bottom:1.5rem">
+              ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
+            </div>`;
+        }).join('')}
+      `}
+    ` : ''}
+
+    ${learnSpaceTab === 'commission' ? `
+      <div class="card">
+        <div class="card-header"><span class="card-title">Commission a new course</span></div>
+        <div class="learn-goal">Name a topic in the chat or during a work session — courses are built from the ground up, with strict verification callouts (Research, In a Book, Fun fact, Jargon, Watch for, and Objectives), live versioning, and dated reviews.</div>
+        <button class="btn btn-primary" style="margin-top:0.75rem" onclick="learnShowGroupModal(null)">+ New Track</button>
+      </div>
+    ` : ''}
     ${renderLearnModals()}`;
 }
 
@@ -17347,6 +17380,11 @@ function learnSetViewMode(mode) {
 
 function learnSetFilter(f) {
   learnFilter = f;
+  repaintView('learning');
+}
+
+function learnSetSpaceTab(tab) {
+  learnSpaceTab = tab;
   repaintView('learning');
 }
 
@@ -17781,6 +17819,8 @@ function learnMd(src, courseId) {
       closeQuiz(); out.push(`<div class="lesson-quiz"><h3>${restoreMath(inline(line.slice(3)))}</h3>`); inQuiz = true; continue; }
     if (/^## Watch\b/i.test(line)) {
       closeQuiz(); out.push(`<div class="lesson-quiz watch-box"><h3>${restoreMath(inline(line.slice(3)))}</h3>`); inQuiz = true; continue; }
+    if (/^## Essentials\b/i.test(line)) {
+      closeQuiz(); out.push(`<div class="lesson-essentials"><h3>${restoreMath(inline(line.slice(3)))}</h3>`); inQuiz = true; continue; }
     if (/^\*\*(Jargon|In plain language|Plain language|The word):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
       out.push(`<div class="lesson-jargon">${restoreMath(inline(text.replace(/^\*\*(Jargon|In plain language|Plain language|The word):?\*\*\s*/i, '<span>Jargon</span>')))}</div>`);
@@ -17793,10 +17833,16 @@ function learnMd(src, courseId) {
     // citation was dropped, not that it doesn't need one, so it falls
     // through to a plain paragraph instead of a callout implying a source
     // that isn't actually named.
-    if (/^\*\*(In a book|Book):?\*\*/i.test(line)) {
+    if (/^\*\*(In a book|Book|Book quote):?\*\*/i.test(line)) {
+      // Merged handler (BL26090405) - "In a book"/"Book"/"Book quote" all
+      // render through the same lesson-book card now; the three phrasings
+      // stay parseable as aliases (course-standards.md's Jargon-migration
+      // precedent) so un-rewritten modules keep working during transition.
+      // Curly-quote wrapping always applied - a paraphrase reads fine in
+      // quotes too, and it's one less branch to maintain.
       const { text, nextIdx } = gatherWrapped(i);
-      const m = text.match(/^\*\*(In a book|Book):?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
-      if (m) out.push(`<div class="lesson-book"><span>Book</span>${restoreMath(inline(m[2]))}<div class="lesson-cite">${restoreMath(inline(m[3]))}</div></div>`);
+      const m = text.match(/^\*\*(In a book|Book|Book quote):?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
+      if (m) out.push(`<div class="lesson-book"><span>Book</span>&ldquo;${restoreMath(inline(m[2]))}&rdquo;<div class="lesson-cite">${restoreMath(inline(m[3]))}</div></div>`);
       else out.push(`<p>${restoreMath(inline(text))}</p>`);
       i = nextIdx; continue;
     }
@@ -17810,13 +17856,6 @@ function learnMd(src, courseId) {
     if (/^\*\*(Fun fact|Fact):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
       out.push(`<div class="lesson-fun-fact">${restoreMath(inline(text.replace(/^\*\*(Fun fact|Fact):?\*\*\s*/i, '<span>Fact</span>')))}</div>`);
-      i = nextIdx; continue;
-    }
-    if (/^\*\*Book quote:?\*\*/i.test(line)) {
-      const { text, nextIdx } = gatherWrapped(i);
-      const m = text.match(/^\*\*Book quote:?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
-      if (m) out.push(`<div class="lesson-book-quote"><span>Book quote</span>&ldquo;${restoreMath(inline(m[1]))}&rdquo;<div class="lesson-cite">${restoreMath(inline(m[2]))}</div></div>`);
-      else out.push(`<p>${restoreMath(inline(text))}</p>`);
       i = nextIdx; continue;
     }
     if (/^#### /.test(line)) { out.push(`<h5>${restoreMath(inline(line.slice(5)))}</h5>`); continue; }
