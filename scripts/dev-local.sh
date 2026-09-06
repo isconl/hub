@@ -68,6 +68,7 @@ SERVICES=(
   "ops:8087:ops"
   "hub:8888:hub"
   "tts:5001:vault/scripts/tts_service.py"
+  "learning-sync:-:vault/scripts/learning-sync-watcher.js"
 )
 
 # FI26090403: local dev must always run each repo's `dev` branch, never
@@ -95,13 +96,20 @@ start_one() {
     echo "$name already running (pid $(cat "$pidfile"))"
     return
   fi
-  if [ "$name" = "tts" ]; then
+  if [ "$name" = "tts" ] || [ "$name" = "learning-sync" ]; then
     ensure_dev_branch "vault"
   else
     ensure_dev_branch "$dir"
   fi
   (
-    if [ "$name" = "tts" ]; then
+    if [ "$name" = "learning-sync" ]; then
+      cd "$ROOT/vault"
+      if command -v setsid >/dev/null 2>&1; then
+        setsid node "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      else
+        nohup node "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      fi
+    elif [ "$name" = "tts" ]; then
       cd "$ROOT/vault"
       export TTS_BIND=127.0.0.1
       export TTS_PORT="$port"
