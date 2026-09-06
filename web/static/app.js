@@ -9204,6 +9204,11 @@ function localDayNow(now = trustedNow()) {
     before: mins < dayStart, after: mins >= dayEnd,
     current: current && { ...current, leftMins: leftIn(current) },
     next: (next || first) && untilNext != null ? { ...(next || first), inMins: untilNext } : null,
+    // BG26090605: the day's single-word theme (blocks.tsv's THEME column, one
+    // value shared by every block that day) - exposed at the top level, not
+    // just on `current`, so it's still available before/after the working
+    // day when there's no current block to read it off of.
+    theme: bs[0] ? bs[0].theme : null,
   };
 }
 
@@ -9887,6 +9892,11 @@ function renderRailContext() {
   // panel was cut down to just the rail.
   const dNow = localDayNow();
   const curBlock = dNow?.current || null;
+  // BG26090605: single-word weekday theme (blocks.tsv's THEME, one value per
+  // weekday) - curBlock already carries it when a block is active; the day-
+  // level fallback on dNow covers before/after the working day, since the
+  // theme belongs to the day, not to any one block.
+  const dayTheme = curBlock?.theme || dNow?.theme || null;
   const cornerElapsed = curBlock ? fmtBlockMins(Math.max(0, curBlock.minutes - curBlock.leftMins)) : '';
   const cornerLength = curBlock ? `${Math.round(curBlock.minutes / 60 * 10) / 10}h · ${curBlock.third || ''}` : '';
   const cornerLoad = curBlock ? (curBlock.placeable ? `${curBlock.tasks?.length ?? 0}/${curBlock.slots} slots` : 'personal') : '';
@@ -9916,6 +9926,8 @@ function renderRailContext() {
         <div class="ctx-viz-tag">
           <span class="badge badge-low" style="font-size:0.55rem;font-family:var(--font-mono)">Console</span>
         </div>
+
+        ${dayTheme ? `<div class="ctx-viz-theme" style="font-size:0.55rem;font-family:var(--font-mono);opacity:0.55;text-align:center;margin:2px 0">${escHtml(dayTheme)}</div>` : ''}
 
         <svg class="ctx-orb" viewBox="0 0 256 256" aria-label="Time left in the current block">
           <defs>
