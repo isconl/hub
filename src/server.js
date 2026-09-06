@@ -51,9 +51,21 @@ function sendJson(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// Images/media elements (`<img src>`, Flutter's Image.network) can't attach
+// a custom Authorization header -- only a URL. A `?token=` query fallback
+// lets `/api/learning/asset` (and anything else routed through checkAuth)
+// stay behind the same auth as every other /api/* route instead of needing
+// a separate public/unauthenticated carve-out. Header wins when both are
+// present; same token validation either way (checkAuth doesn't care which
+// transport it arrived by).
 function bearerToken(req) {
   const auth = req.headers.authorization || '';
-  return auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7);
+  try {
+    return new URL(req.url, 'http://x').searchParams.get('token') || '';
+  } catch {
+    return '';
+  }
 }
 
 /**
