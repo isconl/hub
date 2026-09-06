@@ -14518,6 +14518,9 @@ async function circleLoadAnalysis() {
    agent files it to OneDrive, reads it on the private route, and rewrites the
    DIA profiles and contact history from what the messages actually show. */
 let chatImport = { busy: false, result: null, error: null };
+// BM26090503: which unmatched-sender row has its "Add to Circle" form open,
+// keyed by speaker name -- at most one open at a time, closed on submit.
+let chatUnmatchedOpen = null;
 
 function renderChatImport() {
   const r = chatImport.result;
@@ -14550,11 +14553,57 @@ function renderChatImport() {
         ${r.unmatched?.length ? `
           <div class="fin-extract-head"><span>In the archive but not in your Circle</span></div>
           <div class="chat-unmatched">
-            ${r.unmatched.map(u => `<span class="chat-unmatched-chip" title="${u.count} messages">${escHtml(u.speaker)} <b>${u.count}</b></span>`).join('')}
-          </div>
-          <div class="evt-import-note">Add anyone worth tracking above, then re-run the import and their profile builds itself.</div>` : ''}
+            ${r.unmatched.map(u => chatUnmatchedOpen === u.speaker ? chatUnmatchedForm(u) : `
+              <span class="chat-unmatched-chip chat-unmatched-chip-btn" title="${u.count} messages"
+                    onclick="chatUnmatchedOpen='${escAttr(u.speaker)}';repaintView('circle')">
+                ${escHtml(u.speaker)} <b>${u.count}</b> <span class="chat-unmatched-add">+ Add to Circle</span>
+              </span>`).join('')}
+          </div>` : ''}
       ` : ''}
     </div>`;
+}
+
+/** BM26090503: the same fields as the main "Add a person" form, pre-filled
+ * with the sender's name from the export -- suggest-and-confirm, never
+ * automatic. Submits against the import still held server-side (importId),
+ * so the sender's real messages populate the inbox on confirm. */
+function chatUnmatchedForm(u) {
+  const idBase = `cu-${u.speaker.replace(/[^a-zA-Z0-9]/g, '')}`;
+  return `
+    <div class="card chat-unmatched-form" style="margin-top:0.4rem">
+      <div class="jr-compose-row">
+        <input id="${idBase}-name" class="jira-input" value="${escAttr(u.speaker)}" placeholder="Name" style="min-width:11rem"/>
+        <select id="${idBase}-circle" class="jira-input"><option>family</option><option>professional</option><option selected>social</option></select>
+        <input id="${idBase}-role" class="jira-input" placeholder="role / relationship"/>
+        <input id="${idBase}-cadence" class="jira-input" type="number" placeholder="contact every N days" style="width:11rem"/>
+        <button class="btn btn-primary" style="padding:6px 14px" onclick="chatUnmatchedAdd('${escAttr(u.speaker)}',this)">Add</button>
+        <button class="btn btn-ghost" style="padding:6px 14px" onclick="chatUnmatchedOpen=null;repaintView('circle')">Cancel</button>
+      </div>
+    </div>`;
+}
+
+async function chatUnmatchedAdd(speaker, btn) {
+  const idBase = `cu-${speaker.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const g = id => document.getElementById(id)?.value || '';
+  const importId = chatImport.result?.importId;
+  if (!importId) { showToast('That import has expired - re-run it and try again', 'error'); return; }
+  btn.disabled = true;
+  try {
+    const d = await (await fetch('/api/circle/import-chat/add-sender', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ importId, speaker, name: g(`${idBase}-name`).trim() || speaker,
+        circle: g(`${idBase}-circle`), role: g(`${idBase}-role`), cadence: g(`${idBase}-cadence`) }) })).json();
+    if (d.success) {
+      showToast(`${d.name || speaker} joins the circle - ${d.messages || 0} messages filed`, 'success');
+      chatImport.result.unmatched = (chatImport.result.unmatched || []).filter(x => x.speaker !== speaker);
+      chatUnmatchedOpen = null;
+      await fetchCircle();
+      refreshNotifBadge();
+      repaintView('circle');
+    } else {
+      showToast(d.error || 'Refused', 'error');
+      btn.disabled = false;
+    }
+  } catch (e) { showToast(e.message, 'error'); btn.disabled = false; }
 }
 
 function chatImportUpload(input) {

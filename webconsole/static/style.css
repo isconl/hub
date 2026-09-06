@@ -4538,6 +4538,10 @@ body.m-nav-open .m-backdrop { opacity:1; pointer-events:auto; }
 .chat-unmatched-chip { font-size:0.68rem; color:var(--text-2); background:var(--surface);
   border:1px solid var(--border); border-radius:999px; padding:1px 9px; }
 .chat-unmatched-chip b { font-family:var(--font-mono); font-size:0.62rem; color:var(--text-3); margin-left:3px; }
+.chat-unmatched-chip-btn { cursor:pointer; }
+.chat-unmatched-chip-btn:hover { border-color:var(--accent, var(--cyan)); }
+.chat-unmatched-add { color:var(--accent, var(--cyan)); margin-left:5px; }
+.chat-unmatched-form .jr-compose-row { flex-wrap:wrap; }
 
 /* Tag row above the title - the frame before the sentence. */
 .trow-tags { display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap; margin-bottom:0.25rem; }
