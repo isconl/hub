@@ -23,18 +23,19 @@ const path = require('path');
 const servicesRegistry = require('../lib/services-registry');
 const manifest = require('../lib/manifest');
 const apk = require('../lib/apk');
+const { createChatThreadStore } = require('../lib/chat-threads');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
 const BIND = process.env.HUB_BIND || '127.0.0.1';
 const LOGS_DIR = process.env.HUB_LOGS_DIR || require('path').join(__dirname, '..', 'runtime', 'logs');
-// webconsole/ -- the real web frontend, native HTML/CSS/JS ported from the
+// web/ -- the real web frontend, native HTML/CSS/JS ported from the
 // legacy dashboard and wired to hub's own API (see lib/static.js). This
 // replaced the Flutter-web build as the default: Flutter-compiled-to-web
 // carried its own runtime (CanvasKit) and didn't feel like a web page.
-// Absent (no HUB_WEB_DIR, no webconsole/) is still a fully supported state
+// Absent (no HUB_WEB_DIR, no web/) is still a fully supported state
 // -- the static server just reports itself unavailable and every request
 // behaves exactly as it does today (API only).
-const WEB_DIR = process.env.HUB_WEB_DIR || require('path').join(__dirname, '..', 'webconsole');
+const WEB_DIR = process.env.HUB_WEB_DIR || require('path').join(__dirname, '..', 'web');
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -98,7 +99,7 @@ function shapeServices(keys) {
 }
 
 /** Flat space/spaces.tsv rows (ID, PARENT_ID, ...) -> the nested tree
- *  webconsole/static/app.js's renderSpaces() walks. A row with no PARENT_ID
+ *  web/static/app.js's renderSpaces() walks. A row with no PARENT_ID
  *  or an unresolvable one becomes a root -- degrades gracefully rather than
  *  dropping the row, since a dangling PARENT_ID (a typo, or a parent
  *  deleted without reparenting its children) shouldn't make a whole
@@ -122,8 +123,15 @@ function buildSpacesTree(rows) {
   return roots;
 }
 
+let _devAuthBypassLog = null; // set once main() creates auditLog; used by ISCONL_DEV_NO_AUTH (BS26090501)
+
 /** Every non-public route needs EITHER the static HUB_TOKEN (service-to-service/admin) OR a real vault session (an end user, via authProxy.verify). */
 async function checkAuth(req, authProxy) {
+  // BS26090501: dev-only, loopback-gated (enforced at boot below), env-only -- never request-derived.
+  if (process.env.ISCONL_DEV_NO_AUTH === '1') {
+    if (_devAuthBypassLog) _devAuthBypassLog.log('dev_auth_bypass', { engine: 'hub', path: req.url });
+    return true;
+  }
   const token = bearerToken(req);
   if (!token) return false;
   const staticToken = process.env.HUB_TOKEN || process.env.ISCONL_TOKEN || secretStore.get('HUB_TOKEN') || '';
@@ -137,6 +145,7 @@ async function main() {
   console.log(`  secrets: ${secretsResult.source}, ${secretsResult.count} key(s)`);
 
   const auditLog = createAuditLog({ logsDir: LOGS_DIR });
+  _devAuthBypassLog = auditLog;
 
   // Each spoke engine's URL/token is configuration -- no hardcoded
   // addresses, so this same code runs against local dev ports, Docker
@@ -163,6 +172,7 @@ async function main() {
   const registry = createRegistry({ engines, auditLog });
   const router = createRouter({ registry, engines, auditLog });
   const authProxy = createAuthProxy({ vault: engines.vault });
+  const chatThreads = createChatThreadStore(engines.vault);
 
   // The legacy monolith (Sconl/isconl-agent) is retired -- deleted locally
   // 2026-08-15, no longer deployed anywhere. hub is self-contained now:
@@ -184,6 +194,10 @@ async function main() {
 
   const tokenConfigured = !!(process.env.HUB_TOKEN || process.env.ISCONL_TOKEN || secretStore.get('HUB_TOKEN'));
   const isLoopback = ['127.0.0.1', '::1', 'localhost'].includes(BIND);
+  if (process.env.ISCONL_DEV_NO_AUTH === '1' && !isLoopback) {
+    console.error('  REFUSING TO BIND: ISCONL_DEV_NO_AUTH is set but BIND is not loopback -- dev auth bypass is loopback-only.');
+    process.exit(1);
+  }
   if (!isLoopback && !tokenConfigured) {
     console.error('  REFUSING TO BIND: no HUB_TOKEN/ISCONL_TOKEN configured and BIND is not loopback.');
     process.exit(1);
@@ -303,7 +317,7 @@ async function main() {
       // lastResult: {ok, ref, error, startedAt, finishedAt}} -- was
       // onedrive.sync.status's {ok:[...], failed:[...]} per-collection
       // shape before the pull-based sync was retired) into the shape
-      // webconsole/static/app.js's checkVaultLink() already expects
+      // web/static/app.js's checkVaultLink() already expects
       // ({onedrive, status, error}) -- that shape predates this route
       // existing (it was written against the legacy monolith's own
       // /api/vault/sync/status), so the choice is reshape-at-the-edge here
@@ -323,7 +337,7 @@ async function main() {
 
       // File manager delete/move: reshape vault's {ok, error} into the
       // {success, error} shape the frontend's fmDeleteItem/fmRenameItem/
-      // fmMoveItem already check (webconsole/static/app.js) -- inherited
+      // fmMoveItem already check (web/static/app.js) -- inherited
       // from the legacy monolith's own contract, kept rather than editing
       // three already-built frontend functions.
       if (pathname === '/api/onedrive/delete' && req.method === 'POST') {
@@ -358,7 +372,7 @@ async function main() {
 
       // Reshapes vault's onThisDay ({date, entries, world, card}) into the
       // {insights:{calendar:{title,category,text,tone}}} shape
-      // webconsole/static/app.js's SPACE_INSIGHTS/fetchInsights() already
+      // web/static/app.js's SPACE_INSIGHTS/fetchInsights() already
       // expects -- replaces pulse's hardcoded 1971 placeholder with the
       // real thing (personal record first, world history fallback).
       // title maps to c.event (the bold headline, "what actually happened")
@@ -384,7 +398,7 @@ async function main() {
 
       // Spaces (axial tree): api-compat.js used to mark this `legacy: true`,
       // meaning it always 501'd -- the legacy monolith it pointed at was
-      // deleted 2026-08-15, so webconsole/static/app.js's fetchSpaces() has
+      // deleted 2026-08-15, so web/static/app.js's fetchSpaces() has
       // been failing silently (caught in its own try/catch) ever since,
       // leaving renderSpaces() stuck on "Loading spaces…" forever. Found
       // and fixed 17 Aug while wiring the Writer space in under it. Same
@@ -515,6 +529,7 @@ async function main() {
         const p = JSON.parse(await readBody(req) || '{}');
         const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: [{ role: 'user', content: p.message || '' }] } });
         if (r.status !== 200) return sendJson(res, r.status || 502, { error: (r.data && r.data.error) || 'spark did not answer' });
+        try { await chatThreads.appendTurn(p.message || '', r.data.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
         return sendJson(res, 200, { response: r.data.response, captured: [] });
       }
       if (pathname === '/api/chat/stream' && req.method === 'POST') {
@@ -537,11 +552,32 @@ async function main() {
             // this fix's scope (restoring an answer at all).
             res.write(`event: token\ndata: ${JSON.stringify({ t: r.data.response })}\n\n`);
             res.write(`event: done\ndata: ${JSON.stringify({ response: r.data.response, captured: [] })}\n\n`);
+            try { await chatThreads.appendTurn(p.message || '', r.data.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
           }
         } catch (e) {
           res.write(`event: error\ndata: ${JSON.stringify({ error: String(e.message || e) })}\n\n`);
         }
         return res.end();
+      }
+      // BI26090505: real per-thread storage, replacing the 501-stub
+      // legacy:true routes in api-compat.js (bypasses the generic router
+      // the same way /api/chat above does -- these need chatThreads'
+      // in-memory current-thread state, not a stateless capability call).
+      if (pathname === '/api/chat/thread/new' && req.method === 'POST') {
+        return sendJson(res, 200, await chatThreads.newThread());
+      }
+      if (pathname === '/api/chat/thread/open' && req.method === 'POST') {
+        const p = JSON.parse(await readBody(req) || '{}');
+        const r = await chatThreads.openThread(p.id);
+        return sendJson(res, r.success ? 200 : 404, r);
+      }
+      if (pathname === '/api/chat/threads' && req.method === 'GET') {
+        return sendJson(res, 200, await chatThreads.listThreads());
+      }
+      if (pathname === '/api/chat/thread/delete' && req.method === 'POST') {
+        const p = JSON.parse(await readBody(req) || '{}');
+        const r = await chatThreads.deleteThread(p.id);
+        return sendJson(res, r.success ? 200 : 404, r);
       }
 
       // Profile photo binary passthrough -- see api-compat.js's note on why

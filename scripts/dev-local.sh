@@ -12,6 +12,19 @@
 # OAuth token rotation) -- read-only secret pulls work without it.
 #
 # Usage: ./scripts/dev-local.sh [start|stop|status]
+#
+# ISCONL_DEV_NO_AUTH=1 (BS26090501, optional, off by default): skips the
+# PIN/TOTP/token wall on every engine so curl/scripted API inspection works
+# without a live authenticated browser. Set it ONLY in this process's own
+# environment or an untracked .env.dev you export before running this
+# script -- NEVER add it to a tracked file, and never with the value 1 in
+# any config that reaches staging/main/the OCI VM/Render. This is env-only
+# (never accepted from a request) and loopback-gated: every engine refuses
+# to bind at all if this is set and its own BIND is not loopback, so the
+# flag is harmless even if it leaks into a real deployment's environment by
+# mistake -- it only ever does anything on 127.0.0.1/::1/localhost. The
+# code is identical across dev/staging/main; only local dev's environment
+# ever actually sets this.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # hub/
@@ -55,6 +68,7 @@ SERVICES=(
   "ops:8087:ops"
   "hub:8888:hub"
   "tts:5001:vault/scripts/tts_service.py"
+  "learning-sync:-:vault/scripts/learning-sync-watcher.js"
 )
 
 # FI26090403: local dev must always run each repo's `dev` branch, never
@@ -82,13 +96,20 @@ start_one() {
     echo "$name already running (pid $(cat "$pidfile"))"
     return
   fi
-  if [ "$name" = "tts" ]; then
+  if [ "$name" = "tts" ] || [ "$name" = "learning-sync" ]; then
     ensure_dev_branch "vault"
   else
     ensure_dev_branch "$dir"
   fi
   (
-    if [ "$name" = "tts" ]; then
+    if [ "$name" = "learning-sync" ]; then
+      cd "$ROOT/vault"
+      if command -v setsid >/dev/null 2>&1; then
+        setsid node "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      else
+        nohup node "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      fi
+    elif [ "$name" = "tts" ]; then
       cd "$ROOT/vault"
       export TTS_BIND=127.0.0.1
       export TTS_PORT="$port"

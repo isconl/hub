@@ -2,7 +2,7 @@
 
 Version: `5.1.0`  
 Last Updated: `2026-08-17`  
-Scope: `hub/webconsole`, `circle`, `vault`, `spark`
+Scope: `hub/web`, `circle`, `vault`, `spark`
 
 ---
 

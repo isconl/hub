@@ -1767,11 +1767,16 @@ function renderDatesPanel() {
             const kindColor = { birthday: '#bc8cff', anniversary: '#3fb950', graduation: '#3fb950', 'first graduation': '#3fb950', 'first job': '#58a6ff',
                                 first: '#58a6ff', deadline: '#d29922' }[(d.KIND || '').toLowerCase()] || '#8b949e';
             const c = /^#[0-9a-f]{6}$/i.test(d.COLOR || '') ? d.COLOR : kindColor;
+            // Display-label override, storage KIND unchanged (BT26090402,
+            // 5 Sep 2026, per Sconl): "First Graduation" -> "Bachelors
+            // Graduation" for the badge only -- kindColor/dropdown value
+            // stay 'first graduation' so nothing else needs to change.
+            const kindLabel = { 'first graduation': 'Bachelors Graduation' }[(d.KIND || '').toLowerCase()] || d.KIND;
             return `
             <div class="date-card" title="${escHtml(d.NOTE !== '-' ? d.NOTE : d.DATE)}"
                  style="background:${c}14;border-color:${c}55">
               <div class="date-card-top">
-                <span class="date-kind" style="color:${c}">${escHtml(d.KIND)}</span>
+                <span class="date-kind" style="color:${c}">${escHtml(kindLabel)}</span>
                 <button class="date-del" title="Remove" onclick="deleteImportantDate('${escHtml(d.ID)}')">×</button>
               </div>
               <div class="date-num">${Number(big).toLocaleString('en-KE')}</div>
@@ -3825,8 +3830,8 @@ function getBrandingConfig() {
 }
 
 /**
- * The one horizontal brandmark component - bold "i" + light "Architect" + bold
- * "Hub" (capital H, per Architect 17 Aug), same 3-part split and colors as the
+ * The one horizontal brandmark component - bold "i" + light "Sconl" + bold
+ * "hub", same 3-part split and colors as the
  * sidebar's static markup (index.html's .wordmark), but built here so it
  * can be reused anywhere else a brandmark is needed (the auth/login gate
  * is the first of those) without copy-pasting the split across files.
@@ -3837,7 +3842,7 @@ function getBrandingConfig() {
  */
 function renderBrandmarkHorizontal(size = '1.45rem') {
   return `<div class="wordmark" style="font-size:${size}">
-    <span class="wordmark-i">i</span><span class="wordmark-mid">Architect</span><span class="wordmark-suffix">Hub</span>
+    <span class="wordmark-i">i</span><span class="wordmark-mid">Sconl</span><span class="wordmark-suffix">hub</span>
   </div>`;
 }
 function renderBrandmarkIcon(sizePx = 40) {
@@ -9199,6 +9204,11 @@ function localDayNow(now = trustedNow()) {
     before: mins < dayStart, after: mins >= dayEnd,
     current: current && { ...current, leftMins: leftIn(current) },
     next: (next || first) && untilNext != null ? { ...(next || first), inMins: untilNext } : null,
+    // BG26090605: the day's single-word theme (blocks.tsv's THEME column, one
+    // value shared by every block that day) - exposed at the top level, not
+    // just on `current`, so it's still available before/after the working
+    // day when there's no current block to read it off of.
+    theme: bs[0] ? bs[0].theme : null,
   };
 }
 
@@ -9882,6 +9892,11 @@ function renderRailContext() {
   // panel was cut down to just the rail.
   const dNow = localDayNow();
   const curBlock = dNow?.current || null;
+  // BG26090605: single-word weekday theme (blocks.tsv's THEME, one value per
+  // weekday) - curBlock already carries it when a block is active; the day-
+  // level fallback on dNow covers before/after the working day, since the
+  // theme belongs to the day, not to any one block.
+  const dayTheme = curBlock?.theme || dNow?.theme || null;
   const cornerElapsed = curBlock ? fmtBlockMins(Math.max(0, curBlock.minutes - curBlock.leftMins)) : '';
   const cornerLength = curBlock ? `${Math.round(curBlock.minutes / 60 * 10) / 10}h · ${curBlock.third || ''}` : '';
   const cornerLoad = curBlock ? (curBlock.placeable ? `${curBlock.tasks?.length ?? 0}/${curBlock.slots} slots` : 'personal') : '';
@@ -9911,6 +9926,8 @@ function renderRailContext() {
         <div class="ctx-viz-tag">
           <span class="badge badge-low" style="font-size:0.55rem;font-family:var(--font-mono)">Console</span>
         </div>
+
+        ${dayTheme ? `<div class="ctx-viz-theme" style="font-size:0.55rem;font-family:var(--font-mono);opacity:0.55;text-align:center;margin:2px 0">${escHtml(dayTheme)}</div>` : ''}
 
         <svg class="ctx-orb" viewBox="0 0 256 256" aria-label="Time left in the current block">
           <defs>
@@ -11026,7 +11043,24 @@ const VIEWS = {
   risks:'renderRisks', 'whatsapp-guide':'renderWhatsAppGuide', audit:'renderAudit',
   files:'renderFileManager', social:'renderSocial', articles:'renderArticles',
 };
+// PS26090501: stub view only -- dead-hand remote wipe + future hardening
+// work, held in plan.md, not yet scoped. Nav position confirmed by Sconl
+// 5 Sep 2026 (Ops, Files, Media, Security, Audit); the view itself is
+// intentionally a placeholder until that row is picked up.
+function renderSecurity() {
+  return `
+    <div class="view-head">
+      <h1>Security</h1>
+      <div class="view-head-meta">not yet scoped - held in plan.md as PS26090501</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Coming later</span></div>
+      <div class="empty-state">Flagship item: dead-hand remote wipe of data from any logged-in device. Needs its own design pass before this space has real content.</div>
+    </div>`;
+}
+
 const viewFns = {
+  security:renderSecurity,
   today:renderToday, jira:renderJira,
   calendar:renderCalendar, settings:renderSettings, github:renderGitHub,
   inbox:renderInbox, tasks:renderTasks, decisions:renderDecisions,
@@ -11034,7 +11068,7 @@ const viewFns = {
   files:renderFileManager, social:renderSocial, spaces:renderSpaces,
   task:renderTaskView, finance:renderFinance, planning:renderPlanning,
   journal:renderJournal, learning:renderLearning, circle:renderCircle, ideas:renderIdeas,
-  projects:renderProjects, corporate:renderCorporate, 'corporate-detail':renderCorporateDetail, notifications:renderNotifications, articles:renderArticles,
+  projects:renderProjects, portfolio:renderPortfolio, corporate:renderCorporate, 'corporate-detail':renderCorporateDetail, notifications:renderNotifications, articles:renderArticles,
   rhythm:renderRhythm, personal:renderRhythm, teams:renderTeams,
   contacts:renderContacts, writer:renderWriter,
   'identity-persona':renderIdentityPersonaRing,
@@ -14496,6 +14530,9 @@ async function circleLoadAnalysis() {
    agent files it to OneDrive, reads it on the private route, and rewrites the
    DIA profiles and contact history from what the messages actually show. */
 let chatImport = { busy: false, result: null, error: null };
+// BM26090503: which unmatched-sender row has its "Add to Circle" form open,
+// keyed by speaker name -- at most one open at a time, closed on submit.
+let chatUnmatchedOpen = null;
 
 function renderChatImport() {
   const r = chatImport.result;
@@ -14528,11 +14565,57 @@ function renderChatImport() {
         ${r.unmatched?.length ? `
           <div class="fin-extract-head"><span>In the archive but not in your Circle</span></div>
           <div class="chat-unmatched">
-            ${r.unmatched.map(u => `<span class="chat-unmatched-chip" title="${u.count} messages">${escHtml(u.speaker)} <b>${u.count}</b></span>`).join('')}
-          </div>
-          <div class="evt-import-note">Add anyone worth tracking above, then re-run the import and their profile builds itself.</div>` : ''}
+            ${r.unmatched.map(u => chatUnmatchedOpen === u.speaker ? chatUnmatchedForm(u) : `
+              <span class="chat-unmatched-chip chat-unmatched-chip-btn" title="${u.count} messages"
+                    onclick="chatUnmatchedOpen='${escAttr(u.speaker)}';repaintView('circle')">
+                ${escHtml(u.speaker)} <b>${u.count}</b> <span class="chat-unmatched-add">+ Add to Circle</span>
+              </span>`).join('')}
+          </div>` : ''}
       ` : ''}
     </div>`;
+}
+
+/** BM26090503: the same fields as the main "Add a person" form, pre-filled
+ * with the sender's name from the export -- suggest-and-confirm, never
+ * automatic. Submits against the import still held server-side (importId),
+ * so the sender's real messages populate the inbox on confirm. */
+function chatUnmatchedForm(u) {
+  const idBase = `cu-${u.speaker.replace(/[^a-zA-Z0-9]/g, '')}`;
+  return `
+    <div class="card chat-unmatched-form" style="margin-top:0.4rem">
+      <div class="jr-compose-row">
+        <input id="${idBase}-name" class="jira-input" value="${escAttr(u.speaker)}" placeholder="Name" style="min-width:11rem"/>
+        <select id="${idBase}-circle" class="jira-input"><option>family</option><option>professional</option><option selected>social</option></select>
+        <input id="${idBase}-role" class="jira-input" placeholder="role / relationship"/>
+        <input id="${idBase}-cadence" class="jira-input" type="number" placeholder="contact every N days" style="width:11rem"/>
+        <button class="btn btn-primary" style="padding:6px 14px" onclick="chatUnmatchedAdd('${escAttr(u.speaker)}',this)">Add</button>
+        <button class="btn btn-ghost" style="padding:6px 14px" onclick="chatUnmatchedOpen=null;repaintView('circle')">Cancel</button>
+      </div>
+    </div>`;
+}
+
+async function chatUnmatchedAdd(speaker, btn) {
+  const idBase = `cu-${speaker.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const g = id => document.getElementById(id)?.value || '';
+  const importId = chatImport.result?.importId;
+  if (!importId) { showToast('That import has expired - re-run it and try again', 'error'); return; }
+  btn.disabled = true;
+  try {
+    const d = await (await fetch('/api/circle/import-chat/add-sender', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ importId, speaker, name: g(`${idBase}-name`).trim() || speaker,
+        circle: g(`${idBase}-circle`), role: g(`${idBase}-role`), cadence: g(`${idBase}-cadence`) }) })).json();
+    if (d.success) {
+      showToast(`${d.name || speaker} joins the circle - ${d.messages || 0} messages filed`, 'success');
+      chatImport.result.unmatched = (chatImport.result.unmatched || []).filter(x => x.speaker !== speaker);
+      chatUnmatchedOpen = null;
+      await fetchCircle();
+      refreshNotifBadge();
+      repaintView('circle');
+    } else {
+      showToast(d.error || 'Refused', 'error');
+      btn.disabled = false;
+    }
+  } catch (e) { showToast(e.message, 'error'); btn.disabled = false; }
 }
 
 function chatImportUpload(input) {
@@ -14868,7 +14951,69 @@ async function circleDraft(id) {
 
 let PROJECTS = null;
 let projectOpen = null;
-let projectCat = 'all';   // the sidebar menu selection: all / portfolio / product / platform
+let projectCat = 'all';   // the sidebar menu selection: all / product / platform
+
+// ── PORTFOLIO: Sconl's own CVs/resumes/portfolio documents (BA26090501) ────
+// Phase 1: a simple curated link list, editable in place. Phase 2 (a real
+// "live portfolio" product) is a future, separate build.
+let PORTFOLIO = null;
+
+async function fetchPortfolio() {
+  try { PORTFOLIO = await (await fetch('/api/portfolio')).json(); }
+  catch { PORTFOLIO = { items: [] }; }
+  if (currentView === 'portfolio') repaintView('portfolio');
+}
+
+async function portfolioAdd() {
+  const title = document.getElementById('pf-title')?.value.trim();
+  const url = document.getElementById('pf-url')?.value.trim();
+  if (!title || !url) { showToast('Title and link are both required', 'error'); return; }
+  const items = [...((PORTFOLIO && PORTFOLIO.items) || []), { title, url }];
+  await portfolioSave(items);
+}
+
+async function portfolioRemove(idx) {
+  const items = ((PORTFOLIO && PORTFOLIO.items) || []).filter((_, i) => i !== idx);
+  await portfolioSave(items);
+}
+
+async function portfolioSave(items) {
+  try {
+    const d = await (await fetch('/api/portfolio', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }) })).json();
+    PORTFOLIO = { items: d.items || items };
+    repaintView('portfolio');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function renderPortfolio() {
+  if (!PORTFOLIO) { fetchPortfolio(); return `<div class="card"><div class="empty-state">Loading portfolio…</div></div>`; }
+  const items = PORTFOLIO.items || [];
+  return `
+    <div class="view-head">
+      <h1>Portfolio</h1>
+      <div class="view-head-meta">Sconl's own CVs, resumes, and portfolio documents - always the latest version</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Documents</span>
+        <span class="card-meta">${items.length} link${items.length === 1 ? '' : 's'}</span></div>
+      ${items.length ? `
+        <div class="circle-grid">
+          ${items.map((it, i) => `
+            <div class="circle-card">
+              <div class="circle-name"><a href="${escAttr(it.url)}" target="_blank" rel="noreferrer">${escHtml(it.title)}</a></div>
+              ${it.note ? `<div class="circle-meta">${escHtml(it.note)}</div>` : ''}
+              <button class="btn btn-ghost" style="margin-top:0.5rem;font-size:0.72rem;padding:2px 8px" onclick="portfolioRemove(${i})">Remove</button>
+            </div>`).join('')}
+        </div>` : `<div class="empty-state">Nothing added yet.</div>`}
+      <div class="jr-compose-row" style="margin-top:0.9rem">
+        <input id="pf-title" class="jira-input" style="flex:1;min-width:160px" placeholder="Title, e.g. Resume 2026"/>
+        <input id="pf-url" class="jira-input" style="flex:2;min-width:220px" placeholder="Live document link (OneDrive/Google)"/>
+        <button class="btn btn-primary" style="padding:6px 14px" onclick="portfolioAdd()">Add</button>
+      </div>
+    </div>
+    <div class="card-meta" style="margin-top:0.6rem">Phase 1: a simple curated link list. A live, public-facing portfolio product is a future build, not this.</div>`;
+}
 
 async function fetchProjects() {
   try { PROJECTS = await (await fetch('/api/projects')).json(); }
@@ -14910,9 +15055,11 @@ function renderProjects() {
           <button class="btn btn-primary" style="padding:6px 14px" onclick="projectSetUrl('${escHtml(open.ID)}')">Save</button></div></div>`}`;
   }
 
-  // Three sections, three purposes: Portfolio is work delivered for others,
-  // Products are his own monetizable systems (they surface in Finance as
-  // alternative income sources), Platforms are the business websites.
+  // Two sections now (BA26090501, 5 Sep 2026): Portfolio moved out to its
+  // own space (Sconl's own CVs/resumes, not client work) -- Products are
+  // his own monetizable systems PLUS client-built sites (folded in from
+  // the old Portfolio category; they surface in Finance as alternative
+  // income sources), Platforms are the business websites.
   const card = (v) => `
       <div class="circle-card" onclick="projectOpen='${escHtml(v.ID)}';repaintView('projects')">
         <div class="circle-name">${v.live ? `<span class="ring-dot sm" style="background:${v.live.up ? 'var(--green)' : 'var(--red)'}"></span>` : '<span class="ring-dot sm" style="background:var(--text-3)"></span>'}${escHtml(v.NAME)}</div>
@@ -14929,14 +15076,23 @@ function renderProjects() {
         <div class="circle-grid">${items.map(card).join('')}</div>
       </div>`;
   };
-  const uncat = list.filter(v => !['portfolio', 'product', 'platform'].includes(v.CATEGORY));
+  // Legacy portfolio-tagged rows (pre BA26090501) still render under
+  // Products rather than vanishing, in case any exist on a data source
+  // this session didn't see -- confirmed 0 in the live ventures.tsv at
+  // build time, but this keeps the fold-in honest either way.
+  const products = list.filter(v => (v.CATEGORY || '-') === 'product' || (v.CATEGORY || '-') === 'portfolio');
+  const uncat = list.filter(v => !['product', 'platform', 'portfolio'].includes(v.CATEGORY));
   return `
     <div class="view-head">
       <h1>Projects</h1>
       <div class="view-head-meta">status checked from the agent, never guessed</div>
     </div>
-    ${projectCat === 'all' || projectCat === 'portfolio' ? section('Portfolio', 'portfolio', 'built for clients and users') : ''}
-    ${projectCat === 'all' || projectCat === 'product' ? section('Products', 'product', 'own IP · monetizable · registered in Finance as alternative income sources') : ''}
+    ${projectCat === 'all' || projectCat === 'product' ? (products.length ? `
+      <div class="card">
+        <div class="card-header"><span class="card-title">Products</span>
+          <span class="card-meta">own IP · monetizable · built for clients and users · registered in Finance as alternative income sources</span></div>
+        <div class="circle-grid">${products.map(card).join('')}</div>
+      </div>` : '') : ''}
     ${projectCat === 'all' || projectCat === 'platform' ? section('Platforms', 'platform', 'the business websites - Acexoft Dynamics and kin') : ''}
     ${uncat.length ? `<div class="card"><div class="card-header"><span class="card-title">Uncategorised</span></div>
       <div class="circle-grid">${uncat.map(card).join('')}</div></div>` : ''}
@@ -16267,6 +16423,7 @@ let learnCourseOpen = null;   // course id when browsing its modules
 let learnGroupOpen = null;    // group id when browsing a specific track
 let learnViewMode = 'groups'; // 'groups' (track cards) | 'flat' (all courses)
 let learnFilter = 'active';   // 'active' | 'all' | 'archived'
+let learnSpaceTab = 'campus'; // 'campus' | 'tracks' | 'commission' -- BL26090401 space-header tab row
 let learnModalState = null;   // active modal for group/course/module
 let learnNote = { text: '', loadedFor: null, savedAt: null, timer: null };
 let learnRestorePct = null;   // scroll depth to restore once the lesson paints
@@ -16577,9 +16734,28 @@ function ideasInsight() {
     tone: 'cyan' };
 }
 
+/**
+ * Academia's "Carry on from where you left" callout (BL26090401) - reuses
+ * the same LEARN.resume data the Level 1A resume banner and Level 2's
+ * "Continue exactly where you left off" button already read, surfaced
+ * through the same renderSpaceInsight() template every other space uses.
+ */
+function learningInsight() {
+  const resume = (LEARN && LEARN.resume || [])[0];
+  const course = resume && (LEARN.courses || []).find(c => c.ID === resume.COURSE_ID);
+  const lesson = course && (course.lessons || []).find(l => l.file === resume.LESSON);
+  if (!course || !lesson) {
+    return { title: 'Nothing in progress', category: 'Continue learning',
+      text: 'Open a course from Academia to start tracking progress here.', tone: 'cyan' };
+  }
+  const pct = parseInt(resume.SCROLL_PCT, 10) || 0;
+  return { title: truncateWords(lesson.title, 10), category: 'Continue learning',
+    text: `${course.TITLE}${pct ? ` · ${pct}% in` : ''}. Carry on exactly where you left off.`, tone: 'cyan' };
+}
+
 function renderSpaceInsight(space) {
   const ins = space === 'planning' ? planningInsight() : space === 'finance' ? financeInsight()
-    : space === 'ideas' ? ideasInsight() : SPACE_INSIGHTS[space];
+    : space === 'ideas' ? ideasInsight() : space === 'learning' ? learningInsight() : SPACE_INSIGHTS[space];
   if (!ins) return '';
   const accentColor = ins.tone === 'gold' ? 'var(--amber)' : ins.tone === 'cyan' ? 'var(--cyan)' : ins.tone === 'violet' ? 'var(--violet)' : 'var(--green)';
   return `
@@ -16721,7 +16897,7 @@ function renderRhythm() {
     ${renderSpaceInsight('rhythm')}
 
     <div class="card-header" style="margin-bottom:0.6rem">
-      <div class="task-tabs">
+      <div class="task-tabs control-style">
         ${filters.map(f => `<button class="task-tab${rhythmFilter === f.id ? ' on' : ''}" onclick="setRhythmFilter('${f.id}')">${f.label}</button>`).join('')}
       </div>
     </div>
@@ -17133,61 +17309,74 @@ function renderLearning() {
 
   return `
     <div class="view-head">
-      <div class="learn-header-bar">
-        <div>
-          <h1>Academia</h1>
-          <div class="view-head-meta">private classroom … classified tracks, living courses, and verifiable competency</div>
-        </div>
-        <div class="learn-controls">
-          <div class="learn-toggle-group">
-            <button class="learn-toggle-btn${learnViewMode === 'groups' ? ' active' : ''}" onclick="learnSetViewMode('groups')">Classified Tracks</button>
-            <button class="learn-toggle-btn${learnViewMode === 'flat' ? ' active' : ''}" onclick="learnSetViewMode('flat')">All Courses</button>
-          </div>
-          <div class="learn-toggle-group">
-            <button class="learn-toggle-btn${learnFilter === 'active' ? ' active' : ''}" onclick="learnSetFilter('active')">Active</button>
-            <button class="learn-toggle-btn${learnFilter === 'all' ? ' active' : ''}" onclick="learnSetFilter('all')">All</button>
-            <button class="learn-toggle-btn${learnFilter === 'archived' ? ' active' : ''}" onclick="learnSetFilter('archived')">Archived</button>
-          </div>
-          <button class="btn btn-ghost" style="font-size:0.75rem;padding:4px 10px" onclick="learnShowGroupModal(null)">+ New Track</button>
-        </div>
+      <h1>Academia</h1>
+      <div class="view-head-meta" style="display:flex;justify-content:space-between;align-items:center;width:100%">
+        <span>private classroom … classified tracks, living courses, and verifiable competency</span>
+        <button class="btn btn-ghost" onclick="navigate('today')" style="font-size:0.75rem">Go to Dashboard ↗</button>
       </div>
     </div>
 
-    <!-- CAMPUS: Context-Aware Advice Board — shown first -->
-    ${renderCampus(resumeBanner)}
+    ${renderSpaceInsight('learning')}
 
-    ${LEARN.contrib && LEARN.contrib.days ? `
-    <div class="card" style="margin-bottom:1.5rem">
-      <div class="card-header"><span class="card-title">Learning activity</span>
-        <span class="card-meta">last 52 weeks</span></div>
-      ${contribGridHtml({ days: LEARN.contrib.days }).html}
-    </div>` : ''}
-
-    <!-- LEARNING TRACKS: Classified groups and course cards -->
-    ${learnViewMode === 'groups' ? `
-      <div class="learn-section-head" style="margin-bottom:0.75rem">Learning Tracks & Classifications</div>
-      <div class="learn-groups-grid" style="margin-bottom:1.5rem">
-        ${groups.map(renderLearnGroupCard).join('')}
+    <div class="card-header" style="margin-bottom:0.6rem">
+      <div class="task-tabs control-style">
+        <button class="task-tab${learnSpaceTab === 'campus' ? ' on' : ''}" onclick="learnSetSpaceTab('campus')">Campus</button>
+        <button class="task-tab${learnSpaceTab === 'tracks' ? ' on' : ''}" onclick="learnSetSpaceTab('tracks')">Tracks</button>
+        <button class="task-tab${learnSpaceTab === 'commission' ? ' on' : ''}" onclick="learnSetSpaceTab('commission')">Commission New Course</button>
       </div>
-    ` : `
-      ${groups.map(g => {
-        const groupCourses = courses.filter(c => c.GROUP_ID === g.id);
-        if (!groupCourses.length && learnFilter === 'active') return '';
-        return `
-          <div class="learn-section-head" style="display:flex;align-items:center;justify-content:space-between">
-            <span>${escHtml(g.icon || '📚')} ${escHtml(g.label)}</span>
-            <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">⚙ Track Settings</button>
-          </div>
-          <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-bottom:1.5rem">
-            ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
-          </div>`;
-      }).join('')}
-    `}
-
-    <div class="card" style="margin-top:1.5rem">
-      <div class="card-header"><span class="card-title">Commission a new course</span></div>
-      <div class="learn-goal">Name a topic in the chat or during a work session — courses are built from the ground up, with strict verification callouts (Research, In a Book, Fun fact, Jargon, Watch for, and Objectives), live versioning, and dated reviews.</div>
     </div>
+
+    ${learnSpaceTab === 'campus' ? `
+      <!-- Activity map first, Campus advice board below (BL26090401) -->
+      ${LEARN.contrib && LEARN.contrib.days ? `
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-header"><span class="card-title">Learning activity</span>
+          <span class="card-meta">last 52 weeks</span></div>
+        ${contribGridHtml({ days: LEARN.contrib.days }).html}
+      </div>` : ''}
+      ${renderCampus(resumeBanner)}
+    ` : ''}
+
+    ${learnSpaceTab === 'tracks' ? `
+      <div class="card-header" style="margin-bottom:0.75rem">
+        <div class="learn-toggle-group">
+          <button class="learn-toggle-btn${learnViewMode === 'groups' ? ' active' : ''}" onclick="learnSetViewMode('groups')">Classified Tracks</button>
+          <button class="learn-toggle-btn${learnViewMode === 'flat' ? ' active' : ''}" onclick="learnSetViewMode('flat')">All Courses</button>
+        </div>
+        <div class="learn-toggle-group">
+          <button class="learn-toggle-btn${learnFilter === 'active' ? ' active' : ''}" onclick="learnSetFilter('active')">Active</button>
+          <button class="learn-toggle-btn${learnFilter === 'all' ? ' active' : ''}" onclick="learnSetFilter('all')">All</button>
+          <button class="learn-toggle-btn${learnFilter === 'archived' ? ' active' : ''}" onclick="learnSetFilter('archived')">Archived</button>
+        </div>
+      </div>
+      ${learnViewMode === 'groups' ? `
+        <div class="learn-section-head" style="margin-bottom:0.75rem">Learning Tracks & Classifications</div>
+        <div class="learn-groups-grid" style="margin-bottom:1.5rem">
+          ${groups.map(renderLearnGroupCard).join('')}
+        </div>
+      ` : `
+        ${groups.map(g => {
+          const groupCourses = courses.filter(c => c.GROUP_ID === g.id);
+          if (!groupCourses.length && learnFilter === 'active') return '';
+          return `
+            <div class="learn-section-head" style="display:flex;align-items:center;justify-content:space-between">
+              <span>${escHtml(g.icon || '📚')} ${escHtml(g.label)}</span>
+              <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">⚙ Track Settings</button>
+            </div>
+            <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-bottom:1.5rem">
+              ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
+            </div>`;
+        }).join('')}
+      `}
+    ` : ''}
+
+    ${learnSpaceTab === 'commission' ? `
+      <div class="card">
+        <div class="card-header"><span class="card-title">Commission a new course</span></div>
+        <div class="learn-goal">Name a topic in the chat or during a work session — courses are built from the ground up, with strict verification callouts (Research, In a Book, Fun fact, Jargon, Watch for, and Objectives), live versioning, and dated reviews.</div>
+        <button class="btn btn-primary" style="margin-top:0.75rem" onclick="learnShowGroupModal(null)">+ New Track</button>
+      </div>
+    ` : ''}
     ${renderLearnModals()}`;
 }
 
@@ -17347,6 +17536,11 @@ function learnSetViewMode(mode) {
 
 function learnSetFilter(f) {
   learnFilter = f;
+  repaintView('learning');
+}
+
+function learnSetSpaceTab(tab) {
+  learnSpaceTab = tab;
   repaintView('learning');
 }
 
@@ -17781,6 +17975,8 @@ function learnMd(src, courseId) {
       closeQuiz(); out.push(`<div class="lesson-quiz"><h3>${restoreMath(inline(line.slice(3)))}</h3>`); inQuiz = true; continue; }
     if (/^## Watch\b/i.test(line)) {
       closeQuiz(); out.push(`<div class="lesson-quiz watch-box"><h3>${restoreMath(inline(line.slice(3)))}</h3>`); inQuiz = true; continue; }
+    if (/^## Essentials\b/i.test(line)) {
+      closeQuiz(); out.push(`<div class="lesson-essentials"><h3>${restoreMath(inline(line.slice(3)))}</h3>`); inQuiz = true; continue; }
     if (/^\*\*(Jargon|In plain language|Plain language|The word):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
       out.push(`<div class="lesson-jargon">${restoreMath(inline(text.replace(/^\*\*(Jargon|In plain language|Plain language|The word):?\*\*\s*/i, '<span>Jargon</span>')))}</div>`);
@@ -17793,10 +17989,16 @@ function learnMd(src, courseId) {
     // citation was dropped, not that it doesn't need one, so it falls
     // through to a plain paragraph instead of a callout implying a source
     // that isn't actually named.
-    if (/^\*\*(In a book|Book):?\*\*/i.test(line)) {
+    if (/^\*\*(In a book|Book|Book quote):?\*\*/i.test(line)) {
+      // Merged handler (BL26090405) - "In a book"/"Book"/"Book quote" all
+      // render through the same lesson-book card now; the three phrasings
+      // stay parseable as aliases (course-standards.md's Jargon-migration
+      // precedent) so un-rewritten modules keep working during transition.
+      // Curly-quote wrapping always applied - a paraphrase reads fine in
+      // quotes too, and it's one less branch to maintain.
       const { text, nextIdx } = gatherWrapped(i);
-      const m = text.match(/^\*\*(In a book|Book):?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
-      if (m) out.push(`<div class="lesson-book"><span>Book</span>${restoreMath(inline(m[2]))}<div class="lesson-cite">${restoreMath(inline(m[3]))}</div></div>`);
+      const m = text.match(/^\*\*(In a book|Book|Book quote):?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
+      if (m) out.push(`<div class="lesson-book"><span>Book</span>&ldquo;${restoreMath(inline(m[2]))}&rdquo;<div class="lesson-cite">${restoreMath(inline(m[3]))}</div></div>`);
       else out.push(`<p>${restoreMath(inline(text))}</p>`);
       i = nextIdx; continue;
     }
@@ -17810,13 +18012,6 @@ function learnMd(src, courseId) {
     if (/^\*\*(Fun fact|Fact):?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
       out.push(`<div class="lesson-fun-fact">${restoreMath(inline(text.replace(/^\*\*(Fun fact|Fact):?\*\*\s*/i, '<span>Fact</span>')))}</div>`);
-      i = nextIdx; continue;
-    }
-    if (/^\*\*Book quote:?\*\*/i.test(line)) {
-      const { text, nextIdx } = gatherWrapped(i);
-      const m = text.match(/^\*\*Book quote:?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
-      if (m) out.push(`<div class="lesson-book-quote"><span>Book quote</span>&ldquo;${restoreMath(inline(m[1]))}&rdquo;<div class="lesson-cite">${restoreMath(inline(m[2]))}</div></div>`);
-      else out.push(`<p>${restoreMath(inline(text))}</p>`);
       i = nextIdx; continue;
     }
     if (/^#### /.test(line)) { out.push(`<h5>${restoreMath(inline(line.slice(5)))}</h5>`); continue; }

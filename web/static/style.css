@@ -341,13 +341,13 @@ select option { background:var(--panel); color:var(--text); }
 /* A single status dot (e.g. the chat rail's "iSconl Assistant" title) -
    the old 3-dot decorative cluster lived here too, retired now that the
    sidebar brand mark is the wordmark below instead. */
-/* Same gradient as the wordmark's "Architect" and the eq-meter progress bars -
+/* Same gradient as the wordmark's "Sconl" and the eq-meter progress bars -
    one gradient, used everywhere the brand's green shows up as a fill. */
 .brand-dot { width:8px; height:8px; border-radius:50%; background:linear-gradient(135deg, var(--green-dim), var(--green)); }
 .brand-text { display:flex; flex-direction:column; }
 .tagline { font-size:0.65rem; color:var(--text-3); font-family:var(--font-mono); margin-top:-2px; }
 
-/* ── Horizontal wordmark: bold "i" + light "Architect" + bold "hub" = "iSconlhub" ──
+/* ── Horizontal wordmark: bold "i" + light "Sconl" + bold "hub" = "iSconlhub" ──
    Ported pattern from QSpace's _BrandLogoTypographic (bold/light wordmark
    split, hero-font, light half at reduced opacity), adapted from a 2-part
    split to this brand's 3-part one. Colors come from brand-system.js's
@@ -550,6 +550,11 @@ select option { background:var(--panel); color:var(--text); }
   .eq-meters { gap:1rem; }
   .eq-meter { width:7rem; }
   .eq-meter:nth-child(3) { display:none; }   /* year is the least urgent countdown */
+  /* FG26090502: at this width the label ("Sprint 7 | 7 days left") and the
+     sub fraction ("7/14") no longer fit on one line without colliding - force
+     the sub onto its own line rather than letting it garble into the label. */
+  .eq-meter-top { flex-wrap:wrap; }
+  .eq-meter-sub { flex-basis:100%; margin-top:2px; }
 }
 
 /* Same shrink, triggered by the actual content column's width rather than the
@@ -560,6 +565,8 @@ select option { background:var(--panel); color:var(--text); }
   .eq-meters { gap:1rem; }
   .eq-meter { width:7rem; }
   .eq-meter:nth-child(3) { display:none; }
+  .eq-meter-top { flex-wrap:wrap; }
+  .eq-meter-sub { flex-basis:100%; margin-top:2px; }
 }
 
 .view-container { flex:1; overflow-y:auto; padding:1.15rem 1.25rem 2rem; }
@@ -3022,34 +3029,55 @@ body[data-callout-theme="muted"] .lesson-body {
   font-size:0.88rem; line-height:1.6; }
 .lesson-objective span { display:block; font-size:0.6rem; text-transform:uppercase;
   letter-spacing:0.09em; color:var(--lb-accent); margin-bottom:0.2rem; }
-.lesson-quiz { font-family:system-ui,sans-serif; border:1px solid var(--border); border-radius:var(--r-md);
-  background:var(--bg-raised); padding:0.7rem 1rem 0.8rem; margin:1.2rem 0; }
-.lesson-quiz h3 { font-family:system-ui,sans-serif !important; border-bottom:none !important; margin:0 0 0.3rem !important;
-  font-size:0.62rem !important; text-transform:uppercase; letter-spacing:0.09em; color:var(--text-3); }
-.lesson-quiz .md-li { margin:0.35rem 0; }
+/* Check yourself (BL26090404, 5 Sep 2026): the interactive check gets its
+   own accent + icon so it reads as "test what you know" at a glance,
+   distinct from a generic bordered card - it's one of the most-used
+   learning tools in the space, per Sconl, and previously looked like any
+   other box. */
+.lesson-quiz { font-family:system-ui,sans-serif; border:1px solid var(--border); border-left:3px solid var(--lb-quiz, #4fb0a5);
+  border-radius:var(--r-md); background:var(--bg-raised); padding:0.7rem 1rem 0.8rem; margin:1.2rem 0; }
+.lesson-quiz h3 { font-family:system-ui,sans-serif !important; border-bottom:none !important; margin:0 0 0.4rem !important;
+  font-size:0.62rem !important; text-transform:uppercase; letter-spacing:0.09em; color:var(--lb-quiz, #4fb0a5);
+  display:flex; align-items:center; gap:0.35rem; }
+.lesson-quiz h3::before { content:'✓'; display:inline-flex; align-items:center; justify-content:center;
+  width:1.1em; height:1.1em; border-radius:50%; background:var(--lb-quiz, #4fb0a5); color:var(--bg-raised);
+  font-size:0.85em; }
+.lesson-quiz .md-li { margin:0.5rem 0; padding-left:1.4rem; position:relative; counter-increment:quiz-q; }
+.lesson-quiz .md-li::before { content:counter(quiz-q) '.'; position:absolute; left:0; color:var(--lb-quiz, #4fb0a5); font-weight:650; }
+.lesson-quiz { counter-reset:quiz-q; }
 .lesson-quiz.watch-box { border-left:3px solid var(--lb-warm); background:var(--lb-warm-bg); }
 .lesson-quiz.watch-box h3 { color:var(--lb-warm) !important; }
+.lesson-quiz.watch-box h3::before { background:var(--lb-warm); }
+.lesson-quiz.watch-box .md-li::before { color:var(--lb-warm); }
+
+/* Essentials (BL26090404, 5 Sep 2026, renamed from "Key Takeaways" per
+   Sconl's own pick from 4 offered options) - a recap card, distinct from
+   Check yourself's interactive framing. Same house family (system-ui,
+   var(--r-md)) as the other callouts; --cyan since it wasn't already
+   claimed by Objective/Watch/Book/Research/Fun-fact. Previously had zero
+   styling at all - fell through to a plain <h2>. */
+.lesson-essentials { font-family:system-ui,sans-serif; border:1px solid var(--border); border-left:3px solid var(--cyan);
+  border-radius:var(--r-md); background:var(--bg-raised); padding:0.7rem 1rem 0.8rem; margin:1.2rem 0; }
+.lesson-essentials h3 { font-family:system-ui,sans-serif !important; border-bottom:none !important; margin:0 0 0.4rem !important;
+  font-size:0.62rem !important; text-transform:uppercase; letter-spacing:0.09em; color:var(--cyan); }
+.lesson-essentials .md-li { margin:0.35rem 0; }
 .lesson-watch { font-family:system-ui,sans-serif; border-left:3px solid var(--lb-warm);
   background:var(--lb-warm-bg); border-radius:0 var(--r-md) var(--r-md) 0;
   padding:0.65rem 0.9rem; margin:1rem 0 0.6rem; font-size:0.86rem; line-height:1.6; }
 .lesson-watch span { display:block; font-size:0.6rem; text-transform:uppercase;
   letter-spacing:0.09em; color:var(--lb-warm); margin-bottom:0.2rem; }
 
-/* The two book callouts (house style, 7 Aug 2026): "In a book" ties the
-   idea to a real source; "Book quote" is the author's own sentence, set
-   apart as a quotation rather than paraphrase. Two more hues from the same
-   family as the other three, so all five stay tellable apart. */
+/* The book callout (house style, 7 Aug 2026; merged 5 Sep 2026 per
+   BL26090405): "In a book"/"Book"/"Book quote" all render through this one
+   card now - a paraphrased idea-pointer and a verbatim quote both get the
+   curly-quote wrapping, since a paraphrase reads fine in quotes too and
+   it's one less style to keep tellable apart. .lesson-book-quote retired
+   as a distinct style - kept out of the family, not just visually merged. */
 .lesson-book { font-family:system-ui,sans-serif; border-left:3px solid var(--lb-book, #a892d9); background:var(--lb-book-bg, rgba(168,146,217,0.09));
   border-radius:0 var(--r-md) var(--r-md) 0; padding:0.6rem 0.9rem; margin:0.85rem 0;
   font-size:0.86rem; line-height:1.65; }
 .lesson-book span { display:block; font-size:0.58rem; text-transform:uppercase;
   letter-spacing:0.09em; color:var(--lb-book, #a892d9); margin-bottom:0.2rem; }
-.lesson-book-quote { font-family:var(--lb-body, var(--font-ui)); font-style:italic;
-  border-left:3px solid var(--lb-quote, #d98a4f); background:var(--lb-quote-bg, rgba(217,138,79,0.08));
-  border-radius:0 var(--r-md) var(--r-md) 0; padding:0.65rem 0.95rem; margin:0.5rem 0 0.85rem;
-  font-size:0.92rem; line-height:1.6; }
-.lesson-book-quote span { display:block; font-family:system-ui,sans-serif; font-style:normal;
-  font-size:0.58rem; text-transform:uppercase; letter-spacing:0.09em; color:var(--lb-quote, #d98a4f); margin-bottom:0.2rem; }
 .lesson-cite { font-family:var(--font-mono); font-style:normal; font-size:0.68rem;
   color:var(--text-3); margin-top:0.4rem; letter-spacing:0.01em; }
 
@@ -3664,6 +3692,18 @@ body[data-callout-theme="muted"] .lesson-body {
 .task-tab:hover { color:var(--space-accent, var(--mc-rail)); background:color-mix(in srgb, var(--space-accent, var(--mc-rail)) 10%, transparent); }
 .task-tab.on { color:var(--space-accent, var(--mc-rail)); background:color-mix(in srgb, var(--space-accent, var(--mc-rail)) 16%, var(--surface)); font-weight:600; }
 .task-tab.on span { color:var(--space-accent, var(--mc-rail)); }
+
+/* Space header tab row (BL26090401) - the universal header template's
+   tab row, restyled from .task-tabs' joined-strip look to individual
+   rounded-rectangle control buttons matching .chat-rail-control-btn.
+   Applied to a .task-tabs row via the .control-style modifier rather
+   than changing .task-tab globally, since most .task-tabs usages
+   elsewhere (buffer/tasks/media/notif/calendar/circle/articles) are a
+   different pattern, not this header. */
+.task-tabs.control-style { border:none; border-radius:0; background:transparent; gap:0.4rem; overflow:visible; }
+.task-tabs.control-style .task-tab { border-left:none; border:1px solid var(--border); border-radius:var(--r-md); padding:0.32rem 0.65rem; background:var(--surface); }
+.task-tabs.control-style .task-tab:hover { color:var(--text); border-color:var(--hover-border); background:var(--hover-bg); }
+.task-tabs.control-style .task-tab.on { color:var(--space-accent, var(--mc-rail)); border-color:var(--space-accent, var(--mc-rail)); background:color-mix(in srgb, var(--space-accent, var(--mc-rail)) 16%, var(--surface)); }
 
 /* Right-rail Console/Chat/Context tabs - each carries its own accent (18
    Aug, Architect: "assign the right panel menus a color"). .task-tab is reused
@@ -4369,6 +4409,8 @@ body.m-nav-open .m-backdrop { opacity:1; pointer-events:auto; }
   .eq-meters { flex-basis:100%; gap:0.9rem; }
   .eq-meter { width:auto; flex:1; min-width:0; }
   .eq-meter:nth-child(3) { display:none; }
+  .eq-meter-top { flex-wrap:wrap; }
+  .eq-meter-sub { flex-basis:100%; margin-top:2px; }
 
   /* Room for the thumb row at the bottom of every scroll. */
   .view-container { padding:0.85rem 0.8rem calc(4.8rem + env(safe-area-inset-bottom)); }
@@ -4505,6 +4547,10 @@ body.m-nav-open .m-backdrop { opacity:1; pointer-events:auto; }
 .chat-unmatched-chip { font-size:0.68rem; color:var(--text-2); background:var(--surface);
   border:1px solid var(--border); border-radius:999px; padding:1px 9px; }
 .chat-unmatched-chip b { font-family:var(--font-mono); font-size:0.62rem; color:var(--text-3); margin-left:3px; }
+.chat-unmatched-chip-btn { cursor:pointer; }
+.chat-unmatched-chip-btn:hover { border-color:var(--accent, var(--cyan)); }
+.chat-unmatched-add { color:var(--accent, var(--cyan)); margin-left:5px; }
+.chat-unmatched-form .jr-compose-row { flex-wrap:wrap; }
 
 /* Tag row above the title - the frame before the sentence. */
 .trow-tags { display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap; margin-bottom:0.25rem; }
@@ -5326,7 +5372,7 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
 @container (max-width: 560px) {
   .lesson-body { font-size:0.91rem; line-height:1.68; }
   .lesson-objective, .lesson-watch, .lesson-jargon, .lesson-book,
-  .lesson-book-quote, .lesson-research, .lesson-fun-fact { padding:0.55rem 0.7rem; font-size:0.82rem; }
+  .lesson-essentials, .lesson-research, .lesson-fun-fact { padding:0.55rem 0.7rem; font-size:0.82rem; }
   .lesson-toolbar .lesson-tool-btn span { display:none; }
 }
 

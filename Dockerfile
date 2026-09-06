@@ -1,7 +1,7 @@
 # hub -- portable container build, same shape across every isconl engine
 # (vault/pulse/scope/circle/spark/hub) on purpose: one Dockerfile pattern
 # to maintain, not six bespoke ones. hub is the only one that also serves a
-# UI: webconsole/, real HTML/CSS/JS (no build step, no second stage needed)
+# UI: web/, real HTML/CSS/JS (no build step, no second stage needed)
 # ported from the legacy dashboard and wired to hub's own API. This
 # replaced the earlier Flutter-web build stage -- Flutter compiled to web
 # carried its own CanvasKit runtime and didn't read as a web page; the
@@ -23,7 +23,7 @@ RUN npm ci --omit=dev
 
 COPY lib ./lib
 COPY src ./src
-COPY webconsole ./webconsole
+COPY web ./web
 
 # Real fail-closed bind guard already in src/server.js: refuses to bind
 # 0.0.0.0 without a configured token. Set HUB_TOKEN (or ISCONL_TOKEN) and
