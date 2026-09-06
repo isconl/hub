@@ -124,6 +124,15 @@ test('the static HUB_TOKEN authenticates a request without needing a vault sessi
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
 
+test('a token in the ?token= query param authenticates too -- images (<img src>, Image.network) can\'t send an Authorization header', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/engines?token=test-static-token`);
+    assert.equal(res.status, 200);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
 test('a real vault session token (verified via vault\'s /auth/verify) also authenticates -- not just the static token', async () => {
   const vault = await startFakeEngine({ name: 'vault', routes: {
     'POST /auth/verify': () => [200, { valid: true, via: 'totp' }],

@@ -17867,9 +17867,14 @@ function learnMd(src, courseId) {
     .replace(/\[\[([^\|\]\n]+)\|([^\]\n]+)\]\]/g, (_m, term, def) =>
       `<span class="jargon-term" tabindex="0" role="button" aria-haspopup="true" data-def="${escAttr(def.trim())}" onclick="event.stopPropagation();toggleJargonPopup(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleJargonPopup(this)}">${term.trim()}</span>`)
     .replace(/!\[([^\]\n]*)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)/g, (_m, alt, src, title) => {
-      // Resolve _assets/ paths to the vault-proxied asset endpoint
+      // Resolve _assets/ paths to the vault-proxied asset endpoint.
+      // <img src> can't carry an Authorization header, and this route sits
+      // behind the same auth as every other /api/* route -- ?token= is the
+      // query-param fallback checkAuth/bearerToken() accepts specifically
+      // for media elements (found live 6 Sep 2026: every lesson image was
+      // silently 401ing, both web and mobile, for exactly this reason).
       const resolvedSrc = src.startsWith('_assets/')
-        ? `/api/learning/asset?course=${encodeURIComponent(learnMdCourseId)}&file=${encodeURIComponent(src.slice(8))}`
+        ? `/api/learning/asset?course=${encodeURIComponent(learnMdCourseId)}&file=${encodeURIComponent(src.slice(8))}&token=${encodeURIComponent(getToken())}`
         : src;
       // Never serve raw external URLs — flag them visually instead of breaking silently
       if (/^https?:\/\//i.test(src) && !resolvedSrc.startsWith('/api/')) {
