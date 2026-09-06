@@ -550,6 +550,11 @@ select option { background:var(--panel); color:var(--text); }
   .eq-meters { gap:1rem; }
   .eq-meter { width:7rem; }
   .eq-meter:nth-child(3) { display:none; }   /* year is the least urgent countdown */
+  /* FG26090502: at this width the label ("Sprint 7 | 7 days left") and the
+     sub fraction ("7/14") no longer fit on one line without colliding - force
+     the sub onto its own line rather than letting it garble into the label. */
+  .eq-meter-top { flex-wrap:wrap; }
+  .eq-meter-sub { flex-basis:100%; margin-top:2px; }
 }
 
 /* Same shrink, triggered by the actual content column's width rather than the
@@ -560,6 +565,8 @@ select option { background:var(--panel); color:var(--text); }
   .eq-meters { gap:1rem; }
   .eq-meter { width:7rem; }
   .eq-meter:nth-child(3) { display:none; }
+  .eq-meter-top { flex-wrap:wrap; }
+  .eq-meter-sub { flex-basis:100%; margin-top:2px; }
 }
 
 .view-container { flex:1; overflow-y:auto; padding:1.15rem 1.25rem 2rem; }
@@ -4402,6 +4409,8 @@ body.m-nav-open .m-backdrop { opacity:1; pointer-events:auto; }
   .eq-meters { flex-basis:100%; gap:0.9rem; }
   .eq-meter { width:auto; flex:1; min-width:0; }
   .eq-meter:nth-child(3) { display:none; }
+  .eq-meter-top { flex-wrap:wrap; }
+  .eq-meter-sub { flex-basis:100%; margin-top:2px; }
 
   /* Room for the thumb row at the bottom of every scroll. */
   .view-container { padding:0.85rem 0.8rem calc(4.8rem + env(safe-area-inset-bottom)); }
