@@ -28,14 +28,14 @@ const { createChatThreadStore } = require('../lib/chat-threads');
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
 const BIND = process.env.HUB_BIND || '127.0.0.1';
 const LOGS_DIR = process.env.HUB_LOGS_DIR || require('path').join(__dirname, '..', 'runtime', 'logs');
-// webconsole/ -- the real web frontend, native HTML/CSS/JS ported from the
+// web/ -- the real web frontend, native HTML/CSS/JS ported from the
 // legacy dashboard and wired to hub's own API (see lib/static.js). This
 // replaced the Flutter-web build as the default: Flutter-compiled-to-web
 // carried its own runtime (CanvasKit) and didn't feel like a web page.
-// Absent (no HUB_WEB_DIR, no webconsole/) is still a fully supported state
+// Absent (no HUB_WEB_DIR, no web/) is still a fully supported state
 // -- the static server just reports itself unavailable and every request
 // behaves exactly as it does today (API only).
-const WEB_DIR = process.env.HUB_WEB_DIR || require('path').join(__dirname, '..', 'webconsole');
+const WEB_DIR = process.env.HUB_WEB_DIR || require('path').join(__dirname, '..', 'web');
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -99,7 +99,7 @@ function shapeServices(keys) {
 }
 
 /** Flat space/spaces.tsv rows (ID, PARENT_ID, ...) -> the nested tree
- *  webconsole/static/app.js's renderSpaces() walks. A row with no PARENT_ID
+ *  web/static/app.js's renderSpaces() walks. A row with no PARENT_ID
  *  or an unresolvable one becomes a root -- degrades gracefully rather than
  *  dropping the row, since a dangling PARENT_ID (a typo, or a parent
  *  deleted without reparenting its children) shouldn't make a whole
@@ -317,7 +317,7 @@ async function main() {
       // lastResult: {ok, ref, error, startedAt, finishedAt}} -- was
       // onedrive.sync.status's {ok:[...], failed:[...]} per-collection
       // shape before the pull-based sync was retired) into the shape
-      // webconsole/static/app.js's checkVaultLink() already expects
+      // web/static/app.js's checkVaultLink() already expects
       // ({onedrive, status, error}) -- that shape predates this route
       // existing (it was written against the legacy monolith's own
       // /api/vault/sync/status), so the choice is reshape-at-the-edge here
@@ -337,7 +337,7 @@ async function main() {
 
       // File manager delete/move: reshape vault's {ok, error} into the
       // {success, error} shape the frontend's fmDeleteItem/fmRenameItem/
-      // fmMoveItem already check (webconsole/static/app.js) -- inherited
+      // fmMoveItem already check (web/static/app.js) -- inherited
       // from the legacy monolith's own contract, kept rather than editing
       // three already-built frontend functions.
       if (pathname === '/api/onedrive/delete' && req.method === 'POST') {
@@ -372,7 +372,7 @@ async function main() {
 
       // Reshapes vault's onThisDay ({date, entries, world, card}) into the
       // {insights:{calendar:{title,category,text,tone}}} shape
-      // webconsole/static/app.js's SPACE_INSIGHTS/fetchInsights() already
+      // web/static/app.js's SPACE_INSIGHTS/fetchInsights() already
       // expects -- replaces pulse's hardcoded 1971 placeholder with the
       // real thing (personal record first, world history fallback).
       // title maps to c.event (the bold headline, "what actually happened")
@@ -398,7 +398,7 @@ async function main() {
 
       // Spaces (axial tree): api-compat.js used to mark this `legacy: true`,
       // meaning it always 501'd -- the legacy monolith it pointed at was
-      // deleted 2026-08-15, so webconsole/static/app.js's fetchSpaces() has
+      // deleted 2026-08-15, so web/static/app.js's fetchSpaces() has
       // been failing silently (caught in its own try/catch) ever since,
       // leaving renderSpaces() stuck on "Loading spaces…" forever. Found
       // and fixed 17 Aug while wiring the Writer space in under it. Same

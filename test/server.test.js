@@ -431,7 +431,7 @@ test('GET /services requires auth, same as every other non-public route', async 
 
 // api-compat.js used to mark GET /api/spaces `legacy: true` -- a confirmed
 // dead 501 (the legacy monolith it pointed at was deleted 2026-08-15) --
-// which meant webconsole/static/app.js's fetchSpaces() silently failed on
+// which meant web/static/app.js's fetchSpaces() silently failed on
 // every load and the whole Spaces/Axial-tree view (Innovator/Visionary/
 // Creator, Decision Log, Risk Register, and now Writer) never rendered.
 // Fixed 17 Aug by building the tree natively in server.js instead.
