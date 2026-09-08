@@ -10977,25 +10977,48 @@ function fmtUptime(s) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 
+/**
+ * Masonry tile tier for one Ops service row -- canon pattern, design-system.md
+ * section 8 (BG26090606, reusing BL26090601's .tile-1x1/2x1/1x2/2x2 verbatim).
+ * Size signals operational significance, not decoration: a service that's
+ * down, missing, or whose deploy didn't land cleanly gets the wide tile
+ * (more visual weight -- it's what Sconl actually has to act on); a healthy,
+ * running, cleanly-deployed service stays small. No 1x2/2x2 tier here -- a
+ * service row's content (name/status/commit/5 actions) doesn't grow with
+ * extra vertical room the way a track description does, so only the
+ * 1x1/2x1 split is meaningful for this surface.
+ */
+function opsTileTier(s, dep) {
+  if (!s.running || s.exists === false) return 'tile-2x1';
+  // "stale/mismatched deploy commit": the frontend has no expected-vs-running
+  // commit comparison available (opsStatus carries no commit field to diff
+  // against opsDeploy's), so a non-'live' deploy status is used as the
+  // signal instead -- a deploy that didn't land as 'live' means what's
+  // running doesn't match the intended latest deploy.
+  if (dep.status && dep.status !== 'live') return 'tile-2x1';
+  return 'tile-1x1';
+}
+
 function renderOps() {
   const deployByService = new Map((opsDeploy || []).map(d => [d.service, d]));
   const rows = (opsStatus || []).map(s => {
     const dep = deployByService.get(s.service) || {};
+    const tier = opsTileTier(s, dep);
+    const broken = !s.running || s.exists === false;
     return `
-    <div class="audit-row ${s.running ? '' : 'broken'}">
-      <span class="audit-tier-dot" style="background:${s.running ? 'var(--green-bright,#2ecc71)' : 'var(--red)'}"></span>
-      <div class="audit-main">
-        <div class="audit-row-top">
-          <span class="audit-name">${escHtml(s.service)}</span>
-          <span class="audit-when">${s.running ? 'running' : (s.exists ? 'stopped' : 'not deployed')}${dep.commit ? ` · ${escHtml(dep.commit)} (${escHtml(dep.branch || '?')})` : ''}</span>
-        </div>
-        <div class="audit-detail">
-          <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','restart')">Restart</button>
-          <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','stop')">Stop</button>
-          <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','start')">Start</button>
-          <button class="btn btn-ghost" onclick="opsShowLogs('${s.service}')">Logs</button>
-          <button class="btn btn-ghost" style="color:var(--red)" onclick="opsServiceAction('${s.service}','destroy')">Destroy</button>
-        </div>
+    <div class="ops-tile ${tier} ${broken ? 'broken' : ''}">
+      <div class="ops-tile-top">
+        <span class="audit-tier-dot" style="background:${s.running ? 'var(--green-bright,#2ecc71)' : 'var(--red)'}"></span>
+        <span class="audit-name">${escHtml(s.service)}</span>
+        <span class="audit-when">${s.running ? 'running' : (s.exists ? 'stopped' : 'not deployed')}</span>
+      </div>
+      ${dep.commit ? `<div class="audit-detail" style="white-space:normal;overflow:visible;text-overflow:clip">${escHtml(dep.commit)} (${escHtml(dep.branch || '?')})${dep.status && dep.status !== 'live' ? ` · ${escHtml(dep.status)}` : ''}</div>` : ''}
+      <div class="ops-tile-actions">
+        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','restart')" title="Restart">Restart</button>
+        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','stop')" title="Stop">Stop</button>
+        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','start')" title="Start">Start</button>
+        <button class="btn btn-ghost" onclick="opsShowLogs('${s.service}')" title="Logs">Logs</button>
+        <button class="btn btn-ghost" style="color:var(--red)" onclick="opsServiceAction('${s.service}','destroy')" title="Destroy">Destroy</button>
       </div>
     </div>`;
   }).join('') || '<div class="empty-state">Loading…</div>';
@@ -11029,7 +11052,7 @@ function renderOps() {
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">Services</span></div>
-      <div class="audit-rail">${rows}</div>
+      <div class="ops-tile-grid">${rows}</div>
     </div>
     ${logsPanel}`;
 }
@@ -11643,7 +11666,7 @@ function renderFinance() {
     ${renderSpaceInsight('finance')}
 
     <div class="fin-headline card">
-      ${finHeadTiles(f, nw, m, trend, delta)}
+      <div class="fin-tile-grid">${finHeadTiles(f, nw, m, trend, delta)}</div>
       <div class="fin-snap">
         <button class="btn btn-ghost" onclick="finSnapshot(this)"
                 title="Freeze today's position into the trend">Snapshot</button>
@@ -11772,7 +11795,7 @@ function finHeadTiles(f, nw, m, trend, delta) {
       `${Math.round(P + (i / (nets.length - 1)) * (W - P * 2))},${Math.round(H - P - ((n - min) / span) * (H - P * 2))}`);
     const up = nets[nets.length - 1] >= nets[0];
     sparkTile = `
-      <div class="fin-figure">
+      <div class="fin-figure tile-1x1">
         <span class="fin-label">Trend · ${trend.length} snapshots</span>
         <span class="fin-value ${delta && delta.abs < 0 ? 'neg' : ''}" style="font-size:1.1rem">
           ${delta ? `${delta.abs >= 0 ? '+' : '−'}${money(Math.abs(delta.abs))}` : '—'}</span>
@@ -11784,8 +11807,18 @@ function finHeadTiles(f, nw, m, trend, delta) {
       </div>`;
   }
 
+  // Masonry tile tiers -- canon pattern, design-system.md section 8
+  // (BG26090606, reusing BL26090601's .tile-1x1/2x1/1x2/2x2 verbatim).
+  // Net worth is 2x2: "the one number the view exists to answer" (BG26090606
+  // spec). Runway/month-flow/trend are 1x1: none of these headline tiles is
+  // itself a goal, so the row's "2x1 for a goal overdue/due soon" rule has
+  // no headline tile to attach to -- finHeadTiles()/.fin-headline never
+  // carried a goals-remaining tile (confirmed by reading the function; goals
+  // live in the separate .fin-goals section further down renderFinance(),
+  // outside this row's scope). Documented as a deviation rather than
+  // invented scope creep into that other section.
   return `
-      <div class="fin-figure">
+      <div class="fin-figure tile-2x2">
         <span class="fin-label">Net worth</span>
         <span class="fin-value ${nw.net < 0 ? 'neg' : ''}">${money(nw.net)}</span>
         ${grossPos ? `
@@ -11796,7 +11829,7 @@ function finHeadTiles(f, nw, m, trend, delta) {
         <span class="fin-sub"><span class="fin-dot a"></span>${money(nw.assets)} assets
           · <span class="fin-dot l"></span>${money(nw.liabilities)} owed</span>
       </div>
-      <div class="fin-figure">
+      <div class="fin-figure tile-1x1">
         <span class="fin-label">Runway</span>
         <span class="fin-value">${f.runwayMonths != null ? `${f.runwayMonths} mo` : '—'}</span>
         <div class="fin-meter" title="${f.runwayMonths != null ? `${f.runwayMonths} of ${RUNWAY_TRACK} months on the track, marker at 6` : 'no burn figure yet'}">
@@ -11805,7 +11838,7 @@ function finHeadTiles(f, nw, m, trend, delta) {
         </div>
         <span class="fin-sub">${f.burn ? `burn ~${money(f.burn)}/mo · marker = 6 mo` : 'needs a month of data'}</span>
       </div>
-      <div class="fin-figure">
+      <div class="fin-figure tile-1x1">
         <span class="fin-label">${escHtml(m.month || 'This month')}</span>
         <span class="fin-value ${m.netFlow < 0 ? 'neg' : ''}">${m.income || m.expense ? money(m.netFlow) : '—'}</span>
         ${flowMax ? `

@@ -2612,6 +2612,14 @@ button.orient-chip:focus-visible { outline:2px solid var(--green); outline-offse
    one glance; everything below it is either editable in place or a plain list.
    Red is reserved for genuinely negative numbers. */
 .fin-headline { display:flex; gap:2rem; align-items:flex-start; flex-wrap:wrap; position:relative; }
+/* Finance headline masonry tile grid -- canon pattern, design-system.md
+   section 8 (BG26090606). .fin-tile-grid carries the same mechanics as
+   .learn-groups-grid/.ops-tile-grid (auto-fill/dense/gap), sitting as a flex
+   child alongside .fin-snap so the Snapshot/Report/Export buttons keep their
+   existing margin-left:auto end-of-row placement unchanged. .fin-figure
+   picks up .tile-1x1/2x2 (shared span classes, reused verbatim). */
+.fin-tile-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows:minmax(150px, auto); grid-auto-flow:dense; gap:1rem; flex:1; min-width:260px; }
+.fin-figure.tile-2x2 .fin-value { font-size:2.1rem; }
 .fin-figure { display:flex; flex-direction:column; gap:0.15rem; }
 .fin-label { font-size:0.56rem; text-transform:uppercase; letter-spacing:0.09em; color:var(--text-3); }
 .fin-value { font-size:1.45rem; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; }
@@ -3390,6 +3398,19 @@ body[data-callout-theme="muted"] .lesson-body {
 .audit-hash-mini { flex-shrink:0; font-family:var(--font-mono); font-size:0.6rem;
   color:var(--text-3); opacity:0.6; margin-top:0.2rem; }
 .audit-row.broken { outline:1px solid var(--red); }
+
+/* Ops Services masonry tile grid -- canon pattern, design-system.md section 8
+   (BG26090606). Same grid mechanics as .learn-groups-grid (BL26090601),
+   reusing the shared .tile-1x1/2x1/1x2/2x2 span classes verbatim -- only the
+   container/tile classes are new, the vocabulary is not reinvented. Kept
+   separate from .audit-rail/.audit-row (still used, unchanged, by the Audit
+   view) rather than repurposing them, so this row's tiling can't leak into
+   that other surface. */
+.ops-tile-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows:minmax(150px, auto); grid-auto-flow:dense; gap:1rem; margin-bottom:0.5rem; }
+.ops-tile { background:var(--panel); border:1px solid var(--border-mid); border-radius:var(--r-lg); padding:0.9rem 1rem; display:flex; flex-direction:column; gap:0.55rem; }
+.ops-tile.broken { outline:1px solid var(--red); }
+.ops-tile-top { display:flex; align-items:center; gap:0.5rem; }
+.ops-tile-actions { display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:auto; }
 
 /* Event modal: quick chips beside the raw inputs, and a colour that is picked by
    looking at it, not by naming it. */
@@ -6289,7 +6310,7 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
     font-size: 0.96rem;
     line-height: 1.68;
   }
-  .learn-groups-grid {
+  .learn-groups-grid, .ops-tile-grid, .fin-tile-grid {
     grid-template-columns: 1fr;
   }
   .tile-2x1, .tile-1x2, .tile-2x2 {
