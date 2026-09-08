@@ -12178,6 +12178,8 @@ function finVentures() {
       <div class="card-header">
         <span class="card-title">Ventures</span>
         <div style="display:flex;gap:0.4rem;align-items:center">
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="finDiscoverVentures()"
+            title="Re-scan onedrive-acexoft:_ace for venture folders and add any new ones as candidates">Sync from OneDrive</button>
           <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="fetchVentures(true)">Refresh</button>
           <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="finAddVenture()">Add</button>
         </div>
@@ -12189,8 +12191,14 @@ function finVentures() {
               <div class="fin-venture-head">
                 <span class="fin-venture-name">${escHtml(v.NAME)}</span>
                 <span class="fin-venture-kind">${escHtml(v.KIND)}</span>
+                ${v.CATEGORY && v.CATEGORY !== '-' ? `<span class="fin-venture-kind" style="opacity:0.7">${escHtml(v.CATEGORY)}</span>` : `<span class="fin-venture-kind" style="opacity:0.5;font-style:italic">category unset</span>`}
                 ${v.fetchedAt ? `<span class="card-meta">as of ${escHtml(v.fetchedAt.slice(11, 16))}</span>` : ''}
+                <span style="flex:1"></span>
+                <button class="btn btn-ghost" style="font-size:0.65rem;padding:1px 7px" onclick="finEditVenture('${escHtml(v.ID)}')">Edit</button>
+                <button class="btn btn-ghost" style="font-size:0.65rem;padding:1px 7px;color:var(--danger,#e5484d)" onclick="finDeleteVenture('${escHtml(v.ID)}','${escHtml(v.NAME)}')">Discard</button>
               </div>
+              ${v.FOLDER && v.FOLDER !== '-' ? `<div class="card-meta" style="opacity:0.6">_ace/${escHtml(v.FOLDER)}</div>` : ''}
+              ${v.NOTE && v.NOTE !== '-' ? `<div class="card-meta" style="opacity:0.6">${escHtml(v.NOTE)}</div>` : ''}
               ${v.metrics && Object.keys(v.metrics).length ? `
                 <div class="fin-venture-metrics">
                   ${Object.entries(v.metrics).slice(0, 8).map(([k, val]) => `
@@ -12204,24 +12212,90 @@ function finVentures() {
           Nothing plugged in yet. When a product ships, give it a metrics endpoint
           returning flat JSON (<code>{"mrr": 0, "users": 0}</code>) and add it here -
           the dashboard renders whatever it reports. Auth tokens go in the secret
-          store by name, never in the registry.
+          store by name, never in the registry. Or click "Sync from OneDrive" to
+          pull in venture candidates from onedrive-acexoft:_ace.
         </div>`}
     </div>`;
 }
 
+// 'portfolio' is a legacy-only alias (pre BA26090501, folded into Products
+// by the Projects view's own `section()`/`products` filter above) -- the
+// live taxonomy an editor should actually choose from is just these two.
+const VENTURE_CATEGORY_OPTIONS = ['-', 'product', 'platform'];
+const VENTURE_KIND_OPTIONS = ['saas', 'app', 'service', 'candidate'];
+
 function finAddVenture() {
   uiForm('Register venture', [
     { id: 'name', label: 'Venture name', placeholder: 'WellPath, Keyvanos' },
-    { id: 'kind', label: 'Kind', type: 'select', value: 'saas', options: ['saas', 'app', 'service'] },
+    { id: 'kind', label: 'Kind', type: 'select', value: 'saas', options: VENTURE_KIND_OPTIONS },
+    { id: 'category', label: 'Category', type: 'select', value: '-', options: VENTURE_CATEGORY_OPTIONS,
+      hint: 'Drives Portfolio / Products / Platforms filtering in the app. Leave as "-" if unsure - never guessed for you.' },
     { id: 'url', label: 'Metrics endpoint URL', placeholder: 'https://… (blank = configure later)',
       hint: 'One small GET returning flat JSON numbers - the card renders whatever it reports.' },
     { id: 'authSecret', label: 'Secret-store key for its auth token', placeholder: 'blank = public endpoint' },
+    { id: 'renderUrl', label: 'Deployed URL', placeholder: 'https:// … blank = not deployed yet' },
+    { id: 'github', label: 'GitHub repo', placeholder: 'org/repo, blank = none' },
+    { id: 'folder', label: 'OneDrive folder', placeholder: 'e.g. acexoft-capital, blank = none' },
+    { id: 'note', label: 'Note', placeholder: 'optional' },
   ], async (v) => {
     if (!v.name) { showToast('Name the venture first', 'warn'); return false; }
     const ok = await finPost('/api/ventures/upsert', v, 'Venture registered … now show me numbers');
     if (ok) fetchVentures(true);
     return ok;
   });
+}
+
+/** Edit an existing venture in place - same form as Add, pre-filled, id carried through so upsertVenture updates rather than creates. */
+function finEditVenture(id) {
+  const v = (VENTURES || []).find(x => x.ID === id);
+  if (!v) { showToast('Venture not found - try Refresh', 'warn'); return; }
+  uiForm(`Edit ${v.NAME}`, [
+    { id: 'name', label: 'Venture name', value: v.NAME },
+    { id: 'kind', label: 'Kind', type: 'select', value: v.KIND || 'saas', options: VENTURE_KIND_OPTIONS },
+    { id: 'category', label: 'Category', type: 'select', value: v.CATEGORY || '-', options: VENTURE_CATEGORY_OPTIONS,
+      hint: 'Drives Portfolio / Products / Platforms filtering in the app.' },
+    { id: 'url', label: 'Metrics endpoint URL', value: v.ANALYTICS_URL === '-' ? '' : v.ANALYTICS_URL },
+    { id: 'authSecret', label: 'Secret-store key for its auth token', value: v.AUTH_SECRET === '-' ? '' : v.AUTH_SECRET },
+    { id: 'renderUrl', label: 'Deployed URL', value: v.RENDER_URL === '-' ? '' : v.RENDER_URL },
+    { id: 'github', label: 'GitHub repo', value: v.GITHUB === '-' ? '' : v.GITHUB },
+    { id: 'folder', label: 'OneDrive folder', value: v.FOLDER === '-' ? '' : v.FOLDER },
+    { id: 'note', label: 'Note', value: v.NOTE === '-' ? '' : v.NOTE },
+  ], async (vals) => {
+    if (!vals.name) { showToast('Name the venture first', 'warn'); return false; }
+    const ok = await finPost('/api/ventures/upsert', { ...vals, id }, 'Venture updated');
+    if (ok) fetchVentures(true);
+    return ok;
+  });
+}
+
+/** Discard a venture row entirely - for a mis-mapped OneDrive discovery candidate, or anything Sconl wants gone. Real delete, confirmed first. */
+async function finDeleteVenture(id, name) {
+  const yes = await uiConfirm({
+    title: `Discard "${name}"?`,
+    body: 'This removes the venture row entirely - not just a status flip. If it was pulled in by OneDrive discovery, re-running the sync will not bring it back unless the folder is still there and still unmatched.',
+    confirmLabel: 'Discard', danger: true,
+  });
+  if (!yes) return;
+  try {
+    const d = await (await fetch('/api/ventures/delete', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })).json();
+    if (d.success) { showToast('Venture discarded', 'success'); fetchVentures(true); }
+    else showToast(d.error || 'Could not discard', 'error');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+/** Re-run the OneDrive (_ace) venture discovery scan now, rather than waiting for its own interval - vault does the listing, pulse does the additive upsert. */
+async function finDiscoverVentures() {
+  showToast('Scanning onedrive-acexoft:_ace …', 'info');
+  try {
+    const d = await (await fetch('/api/ventures/discover', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+    if (d.ok === false) { showToast(d.error || 'Discovery sync failed', 'error'); return; }
+    const created = d.created?.length || 0;
+    showToast(created ? `${created} new venture candidate${created === 1 ? '' : 's'} added - assign categories below`
+                       : 'No new venture folders found', created ? 'success' : 'info');
+    fetchVentures(true);
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 /**
