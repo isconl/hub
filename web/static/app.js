@@ -17032,11 +17032,30 @@ function learnGroupIcon(g, size) {
        : svgIcon('folder', size);
 }
 
+// Masonry tile tier -- canon spec, design-system.md section 8, first built
+// here (BL26090601). Deterministic from data already on the resolved group
+// object (see getResolvedGroups) so a re-render never reshuffles sizes --
+// bigger tile = genuinely more content or more currently-active, never
+// arbitrary. Archived tracks are always the smallest tier so they never
+// visually compete with active ones.
+function learnTileTier(g) {
+  if (g.status === 'archived') return 'tile-1x1';
+  if (g.courseCount >= 5 || (g.progressPct > 0 && g.progressPct < 100 && g.courseCount >= 3)) return 'tile-2x2';
+  if ((g.description || '').length > 90) return 'tile-2x1';
+  if (g.courseCount >= 2 && g.courseCount <= 4 && g.progressPct === 0) return 'tile-1x2';
+  return 'tile-1x1';
+}
+
 function renderLearnGroupCard(g) {
   const isArchived = g.status === 'archived';
   const groupIcon = learnGroupIcon(g, 18);
+  const tier = learnTileTier(g);
+  // Every field stays visible at every tier (non-negotiable, design-system.md
+  // section 8) -- only the smallest tier truncates the description to ~1
+  // line and drops the sort-order footer text, keeping the Explore link.
+  const isSmall = tier === 'tile-1x1';
   return `
-    <div class="learn-group-card${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
+    <div class="learn-group-card ${tier}${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
       <div class="learn-group-top">
         <div class="learn-group-icon">${groupIcon}</div>
         <div style="flex:1;min-width:0">
@@ -17045,37 +17064,71 @@ function renderLearnGroupCard(g) {
         </div>
         <button class="lesson-gear-btn" onclick="event.stopPropagation();learnShowGroupModal('${escAttr(g.id)}')" title="Manage this classification">${svgIcon('settings', 13)}</button>
       </div>
-      <div class="learn-group-desc">${escHtml(g.description || '')}</div>
+      <div class="learn-group-desc"${isSmall ? ' style="display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden"' : ''}>${escHtml(g.description || '')}</div>
       <div class="fin-goal-bar"><div style="width:${g.progressPct || 0}%;background:${escAttr(g.color || '#3b82f6')}"></div></div>
       <div class="learn-group-stats">
         <span>${g.courseCount} course${g.courseCount === 1 ? '' : 's'} · ${g.moduleCount} modules</span>
         <span>${g.doneCount} done (${g.progressPct || 0}%)</span>
       </div>
       <div class="learn-group-footer">
-        <span class="card-meta">Track ${escHtml(g.sortOrder || '')}</span>
+        <span class="card-meta">${isSmall ? '' : `Track ${escHtml(g.sortOrder || '')}`}</span>
         <span class="explore-link">Explore Track ${svgIcon('arrowRight', 12)}</span>
       </div>
     </div>`;
 }
 
-function renderLearnCourseCard(c) {
+// Subtle track color-coding (BL26090601 part 2) -- a thin 3px left accent
+// stripe, not a full background tint or a colored icon. `color` is the
+// parent track's g.color, resolved by the caller (course objects don't
+// carry it directly) and threaded through here so it's not a second lookup
+// per card.
+function renderLearnCourseCard(c, color) {
   const lessons = c.lessons || [];
   const done = lessons.filter(l => l.status === 'done').length;
   const pct = lessons.length ? Math.round(done / lessons.length * 100) : 0;
   const next = lessons.find(l => l.status !== 'done');
   const isArchived = c.STATUS === 'archived';
+  const accent = color || 'transparent';
   return `
-    <div class="circle-card${isArchived ? ' is-archived' : ''}" onclick="learnCourseOpen='${escHtml(c.ID)}';repaintView('learning')">
+    <div class="circle-card${isArchived ? ' is-archived' : ''}" style="border-left:3px solid ${escAttr(accent)}" onclick="learnCourseOpen='${escHtml(c.ID)}';repaintView('learning')">
       <div class="circle-name" style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem">
         <span style="display:flex;align-items:center;gap:0.4rem;min-width:0">${learnGroupIcon({ id: c.GROUP_ID }, 15)}<span>${escHtml(c.TITLE)}</span></span>
         <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.6rem;flex-shrink:0" onclick="event.stopPropagation();learnShowCourseModal('${escAttr(c.ID)}')" title="Course settings">${svgIcon('settings', 12)}</button>
       </div>
       ${c.LEVEL && c.LEVEL !== '-' ? `<span class="learn-level" title="Course progression level">${escHtml(c.LEVEL.replace(/-/g, ' '))}</span>` : ''}
       ${c.SUBTITLE && c.SUBTITLE !== '-' ? `<div class="circle-role">${escHtml(c.SUBTITLE)}</div>` : ''}
-      <div class="fin-goal-bar" style="margin:0.45rem 0"><div style="width:${pct}%"></div></div>
+      <div class="fin-goal-bar" style="margin:0.45rem 0"><div style="width:${pct}%;background:${escAttr(color || '#3b82f6')}"></div></div>
       <div class="circle-meta">${lessons.length} module${lessons.length === 1 ? '' : 's'} · ${done} done${
         next ? ` · next: ${escHtml(next.title.slice(0, 30))}…` : lessons.length ? ' · complete' : ''}</div>
     </div>`;
+}
+
+// Intelligent course ordering within a track (BL26090601 part 3) -- exact
+// precedent of the Hub's Top-3 Task Engine (scoreTask(), design-system.md
+// section 7): score each course, sort descending. Bucket weight (x1000)
+// strictly dominates the level tiebreak so buckets never bleed into each
+// other; the archived penalty (x100000) strictly dominates bucket weight so
+// archived courses always sort last, but preserve the same in-progress /
+// not-started / done ordering among themselves.
+const LEARN_LEVEL_RANK = { intro: 0, introductory: 0, beginner: 0, foundational: 0, intermediate: 1, advanced: 2, expert: 2 };
+function scoreCourse(c, idx) {
+  const lessons = c.lessons || [];
+  const done = lessons.filter(l => l.status === 'done').length;
+  const total = lessons.length;
+  const inProgress = done > 0 && done < total;
+  const fullyDone = total > 0 && done === total;
+  const bucket = inProgress ? 2 : fullyDone ? 0 : 1; // in-progress > not-started > done
+  const levelKey = c.LEVEL ? String(c.LEVEL).toLowerCase().replace(/[^a-z]/g, '') : '';
+  const levelRank = Object.prototype.hasOwnProperty.call(LEARN_LEVEL_RANK, levelKey) ? LEARN_LEVEL_RANK[levelKey] : 1;
+  let s = bucket * 1000 - levelRank * 10 - idx * 0.001; // idx = stable original-order tiebreak
+  if (c.STATUS === 'archived') s -= 1e6; // always last, same relative order preserved within
+  return s;
+}
+function sortGroupCourses(list) {
+  return (list || [])
+    .map((c, idx) => ({ c, s: scoreCourse(c, idx) }))
+    .sort((a, b) => b.s - a.s)
+    .map(x => x.c);
 }
 
 const DEFAULT_LEARNING_GROUPS = [
@@ -17290,7 +17343,7 @@ function renderLearning() {
         <div class="card-meta">${groupCourses.length} courses · ${totalModules} modules · ${doneModules} completed (${progressPct}%)</div>
       </div>
       <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
-        ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state">No courses assigned to this track yet.</div>`}
+        ${groupCourses.length ? sortGroupCourses(groupCourses).map(c => renderLearnCourseCard(c, group.color)).join('') : `<div class="empty-state">No courses assigned to this track yet.</div>`}
       </div>
       ${renderLearnModals()}`;
   }
@@ -17364,7 +17417,7 @@ function renderLearning() {
               <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">⚙ Track Settings</button>
             </div>
             <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-bottom:1.5rem">
-              ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
+              ${groupCourses.length ? sortGroupCourses(groupCourses).map(c => renderLearnCourseCard(c, g.color)).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
             </div>`;
         }).join('')}
       `}
