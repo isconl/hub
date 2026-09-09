@@ -1,0 +1,22 @@
+# name	port	dir
+#
+# Single source of truth for "what to launch" in the isconl local-dev
+# fleet -- read by both dev-local.sh (this directory) and the native
+# per-OS launchers, launch-isconl-local.sh / .ps1, in the relay drive's
+# _kit/scripts/ (BI26090901). Edit this file when a service's port/dir
+# changes or a service is added/removed -- dev-local.sh's own SERVICES
+# array falls back to a hardcoded copy of this list only if this file is
+# ever missing, so this file is the one place to change, not two.
+#
+# port "-" means no HTTP /health endpoint (background worker, not a web
+# service) -- the health-poll step in every launcher skips it.
+vault	8081	vault
+pulse	8082	pulse
+scope	8083	scope
+circle	8084	circle
+spark	8085	spark
+media	8086	media
+ops	8087	ops
+hub	8888	hub
+tts	5001	vault/scripts/tts_service.py
+learning-sync	-	vault/scripts/learning-sync-watcher.js

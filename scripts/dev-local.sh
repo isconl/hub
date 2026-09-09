@@ -30,6 +30,21 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # hub/
 ROOT="$(cd "$HERE/.." && pwd)"                             # iSconl/
 LOG_DIR="$HERE/scripts/.dev-logs"
+
+# ISCONL_DEV_NO_AUTH auto-load (BS26090501 / BI26090901): an untracked,
+# git-ignored .env.dev sitting next to this script, if present, is
+# sourced so "one command, no thinking" launches don't require
+# remembering to export it by hand each session. See
+# hub/scripts/.env.dev.example for the template. Never create this file
+# with a value in any tracked config or deploy target -- this script's
+# own header above still applies unchanged.
+if [ -f "$HERE/scripts/.env.dev" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$HERE/scripts/.env.dev"
+  set +a
+fi
+
 # Load Bitwarden Secrets Manager bootstrap credentials if available
 if [ -f "$HOME/.bashrc.d/bitwarden.sh" ]; then
   # shellcheck source=/dev/null
@@ -57,19 +72,37 @@ export BWS_PROJECT_ID="${BWS_PROJECT_ID:-ae96a9c3-5f66-48b7-96b2-b494009ff61b}"
 PID_DIR="$HERE/scripts/.dev-pids"
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
-# name:port:dir
-SERVICES=(
-  "vault:8081:vault"
-  "pulse:8082:pulse"
-  "scope:8083:scope"
-  "circle:8084:circle"
-  "spark:8085:spark"
-  "media:8086:media"
-  "ops:8087:ops"
-  "hub:8888:hub"
-  "tts:5001:vault/scripts/tts_service.py"
-  "learning-sync:-:vault/scripts/learning-sync-watcher.js"
-)
+# name:port:dir -- sourced from launch-isconl-local.services.tsv
+# (BI26090901), the single manifest also read by the native
+# launch-isconl-local.sh/.ps1 wrappers in _kit/scripts/, so the two
+# platforms' launchers and this script never drift on "what to launch".
+# Falls back to a hardcoded copy only if that file is ever missing --
+# defense-in-depth for the OCI VM's systemd unit and watchdog.sh (which
+# sources this file), neither of which should silently fail to boot over
+# a missing manifest file.
+SERVICES=()
+MANIFEST="$HERE/scripts/launch-isconl-local.services.tsv"
+if [ -f "$MANIFEST" ]; then
+  while IFS=$'\t' read -r m_name m_port m_dir; do
+    [[ -z "$m_name" || "$m_name" == \#* ]] && continue
+    SERVICES+=("$m_name:$m_port:$m_dir")
+  done < "$MANIFEST"
+fi
+if [ "${#SERVICES[@]}" -eq 0 ]; then
+  echo "WARNING: $MANIFEST missing or empty -- falling back to built-in service list." >&2
+  SERVICES=(
+    "vault:8081:vault"
+    "pulse:8082:pulse"
+    "scope:8083:scope"
+    "circle:8084:circle"
+    "spark:8085:spark"
+    "media:8086:media"
+    "ops:8087:ops"
+    "hub:8888:hub"
+    "tts:5001:vault/scripts/tts_service.py"
+    "learning-sync:-:vault/scripts/learning-sync-watcher.js"
+  )
+fi
 
 # FI26090403: local dev must always run each repo's `dev` branch, never
 # whatever happens to be checked out -- see STANDING-RULES.md's "Branch

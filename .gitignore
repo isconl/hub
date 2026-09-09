@@ -2,6 +2,7 @@ node_modules/
 runtime/
 *.log
 .env
+.env.dev
 .claude/
 scripts/.dev-pids/
 _handoff/
