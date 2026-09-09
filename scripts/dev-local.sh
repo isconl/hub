@@ -12,11 +12,39 @@
 # OAuth token rotation) -- read-only secret pulls work without it.
 #
 # Usage: ./scripts/dev-local.sh [start|stop|status]
+#
+# ISCONL_DEV_NO_AUTH=1 (BS26090501, optional, off by default): skips the
+# PIN/TOTP/token wall on every engine so curl/scripted API inspection works
+# without a live authenticated browser. Set it ONLY in this process's own
+# environment or an untracked .env.dev you export before running this
+# script -- NEVER add it to a tracked file, and never with the value 1 in
+# any config that reaches staging/main/the OCI VM/Render. This is env-only
+# (never accepted from a request) and loopback-gated: every engine refuses
+# to bind at all if this is set and its own BIND is not loopback, so the
+# flag is harmless even if it leaks into a real deployment's environment by
+# mistake -- it only ever does anything on 127.0.0.1/::1/localhost. The
+# code is identical across dev/staging/main; only local dev's environment
+# ever actually sets this.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # hub/
 ROOT="$(cd "$HERE/.." && pwd)"                             # iSconl/
 LOG_DIR="$HERE/scripts/.dev-logs"
+
+# ISCONL_DEV_NO_AUTH auto-load (BS26090501 / BI26090901): an untracked,
+# git-ignored .env.dev sitting next to this script, if present, is
+# sourced so "one command, no thinking" launches don't require
+# remembering to export it by hand each session. See
+# hub/scripts/.env.dev.example for the template. Never create this file
+# with a value in any tracked config or deploy target -- this script's
+# own header above still applies unchanged.
+if [ -f "$HERE/scripts/.env.dev" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$HERE/scripts/.env.dev"
+  set +a
+fi
+
 # Load Bitwarden Secrets Manager bootstrap credentials if available
 if [ -f "$HOME/.bashrc.d/bitwarden.sh" ]; then
   # shellcheck source=/dev/null
@@ -44,17 +72,55 @@ export BWS_PROJECT_ID="${BWS_PROJECT_ID:-ae96a9c3-5f66-48b7-96b2-b494009ff61b}"
 PID_DIR="$HERE/scripts/.dev-pids"
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
-# name:port:dir
-SERVICES=(
-  "vault:8081:vault"
-  "pulse:8082:pulse"
-  "scope:8083:scope"
-  "circle:8084:circle"
-  "spark:8085:spark"
-  "media:8086:media"
-  "hub:8888:hub"
-  "tts:5001:vault/scripts/tts_service.py"
-)
+# name:port:dir -- sourced from launch-isconl-local.services.tsv
+# (BI26090901), the single manifest also read by the native
+# launch-isconl-local.sh/.ps1 wrappers in _kit/scripts/, so the two
+# platforms' launchers and this script never drift on "what to launch".
+# Falls back to a hardcoded copy only if that file is ever missing --
+# defense-in-depth for the OCI VM's systemd unit and watchdog.sh (which
+# sources this file), neither of which should silently fail to boot over
+# a missing manifest file.
+SERVICES=()
+MANIFEST="$HERE/scripts/launch-isconl-local.services.tsv"
+if [ -f "$MANIFEST" ]; then
+  while IFS=$'\t' read -r m_name m_port m_dir; do
+    [[ -z "$m_name" || "$m_name" == \#* ]] && continue
+    SERVICES+=("$m_name:$m_port:$m_dir")
+  done < "$MANIFEST"
+fi
+if [ "${#SERVICES[@]}" -eq 0 ]; then
+  echo "WARNING: $MANIFEST missing or empty -- falling back to built-in service list." >&2
+  SERVICES=(
+    "vault:8081:vault"
+    "pulse:8082:pulse"
+    "scope:8083:scope"
+    "circle:8084:circle"
+    "spark:8085:spark"
+    "media:8086:media"
+    "ops:8087:ops"
+    "hub:8888:hub"
+    "tts:5001:vault/scripts/tts_service.py"
+    "learning-sync:-:vault/scripts/learning-sync-watcher.js"
+  )
+fi
+
+# FI26090403: local dev must always run each repo's `dev` branch, never
+# whatever happens to be checked out -- see STANDING-RULES.md's "Branch
+# workflow" section. Auto-switches a clean checkout to `dev`; only warns
+# (never force-switches) if the repo has uncommitted tracked changes.
+ensure_dev_branch() {
+  local repo_dir="$1"
+  [ -d "$ROOT/$repo_dir/.git" ] || return 0
+  local cur
+  cur="$(git -C "$ROOT/$repo_dir" branch --show-current 2>/dev/null)"
+  [ "$cur" = "dev" ] && return 0
+  if [ -n "$(git -C "$ROOT/$repo_dir" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    echo "WARNING: $repo_dir is on '$cur' with uncommitted tracked changes -- not auto-switching. Local dev should run 'dev' per standing policy (see STANDING-RULES.md)." >&2
+    return 0
+  fi
+  echo "NOTICE: $repo_dir was on '$cur' -- switching to 'dev' (standing policy: local dev always runs 'dev')." >&2
+  git -C "$ROOT/$repo_dir" checkout dev --quiet 2>/dev/null || echo "  could not checkout dev in $repo_dir" >&2
+}
 
 start_one() {
   local name="$1" port="$2" dir="$3"
@@ -63,12 +129,39 @@ start_one() {
     echo "$name already running (pid $(cat "$pidfile"))"
     return
   fi
+  if [ "$name" = "tts" ] || [ "$name" = "learning-sync" ]; then
+    ensure_dev_branch "vault"
+  else
+    ensure_dev_branch "$dir"
+  fi
   (
-    if [ "$name" = "tts" ]; then
+    if [ "$name" = "learning-sync" ]; then
+      cd "$ROOT/vault"
+      if command -v setsid >/dev/null 2>&1; then
+        setsid node "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      else
+        nohup node "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      fi
+    elif [ "$name" = "tts" ]; then
       cd "$ROOT/vault"
       export TTS_BIND=127.0.0.1
       export TTS_PORT="$port"
-      nohup python3 "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      # `python3` on PATH is not always a real interpreter -- on Windows it's
+      # often the Microsoft Store app-execution-alias stub, which exists on
+      # PATH and passes `command -v` but exits non-zero (with an install nag)
+      # on every invocation, including --version. Probe functionally and
+      # fall back to `python` (found 28 Aug 2026, FI26082801).
+      pybin=python3
+      if ! python3 --version >/dev/null 2>&1; then
+        if python --version >/dev/null 2>&1; then
+          pybin=python
+        fi
+      fi
+      if command -v setsid >/dev/null 2>&1; then
+        setsid "$pybin" "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      else
+        nohup "$pybin" "$ROOT/$dir" </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      fi
     else
       cd "$ROOT/$dir"
       export "$(echo "${name^^}")_BIND"=127.0.0.1
@@ -79,10 +172,38 @@ start_one() {
       export CIRCLE_URL="http://127.0.0.1:8084"
       export SPARK_URL="http://127.0.0.1:8085"
       export MEDIA_URL="http://127.0.0.1:8086"
+      # FI26090402: vault (Gmail) and pulse (Calendar) both fan out one
+      # client per label in this comma-separated list; unset it defaults
+      # to a single 'default' label, leaving 5 of 6 connected accounts
+      # unused even once their tokens are valid. Decided 4 Sep 2026, per
+      # Sconl: list all 6.
+      export GOOGLE_ACCOUNTS="${GOOGLE_ACCOUNTS:-ACE_BRAND,ACE_CLIENTS,ACE_DESIGN,FORMAL,PERSONAL,VIVA}"
+      export OPS_URL="http://127.0.0.1:8087"
+      if [ "$name" = "ops" ]; then
+        # Bare-node dev-local.sh has no docker-compose deployment for ops
+        # to control -- point it at the local dev docker-compose.yml
+        # anyway (so `docker compose ...` calls resolve to something real
+        # if the reader also happens to have that stack up in Docker), but
+        # this mode is really ops's secondary target; see docker-compose.yml/
+        # docker-compose.vm.yml for the real deployed shape.
+        export OPS_COMPOSE_FILE="${OPS_COMPOSE_FILE:-$HERE/docker-compose.yml}"
+        export OPS_REPOS_DIR="${OPS_REPOS_DIR:-$ROOT}"
+      fi
       if [ "$name" = "vault" ]; then
         export VAULT_SYNC_INTERVAL_MS="${VAULT_SYNC_INTERVAL_MS:-900000}"
+        # BI26083003: cut over the local dev fleet to the encrypted sqlite
+        # engine (migration already run, verified 373/373 collections
+        # matched). Defaults to 'sqlite' HERE (this fleet's own launcher)
+        # -- server.js's own top-level default stays 'tsv' for any other
+        # deployment that hasn't opted in yet. Override with
+        # VAULT_STORE_ENGINE=tsv to roll back.
+        export VAULT_STORE_ENGINE="${VAULT_STORE_ENGINE:-sqlite}"
       fi
-      nohup node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      if command -v setsid >/dev/null 2>&1; then
+        setsid node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      else
+        nohup node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+      fi
     fi
     local p=$!
     disown "$p" 2>/dev/null || true

@@ -29,12 +29,17 @@ services:
     environment:
       VAULT_BIND: 0.0.0.0
       VAULT_TOKEN: ${VAULT_TOKEN}
-      # Without this, a fresh deploy's vault-memory volume starts empty and
-      # STAYS empty -- nothing ever asks OneDrive for the real data (see
-      # _handoff/migration-log.md, 2026-08-14, "the sync loop"). Set here,
-      # not just in dev-local.sh, so this reproduces on ANY machine that
-      # runs this compose file, not only the one it was first fixed on.
-      VAULT_SYNC_INTERVAL_MS: ${VAULT_SYNC_INTERVAL_MS:-900000}
+      # BI26083005: OneDrive is backup-only now (local-to-remote, one
+      # direction, never populates local data). This interval controls how
+      # often the LIVE local DB gets snapshotted and pushed -- it does NOT
+      # populate a fresh deploy's empty vault-memory volume; that needs an
+      # explicit POST /backup/restore against an existing OneDrive
+      # generation (only meaningful once VAULT_STORE_ENGINE=sqlite, not set
+      # here yet -- this compose file still defaults to 'tsv', matching
+      # server.js's own unmigrated-deployment default). Set here, not just
+      # in dev-local.sh, so this reproduces on ANY machine that runs this
+      # compose file, not only the one it was first configured on.
+      VAULT_BACKUP_INTERVAL_MS: ${VAULT_BACKUP_INTERVAL_MS:-1800000}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
       BWS_API_URL: ${BWS_API_URL}
@@ -170,11 +175,31 @@ services:
       resources:
         limits: { cpus: "0.3", memory: 512m }
 
+  ops:
+    build: ../ops
+    container_name: isconl-ops
+    restart: unless-stopped
+    environment:
+      OPS_BIND: 0.0.0.0
+      OPS_TOKEN: ${OPS_TOKEN}
+      OPS_COMPOSE_FILE: /isconl-docker/hub/docker-compose.yml
+      OPS_REPOS_DIR: /isconl-docker
+    volumes:
+      # Same sibling-container-control shape as the VM deploy
+      # (docker-compose.vm.yml) -- see ops/README.md.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ..:/isconl-docker:ro
+    ports:
+      - "8087:8087"
+    deploy:
+      resources:
+        limits: { cpus: "0.2", memory: 256m }
+
   hub:
     build: .
     container_name: isconl-hub
     restart: unless-stopped
-    depends_on: [vault, pulse, scope, circle, spark, media]
+    depends_on: [vault, pulse, scope, circle, spark, media, ops]
     environment:
       HUB_BIND: 0.0.0.0
       HUB_TOKEN: ${HUB_TOKEN}
@@ -190,6 +215,8 @@ services:
       SPARK_TOKEN: ${SPARK_TOKEN}
       MEDIA_URL: http://media:8086
       MEDIA_TOKEN: ${MEDIA_TOKEN}
+      OPS_URL: http://ops:8087
+      OPS_TOKEN: ${OPS_TOKEN}
       RENDER_API_KEY: ${RENDER_API_KEY}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}

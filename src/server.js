@@ -23,18 +23,19 @@ const path = require('path');
 const servicesRegistry = require('../lib/services-registry');
 const manifest = require('../lib/manifest');
 const apk = require('../lib/apk');
+const { createChatThreadStore } = require('../lib/chat-threads');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
 const BIND = process.env.HUB_BIND || '127.0.0.1';
 const LOGS_DIR = process.env.HUB_LOGS_DIR || require('path').join(__dirname, '..', 'runtime', 'logs');
-// webconsole/ -- the real web frontend, native HTML/CSS/JS ported from the
+// web/ -- the real web frontend, native HTML/CSS/JS ported from the
 // legacy dashboard and wired to hub's own API (see lib/static.js). This
 // replaced the Flutter-web build as the default: Flutter-compiled-to-web
 // carried its own runtime (CanvasKit) and didn't feel like a web page.
-// Absent (no HUB_WEB_DIR, no webconsole/) is still a fully supported state
+// Absent (no HUB_WEB_DIR, no web/) is still a fully supported state
 // -- the static server just reports itself unavailable and every request
 // behaves exactly as it does today (API only).
-const WEB_DIR = process.env.HUB_WEB_DIR || require('path').join(__dirname, '..', 'webconsole');
+const WEB_DIR = process.env.HUB_WEB_DIR || require('path').join(__dirname, '..', 'web');
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -50,9 +51,21 @@ function sendJson(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// Images/media elements (`<img src>`, Flutter's Image.network) can't attach
+// a custom Authorization header -- only a URL. A `?token=` query fallback
+// lets `/api/learning/asset` (and anything else routed through checkAuth)
+// stay behind the same auth as every other /api/* route instead of needing
+// a separate public/unauthenticated carve-out. Header wins when both are
+// present; same token validation either way (checkAuth doesn't care which
+// transport it arrived by).
 function bearerToken(req) {
   const auth = req.headers.authorization || '';
-  return auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7);
+  try {
+    return new URL(req.url, 'http://x').searchParams.get('token') || '';
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -70,6 +83,9 @@ function shapeServices(keys) {
   const has = (...names) => names.every(n => keys.includes(n));
   const one = (name) => keys.includes(name);
   const flag = (ok) => (ok ? 'connected' : 'not_connected');
+  const jiraHost = process.env.JIRA_HOST || (keys.includes('JIRA_HOST') ? 'jira.atlassian.net' : '');
+  const jiraProject = process.env.JIRA_PROJECT || (keys.includes('JIRA_PROJECT') ? 'PROJ' : '');
+  const jiraEmail = process.env.JIRA_EMAIL || '';
   return {
     anthropic: flag(one('ANTHROPIC_API_KEY')),
     groq: flag(one('ISCONL_GROQ_API_KEY')),
@@ -80,7 +96,12 @@ function shapeServices(keys) {
     buffer: flag(one('BUFFER_API_KEY_SCONL')),
     telegram: flag(has('ISCONL_TELEGRAM_BOT_TOKEN', 'ISCONL_TELEGRAM_CHAT_ID')),
     signal: 'not_connected',
-    jiraConfig: { hasToken: one('JIRA_API_TOKEN'), host: '', projectKey: '', email: '' },
+    jiraConfig: {
+      hasToken: one('JIRA_API_TOKEN') || !!process.env.JIRA_API_TOKEN,
+      host: jiraHost,
+      projectKey: jiraProject,
+      email: jiraEmail,
+    },
     groqConfig: {},
     msConfig: { hasCreds: has('MSGRAPH_CLIENT_ID', 'MSGRAPH_REFRESH_TOKEN'), tenantId: '' },
     bufferConfig: { hasToken: one('BUFFER_API_KEY_SCONL') },
@@ -90,7 +111,7 @@ function shapeServices(keys) {
 }
 
 /** Flat space/spaces.tsv rows (ID, PARENT_ID, ...) -> the nested tree
- *  webconsole/static/app.js's renderSpaces() walks. A row with no PARENT_ID
+ *  web/static/app.js's renderSpaces() walks. A row with no PARENT_ID
  *  or an unresolvable one becomes a root -- degrades gracefully rather than
  *  dropping the row, since a dangling PARENT_ID (a typo, or a parent
  *  deleted without reparenting its children) shouldn't make a whole
@@ -114,8 +135,15 @@ function buildSpacesTree(rows) {
   return roots;
 }
 
+let _devAuthBypassLog = null; // set once main() creates auditLog; used by ISCONL_DEV_NO_AUTH (BS26090501)
+
 /** Every non-public route needs EITHER the static HUB_TOKEN (service-to-service/admin) OR a real vault session (an end user, via authProxy.verify). */
 async function checkAuth(req, authProxy) {
+  // BS26090501: dev-only, loopback-gated (enforced at boot below), env-only -- never request-derived.
+  if (process.env.ISCONL_DEV_NO_AUTH === '1') {
+    if (_devAuthBypassLog) _devAuthBypassLog.log('dev_auth_bypass', { engine: 'hub', path: req.url });
+    return true;
+  }
   const token = bearerToken(req);
   if (!token) return false;
   const staticToken = process.env.HUB_TOKEN || process.env.ISCONL_TOKEN || secretStore.get('HUB_TOKEN') || '';
@@ -129,6 +157,7 @@ async function main() {
   console.log(`  secrets: ${secretsResult.source}, ${secretsResult.count} key(s)`);
 
   const auditLog = createAuditLog({ logsDir: LOGS_DIR });
+  _devAuthBypassLog = auditLog;
 
   // Each spoke engine's URL/token is configuration -- no hardcoded
   // addresses, so this same code runs against local dev ports, Docker
@@ -140,6 +169,7 @@ async function main() {
     circle: { url: process.env.CIRCLE_URL, token: () => process.env.CIRCLE_TOKEN || secretStore.get('CIRCLE_TOKEN') || '' },
     spark: { url: process.env.SPARK_URL, token: () => process.env.SPARK_TOKEN || secretStore.get('SPARK_TOKEN') || '' },
     media: { url: process.env.MEDIA_URL, token: () => process.env.MEDIA_TOKEN || secretStore.get('MEDIA_TOKEN') || '' },
+    ops: { url: process.env.OPS_URL, token: () => process.env.OPS_TOKEN || secretStore.get('OPS_TOKEN') || '' },
   };
   const engines = {};
   for (const [name, def] of Object.entries(engineDefs)) {
@@ -154,6 +184,7 @@ async function main() {
   const registry = createRegistry({ engines, auditLog });
   const router = createRouter({ registry, engines, auditLog });
   const authProxy = createAuthProxy({ vault: engines.vault });
+  const chatThreads = createChatThreadStore(engines.vault);
 
   // The legacy monolith (Sconl/isconl-agent) is retired -- deleted locally
   // 2026-08-15, no longer deployed anywhere. hub is self-contained now:
@@ -175,6 +206,10 @@ async function main() {
 
   const tokenConfigured = !!(process.env.HUB_TOKEN || process.env.ISCONL_TOKEN || secretStore.get('HUB_TOKEN'));
   const isLoopback = ['127.0.0.1', '::1', 'localhost'].includes(BIND);
+  if (process.env.ISCONL_DEV_NO_AUTH === '1' && !isLoopback) {
+    console.error('  REFUSING TO BIND: ISCONL_DEV_NO_AUTH is set but BIND is not loopback -- dev auth bypass is loopback-only.');
+    process.exit(1);
+  }
   if (!isLoopback && !tokenConfigured) {
     console.error('  REFUSING TO BIND: no HUB_TOKEN/ISCONL_TOKEN configured and BIND is not loopback.');
     process.exit(1);
@@ -290,9 +325,11 @@ async function main() {
       // real engine-owned data today, just not wrapped in a dedicated
       // capability yet -- reading them via vault.read is not a workaround,
       // it's the same access path circle itself uses internally.
-      // Reshapes vault's real onedrive.sync.status ({running, lastResult:
-      // {ok:[...], failed:[...], startedAt, finishedAt}}) into the shape
-      // webconsole/static/app.js's checkVaultLink() already expects
+      // BI26083005: reshapes vault's real backup.status ({running,
+      // lastResult: {ok, ref, error, startedAt, finishedAt}} -- was
+      // onedrive.sync.status's {ok:[...], failed:[...]} per-collection
+      // shape before the pull-based sync was retired) into the shape
+      // web/static/app.js's checkVaultLink() already expects
       // ({onedrive, status, error}) -- that shape predates this route
       // existing (it was written against the legacy monolith's own
       // /api/vault/sync/status), so the choice is reshape-at-the-edge here
@@ -300,20 +337,19 @@ async function main() {
       // /api/state's own precedent just below, and keeps app.js's contract
       // stable for the real Flutter app which calls this same path.
       if (pathname === '/api/vault/sync/status' && req.method === 'GET') {
-        const r = await router.route('onedrive.sync.status', {});
+        const r = await router.route('backup.status', {});
         if (!r.ok) return sendJson(res, 200, { onedrive: false, status: 'offline', error: r.error || 'vault unreachable' });
         const lr = r.data && r.data.lastResult;
         if (!lr) return sendJson(res, 200, { onedrive: true, status: r.data.running ? 'syncing' : 'idle' });
-        const failed = lr.failed || [];
-        if (failed.length > 0) {
-          return sendJson(res, 200, { onedrive: true, status: 'offline', error: `${failed.length} collection(s) failed: ${failed[0].collection} (${failed[0].error || 'unknown error'})` });
+        if (!lr.ok) {
+          return sendJson(res, 200, { onedrive: true, status: 'offline', error: lr.error || 'backup pass failed' });
         }
-        return sendJson(res, 200, { onedrive: true, status: 'ok', lastSyncedAt: lr.finishedAt, collectionsSynced: lr.ok.length });
+        return sendJson(res, 200, { onedrive: true, status: 'ok', lastSyncedAt: lr.finishedAt, ref: lr.ref });
       }
 
       // File manager delete/move: reshape vault's {ok, error} into the
       // {success, error} shape the frontend's fmDeleteItem/fmRenameItem/
-      // fmMoveItem already check (webconsole/static/app.js) -- inherited
+      // fmMoveItem already check (web/static/app.js) -- inherited
       // from the legacy monolith's own contract, kept rather than editing
       // three already-built frontend functions.
       if (pathname === '/api/onedrive/delete' && req.method === 'POST') {
@@ -348,7 +384,7 @@ async function main() {
 
       // Reshapes vault's onThisDay ({date, entries, world, card}) into the
       // {insights:{calendar:{title,category,text,tone}}} shape
-      // webconsole/static/app.js's SPACE_INSIGHTS/fetchInsights() already
+      // web/static/app.js's SPACE_INSIGHTS/fetchInsights() already
       // expects -- replaces pulse's hardcoded 1971 placeholder with the
       // real thing (personal record first, world history fallback).
       // title maps to c.event (the bold headline, "what actually happened")
@@ -374,7 +410,7 @@ async function main() {
 
       // Spaces (axial tree): api-compat.js used to mark this `legacy: true`,
       // meaning it always 501'd -- the legacy monolith it pointed at was
-      // deleted 2026-08-15, so webconsole/static/app.js's fetchSpaces() has
+      // deleted 2026-08-15, so web/static/app.js's fetchSpaces() has
       // been failing silently (caught in its own try/catch) ever since,
       // leaving renderSpaces() stuck on "Loading spaces…" forever. Found
       // and fixed 17 Aug while wiring the Writer space in under it. Same
@@ -490,6 +526,86 @@ async function main() {
           'Cache-Control': 'no-store',
         });
         return fs.createReadStream(file).pipe(res);
+      }
+
+      // FI26090501: chat's real answer path. Bypasses the generic /api/
+      // router below (like /api/profile/photo) because /api/chat/stream
+      // needs to write raw SSE frames to `res`, not one JSON body -- and
+      // both need their {message} body reshaped into spark's {messages}
+      // shape, which the generic router deliberately never does.
+      // Thread persistence (/api/chat/thread/*, /api/chat/threads) is
+      // still `legacy: true` below -- out of scope for this fix, tracked
+      // separately (see fix.md's FI26090501 note).
+      if (pathname === '/api/chat' && req.method === 'POST') {
+        if (!engines.spark) return sendJson(res, 502, { error: 'spark is not configured on this hub' });
+        const p = JSON.parse(await readBody(req) || '{}');
+        const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: [{ role: 'user', content: p.message || '' }] } });
+        if (r.status !== 200) return sendJson(res, r.status || 502, { error: (r.data && r.data.error) || 'spark did not answer' });
+        try { await chatThreads.appendTurn(p.message || '', r.data.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
+        return sendJson(res, 200, { response: r.data.response, captured: [] });
+      }
+      if (pathname === '/api/chat/stream' && req.method === 'POST') {
+        if (!engines.spark) return sendJson(res, 502, { error: 'spark is not configured on this hub' });
+        const p = JSON.parse(await readBody(req) || '{}');
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        });
+        try {
+          const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: [{ role: 'user', content: p.message || '' }] } });
+          if (r.status !== 200) {
+            res.write(`event: error\ndata: ${JSON.stringify({ error: (r.data && r.data.error) || 'spark did not answer' })}\n\n`);
+          } else {
+            // spark's chatComplete is one-shot, not token-streamed -- send
+            // the whole answer as a single 'token' frame (still satisfies
+            // streamChat()'s paint()/frame parser) followed by 'done'.
+            // Real token-by-token streaming is a future refinement, not
+            // this fix's scope (restoring an answer at all).
+            res.write(`event: token\ndata: ${JSON.stringify({ t: r.data.response })}\n\n`);
+            res.write(`event: done\ndata: ${JSON.stringify({ response: r.data.response, captured: [] })}\n\n`);
+            try { await chatThreads.appendTurn(p.message || '', r.data.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
+          }
+        } catch (e) {
+          res.write(`event: error\ndata: ${JSON.stringify({ error: String(e.message || e) })}\n\n`);
+        }
+        return res.end();
+      }
+      // BI26090505: real per-thread storage, replacing the 501-stub
+      // legacy:true routes in api-compat.js (bypasses the generic router
+      // the same way /api/chat above does -- these need chatThreads'
+      // in-memory current-thread state, not a stateless capability call).
+      if (pathname === '/api/chat/thread/new' && req.method === 'POST') {
+        return sendJson(res, 200, await chatThreads.newThread());
+      }
+      if (pathname === '/api/chat/thread/open' && req.method === 'POST') {
+        const p = JSON.parse(await readBody(req) || '{}');
+        const r = await chatThreads.openThread(p.id);
+        return sendJson(res, r.success ? 200 : 404, r);
+      }
+      if (pathname === '/api/chat/threads' && req.method === 'GET') {
+        return sendJson(res, 200, await chatThreads.listThreads());
+      }
+      if (pathname === '/api/chat/thread/delete' && req.method === 'POST') {
+        const p = JSON.parse(await readBody(req) || '{}');
+        const r = await chatThreads.deleteThread(p.id);
+        return sendJson(res, r.success ? 200 : 404, r);
+      }
+
+      // Profile photo binary passthrough -- see api-compat.js's note on why
+      // this one path bypasses the generic JSON router below.
+      if (pathname === '/api/profile/photo' && req.method === 'GET') {
+        if (!engines.vault) return sendJson(res, 502, { error: 'vault is not configured on this hub' });
+        const upstream = await engines.vault.rawStream('GET', '/profile/photo');
+        if (upstream.status === 404) return sendJson(res, 404, { error: 'no photo set' });
+        if (!upstream.ok) return sendJson(res, upstream.status || 502, { error: 'vault did not return the photo' });
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.writeHead(200, {
+          'Content-Type': upstream.headers.get('content-type') || 'application/octet-stream',
+          'Content-Length': buf.length,
+          'Cache-Control': 'private, max-age=86400',
+        });
+        return res.end(buf);
       }
 
       // -- /api/* compatibility layer for the real, already-signed Flutter app --

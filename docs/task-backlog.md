@@ -47,7 +47,7 @@
 | ✅ | **Lesson reader typography upgrade** | hub: style.css — font-size 1.08rem, line-height 1.82. |
 | ✅ | **Meeting 08: Sunday 16 August Sam Strategic Alignment codified** | viva-meetings/20260816_campus_viva_meetings_08_*.md — full depth standard. |
 | ✅ | **Pre.IPO.Capital deep-dive due diligence** | vault/memory/scope/due_diligence_pre_ipo_capital.md |
-| ✅ | **Webconsole: natural unboxed reader experience** | hub: dab2a8a |
+| ✅ | **Web: natural unboxed reader experience** | hub: dab2a8a |
 | ✅ | **Fleet resilience: Bitwarden credentials auto-bootstrap** | hub/scripts/dev-local.sh |
 | ✅ | **Learning Engine: track classification & module metadata** | spark: 007c2a3, hub: 1ed8dc0 |
 | ✅ | **Campus Advice elevation** | hub: app.js — advice block prominent above track cards |
@@ -74,7 +74,7 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| IN1 | **Guard against served static assets being truncated mid-write** | ⬜ Queued | Logged 20 Aug 2026 from INC-003 (`_handoff/INCIDENTS.md`): `webconsole/static/app.js` was found truncated from 17,999 to 259 lines, uncommitted, cutting off mid-statement — an interrupted write from an unidentified process, served as-is by the dev server since there's no build step/cache in front of static files. Fixed by `git checkout`. Consider atomic temp-file+rename for any tool that regenerates `app.js`, and/or a boot-time sanity check (min line count / doesn't end mid-statement) that refuses to serve or alerts. Origin process never identified — if it recurs, check what was writing to the file. |
+| IN1 | **Guard against served static assets being truncated mid-write** | ⬜ Queued | Logged 20 Aug 2026 from INC-003 (`_handoff/INCIDENTS.md`): `web/static/app.js` was found truncated from 17,999 to 259 lines, uncommitted, cutting off mid-statement — an interrupted write from an unidentified process, served as-is by the dev server since there's no build step/cache in front of static files. Fixed by `git checkout`. Consider atomic temp-file+rename for any tool that regenerates `app.js`, and/or a boot-time sanity check (min line count / doesn't end mid-statement) that refuses to serve or alerts. Origin process never identified — if it recurs, check what was writing to the file. |
 | IN2 | **Investigate/clean up `.git.corrupted-20260817/`** | ⬜ Queued | Logged 20 Aug 2026. Untracked 14MB directory sitting at the `hub` repo root, structurally a full `.git` dir (HEAD/index/objects/refs, last touched 17 Aug 03:59 EAT — same morning as `INC-001`). Not referenced in any handoff doc found by grep. Current `.git` is healthy (`git fsck` shows only ordinary dangling commits, no corruption). Likely a safety copy made while resolving `INC-001` and never cleaned up. Not urgent — confirm it's safe to delete (or archive outside the repo) before removing; low priority disk cleanup, not a live bug. |
 | D1 | **Deliverables engine** | ⬜ Queued | scope/deliverable_roots.tsv, Graph-resolved paths, naming-convention parser. Design: OneDrive paths via vault Graph client, not hardcoded. |
 | D2 | **Corporate engagement dashboards** | ⬜ Queued | Cards per engagement: days worked, people, master disable toggle. |

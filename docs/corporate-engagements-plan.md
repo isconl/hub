@@ -13,8 +13,8 @@ this plan's toggle also governs.
 built — `scope/lib/corporate.js` (§6.1/Phase 1); `GET /api/corporate` +
 `GET /api/corporate/detail` (§6.3/Phase 3, **read-only half only** — the
 `POST /api/corporate/status` and `POST /api/corporate/connect` write
-routes are NOT built); both UI implementations, webconsole
-(`renderCorporate`/`renderCorporateDetail`, `hub/webconsole/static/
+routes are NOT built); both UI implementations, web
+(`renderCorporate`/`renderCorporateDetail`, `hub/web/static/
 app.js:5309,5346`) and Flutter (`hub/app/lib/ui/views/corporate.dart`).
 Confirmed **not** built — `vault/lib/google.js` (§4/Phase 2, Gmail
 OAuth), any `connections.yaml` file anywhere (§1's schema addition), and

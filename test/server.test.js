@@ -43,6 +43,13 @@ async function startHub(fakes, envOverrides = {}) {
   Object.assign(process.env, {
     HUB_PORT: '0', HUB_BIND: '127.0.0.1', HUB_TOKEN: 'test-static-token',
     HUB_LOGS_DIR: logsDir, BWS_ACCESS_TOKEN: '',
+    // Explicit empty override, not a delete -- lib/secrets.js's get()
+    // treats this hasOwnProperty'd '' as authoritative and never falls
+    // through to a real RENDER_API_KEY sitting in this machine's own
+    // environment (FI26082701: the "GET /services" test's
+    // `byName.keyvanos.found === false` assertion assumes no real key is
+    // configured, which isn't actually guaranteed without this).
+    RENDER_API_KEY: '',
     VAULT_URL: `http://127.0.0.1:${fakes.vault.port}`,
     ...(fakes.scope ? { SCOPE_URL: `http://127.0.0.1:${fakes.scope.port}` } : {}),
     ...(fakes.spark ? { SPARK_URL: `http://127.0.0.1:${fakes.spark.port}` } : {}),
@@ -87,11 +94,41 @@ test('a protected route with no credential fails closed (silent 404)', async () 
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
 
+// BS26090501: dev-only auth bypass, loopback-gated. Confirms the flag actually
+// bypasses (else the escape hatch is useless) AND that leaving it unset keeps
+// the fail-closed behavior above -- a future refactor can't silently invert this.
+test('ISCONL_DEV_NO_AUTH=1 bypasses auth on loopback', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault }, { ISCONL_DEV_NO_AUTH: '1' });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/engines`);
+    assert.notEqual(res.status, 404);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('ISCONL_DEV_NO_AUTH unset still fails closed with no credential', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/engines`);
+    assert.equal(res.status, 404);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
 test('the static HUB_TOKEN authenticates a request without needing a vault session', async () => {
   const vault = await startFakeEngine({ name: 'vault' });
   const { server, port, cleanup } = await startHub({ vault });
   try {
     const res = await fetch(`http://127.0.0.1:${port}/engines`, { headers: { Authorization: 'Bearer test-static-token' } });
+    assert.equal(res.status, 200);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('a token in the ?token= query param authenticates too -- images (<img src>, Image.network) can\'t send an Authorization header', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/engines?token=test-static-token`);
     assert.equal(res.status, 200);
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
@@ -216,7 +253,7 @@ test('a gap /api/* route (no working backend anywhere) reports 501, not a silent
   const { server, port, cleanup } = await startHub({ vault });
   const auth = { Authorization: 'Bearer test-static-token' };
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/teams`, { headers: auth });
+    const res = await fetch(`http://127.0.0.1:${port}/api/refs`, { headers: auth });
     assert.equal(res.status, 501);
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
@@ -403,7 +440,7 @@ test('GET /services requires auth, same as every other non-public route', async 
 
 // api-compat.js used to mark GET /api/spaces `legacy: true` -- a confirmed
 // dead 501 (the legacy monolith it pointed at was deleted 2026-08-15) --
-// which meant webconsole/static/app.js's fetchSpaces() silently failed on
+// which meant web/static/app.js's fetchSpaces() silently failed on
 // every load and the whole Spaces/Axial-tree view (Innovator/Visionary/
 // Creator, Decision Log, Risk Register, and now Writer) never rendered.
 // Fixed 17 Aug by building the tree natively in server.js instead.
