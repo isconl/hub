@@ -11018,9 +11018,20 @@ function renderOps() {
       <pre style="max-height:400px;overflow:auto;white-space:pre-wrap;font-size:0.8rem">${escHtml(opsLogsText)}</pre>
     </div>` : '';
 
+  // BG26091020: the former standalone Security nav item/view (PS26090501,
+  // dead-hand remote wipe + future hardening -- still not yet scoped, held
+  // in plan.md) folded in here as a section rather than kept as a separate
+  // nav entry. Nothing to migrate: Security never had real content beyond
+  // this same placeholder text.
+  const securitySection = `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Security</span></div>
+      <div class="empty-state">Not yet scoped - held in plan.md as PS26090501. Flagship item: dead-hand remote wipe of data from any logged-in device. Needs its own design pass before this section has real content.</div>
+    </div>`;
+
   return `
     <div class="view-head">
-      <h1>Ops</h1>
+      <h1>Opsec</h1>
       <div class="view-head-meta">the fleet + the OCI VM, live — restart/stop/start/destroy a service, tail its logs, see what's actually deployed</div>
     </div>
     <div class="card">
@@ -11031,7 +11042,8 @@ function renderOps() {
       <div class="card-header"><span class="card-title">Services</span></div>
       <div class="audit-rail">${rows}</div>
     </div>
-    ${logsPanel}`;
+    ${logsPanel}
+    ${securitySection}`;
 }
 
 // ── ROUTER ────────────────────────────────────────────────────────────────────
@@ -11043,24 +11055,8 @@ const VIEWS = {
   risks:'renderRisks', 'whatsapp-guide':'renderWhatsAppGuide', audit:'renderAudit',
   files:'renderFileManager', social:'renderSocial', articles:'renderArticles',
 };
-// PS26090501: stub view only -- dead-hand remote wipe + future hardening
-// work, held in plan.md, not yet scoped. Nav position confirmed by Sconl
-// 5 Sep 2026 (Ops, Files, Media, Security, Audit); the view itself is
-// intentionally a placeholder until that row is picked up.
-function renderSecurity() {
-  return `
-    <div class="view-head">
-      <h1>Security</h1>
-      <div class="view-head-meta">not yet scoped - held in plan.md as PS26090501</div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">Coming later</span></div>
-      <div class="empty-state">Flagship item: dead-hand remote wipe of data from any logged-in device. Needs its own design pass before this space has real content.</div>
-    </div>`;
-}
 
 const viewFns = {
-  security:renderSecurity,
   today:renderToday, jira:renderJira,
   calendar:renderCalendar, settings:renderSettings, github:renderGitHub,
   inbox:renderInbox, tasks:renderTasks, decisions:renderDecisions,
@@ -11405,7 +11401,7 @@ const VIEW_LABELS = {
   journal:'Journal', learning:'Academia', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
   decisions:'Decision Log', risks:'Risk Register', social:'Buffer',
   integrations:'Integrations Hub', audit:'Audit', settings:'Settings',
-  task:'Task', 'whatsapp-guide':'WhatsApp', writer:'QPress',
+  task:'Task', 'whatsapp-guide':'WhatsApp', writer:'QPress', ops:'Opsec',
 };
 let NAV_TRAIL = [];
 const TRAIL_MAX = 8;
