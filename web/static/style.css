@@ -3585,6 +3585,11 @@ body[data-callout-theme="muted"] .lesson-body {
 .planner-hour-label { font-size:0.6rem; color:var(--text-3); font-family:var(--font-mono);
   text-align:right; padding-right:0.4rem; box-sizing:border-box;
   transform:translateY(-0.5em); }
+/* BT26091023: the merged overnight 10pm-5am row -- 7x an ordinary row's
+   height, so its label needs real vertical centering instead of the
+   single-line hour labels' -0.5em nudge. */
+.planner-hour-label-rest { display:flex; align-items:center; justify-content:flex-end;
+  transform:none; text-transform:uppercase; letter-spacing:0.05em; }
 .planner-grid { display:grid; grid-template-columns:repeat(7, minmax(110px, 1fr)); gap:6px; flex:1; }
 .planner-col {
   display:flex; flex-direction:column; min-width:0;
@@ -3623,17 +3628,22 @@ body[data-callout-theme="muted"] .lesson-body {
   );
 }
 .planner-block-band {
-  position:absolute; left:0; right:0; opacity:0.4;
+  position:absolute; left:0; right:0; opacity:0.4; cursor:pointer;
   background:linear-gradient(90deg,
     color-mix(in srgb, var(--tone) 72%, #fff) 0%,
     var(--tone) 55%,
     color-mix(in srgb, var(--tone) 82%, #000) 100%);
   border-left:2px solid var(--tone);
 }
+/* BT26091023: bands lost their hover tooltip in favor of a click-to-open
+   popup -- a hover state gives the same "this is clickable" affordance a
+   title= attribute used to communicate for free. */
+.planner-block-band:hover { opacity:0.65; }
 .planner-event-pill {
   position:absolute; left:2px; right:2px; height:1.1rem; border-radius:2px;
   font-size:0.6rem; color:var(--text); padding:0 0.3rem; line-height:1.1rem;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1;
+  cursor:pointer;
 }
 @media (max-width: 1080px) {
   .planner-grid { grid-template-columns:repeat(7, minmax(90px, 1fr)); }

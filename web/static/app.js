@@ -1598,18 +1598,23 @@ function calMode(m) { calendarState.mode = m; repaintView('calendar'); }
  * BT26082101: the Planner view - a weekly grid, columns = days of the week
  * (Sun-Sat containing today), rows = every hour, day-theme names atop each
  * column, the day's blocks shown as colored bands. Reads the same `bs` shape
- * renderDayBlocks() already reads (DAY.blocks / DAY.now.blocks) but anchors
- * segments to literal midnight (00:00-24:00 top-to-bottom, via midSeg()
- * below) rather than the day-rail's own 05:00 rotation (seg(), ~line 8862) -
- * a planner page reads top-of-day to bottom, not "day starts when Protected
- * does". DAY.blocks is the SAME 12 rows applied to every weekday today (see
- * BT26082002, not yet shipped) - until that lands, every column legitimately
- * shows identical bands, which is still correct given today's data model.
- * DAY_THEMES uses the names BT26082104 (shipped same session) locked, not
- * the older names this row's own build.md note was scoped against.
+ * renderDayBlocks() already reads (DAY.blocks / DAY.now.blocks).
+ *
+ * BT26091023: rows now start at 5am (not midnight) and the overnight
+ * 10pm-5am span is one merged "Rest" row instead of 7 separate hourly rows
+ * - matching `vault/lib/blocks.js`'s own Rest block (21:00-05:00, see
+ * DAY_START=300 at ~line 9179/9456) and the day-rail's own 05:00-rotated
+ * seg() (~line 8862), which this view deliberately did NOT match before.
+ * `remap()`/`midSeg()` below rotate every raw minute-of-day value by that
+ * same -300 offset before laying anything out, so band/pill positioning
+ * stays minute-precise everywhere (including inside the taller Rest row)
+ * rather than degrading to a flat band there. Hover tooltips (`title=`)
+ * are gone - a band click opens a real popup (openPlannerBlockPopup())
+ * instead, per Sconl's ask.
  */
 function renderPlannerCalendar(byDate) {
   const HOUR_PX = 44;
+  const DAY_START = 300; // 5am, in minutes - the new row-1 origin
   const today = new Date();
   const weekStart = new Date(today);
   weekStart.setDate(today.getDate() - today.getDay());
@@ -1624,14 +1629,20 @@ function renderPlannerCalendar(byDate) {
     { name: 'Hearth',       axis: 'home' },       // Sat
   ];
   const bs = DAY ? (DAY.blocks || (DAY.now && DAY.now.blocks) || []) : [];
-  // Literal-midnight version of renderDayBlocks()'s rail-relative seg() -
-  // a block that wraps midnight (Rest, 21:00-05:00) still splits into two
-  // bands, just anchored to [0,1440] instead of a rotated rail origin.
+  // Rotate a raw minute-of-day value so 5am reads as 0 and 5am-next-day as
+  // 1440 - every position below is computed in this rotated space.
+  const remap = m => ((m - DAY_START) % 1440 + 1440) % 1440;
+  // Same wrap-splitting midSeg() always did, just applied to the rotated
+  // start/duration instead of the raw one - a block that now straddles the
+  // NEW origin (5am) splits into two bands the same way one straddling
+  // midnight used to.
   const midSeg = (b) => {
-    const s = b.start, e0 = b.end;
-    const e = e0 <= s ? e0 + 1440 : e0;
+    const s = remap(b.start);
+    const dur = (b.end <= b.start ? b.end + 1440 : b.end) - b.start;
+    const e = s + dur;
     return e > 1440 ? [[s, 1440], [0, e - 1440]] : [[s, e]];
   };
+  const esc1 = s => escHtml(s).replace(/'/g, "\\'");
   const pad = n => String(n).padStart(2, '0');
 
   const cols = DAY_NAMES.map((dn, i) => {
@@ -1646,15 +1657,15 @@ function renderPlannerCalendar(byDate) {
 
     const bands = bs.flatMap(b => midSeg(b).map(([s, e]) => `
       <div class="planner-block-band" style="top:${(s / 60 * HOUR_PX).toFixed(1)}px;height:${Math.max(2, (e - s) / 60 * HOUR_PX).toFixed(1)}px;--tone:${toneOf(b)}"
-           title="${escAttr(b.name)} · ${escAttr(b.startClock || '')}-${escAttr(b.endClock || '')}"></div>`
+           onclick="event.stopPropagation();openPlannerBlockPopup('${esc1(b.name)}','${esc1(b.startClock || '')}','${esc1(b.endClock || '')}')"></div>`
     )).join('');
 
     const pills = timed.map(it => {
       const [h, m] = String(it.time).split(':').map(Number);
-      const mins = (h || 0) * 60 + (m || 0);
+      const mins = remap((h || 0) * 60 + (m || 0));
       const tone = it.color || themeTone;
       return `<div class="planner-event-pill" style="top:${(mins / 60 * HOUR_PX).toFixed(1)}px;background:${escHtml(tone)}22;border-left:2px solid ${escHtml(tone)}"
-                   title="${escAttr(it.title || '')}">${escHtml((it.title || '').slice(0, 26))}</div>`;
+                   onclick="event.stopPropagation();openPlannerBlockPopup('${esc1(it.title || '')}','${esc1(it.time || '')}','')">${escHtml((it.title || '').slice(0, 26))}</div>`;
     }).join('');
 
     return `
@@ -1670,9 +1681,14 @@ function renderPlannerCalendar(byDate) {
       </div>`;
   }).join('');
 
-  const gutter = Array.from({ length: 24 }, (_, h) =>
-    `<div class="planner-hour-label" style="height:${HOUR_PX}px">${h === 0 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h - 12) + 'p'}</div>`
-  ).join('');
+  // 17 individual hourly rows, 5am through the 9pm-10pm slot, then one
+  // merged "Rest" row 7x tall (22:00-05:00) - 17 + 7 = 24 hours, so total
+  // gutter height still matches planner-col-body's 24*HOUR_PX exactly.
+  const hourLabel = h => h === 0 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h - 12) + 'p';
+  const gutter = Array.from({ length: 17 }, (_, i) => {
+    const h = 5 + i;
+    return `<div class="planner-hour-label" style="height:${HOUR_PX}px">${hourLabel(h)}</div>`;
+  }).join('') + `<div class="planner-hour-label planner-hour-label-rest" style="height:${7 * HOUR_PX}px">Rest</div>`;
 
   return `
     <div class="planner">
@@ -1682,6 +1698,36 @@ function renderPlannerCalendar(byDate) {
       </div>
       <div class="planner-grid">${cols}</div>
     </div>`;
+}
+
+// BT26091023: replaces the native browser tooltip a planner block used to
+// show on hover - a real, click-to-open popup with the block's name and
+// time range. Same throwaway-overlay pattern as uiSelectPrompt() above,
+// minus the Promise (this is informational only, nothing to resolve).
+function openPlannerBlockPopup(name, startClock, endClock) {
+  document.getElementById('planner-block-popup')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'planner-block-popup';
+  ov.className = 'modal-overlay';
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  const when = [startClock, endClock].filter(Boolean).join(' – ');
+  ov.innerHTML = `
+    <div class="modal-box ui-dialog">
+      <div class="modal-header"><span class="modal-title">${escHtml(name)}</span>
+        <button class="btn btn-ghost" data-no>✕</button></div>
+      <div class="modal-body">
+        ${when ? `<div class="card-meta">${escHtml(when)}</div>` : ''}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" data-ok>Close</button>
+      </div>
+    </div>`;
+  ov.onclick = (e) => { if (e.target === ov) close(); };
+  ov.querySelector('[data-no]').onclick = close;
+  ov.querySelector('[data-ok]').onclick = close;
+  document.body.appendChild(ov);
+  document.addEventListener('keydown', onKey);
 }
 
 /**
