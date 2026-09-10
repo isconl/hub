@@ -122,6 +122,28 @@ ensure_dev_branch() {
   git -C "$ROOT/$repo_dir" checkout dev --quiet 2>/dev/null || echo "  could not checkout dev in $repo_dir" >&2
 }
 
+# FI26091004: an orphaned process from a prior failed/killed launch can be
+# left bound to a service's port with no pidfile tracking it -- every
+# future start/restart then spawns a fresh process that dies instantly on
+# EADDRINUSE while the untracked orphan keeps answering health checks, so
+# the fleet looks fully up while actually serving a stale, disconnected
+# instance. Clear the port before every spawn, not just the tracked-pidfile
+# path in start_one() above this. Best-effort: if lsof isn't available,
+# skip rather than block the launch (same fallback shape as the
+# python3/python probe elsewhere in this script).
+clear_stale_port() {
+  local name="$1" port="$2"
+  [ "$port" = "-" ] && return 0
+  command -v lsof >/dev/null 2>&1 || return 0
+  local pids
+  pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null)"
+  if [ -n "$pids" ]; then
+    echo "WARNING: $name's port $port is already held by pid(s) $pids (no matching pidfile -- an orphan from a prior launch). Killing before start." >&2
+    kill -9 $pids 2>/dev/null || true
+    sleep 1
+  fi
+}
+
 start_one() {
   local name="$1" port="$2" dir="$3"
   local pidfile="$PID_DIR/$name.pid"
@@ -129,6 +151,7 @@ start_one() {
     echo "$name already running (pid $(cat "$pidfile"))"
     return
   fi
+  clear_stale_port "$name" "$port"
   if [ "$name" = "tts" ] || [ "$name" = "learning-sync" ]; then
     ensure_dev_branch "vault"
   else
