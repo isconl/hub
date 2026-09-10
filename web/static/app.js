@@ -3864,9 +3864,9 @@ const MENU_COLOR_GROUPS = [
   { key: 'projects',  label: 'Projects',   hint: 'Ventures, deployments' },
   { key: 'life',      label: 'Personal',   hint: 'Rhythm, Academia, Ideas' },
   { key: 'circle',    label: 'Circle',     hint: 'People, Contacts' },
-  { key: 'system',    label: 'Systems',    hint: 'Files, Audit Chain' },
+  { key: 'system',    label: 'Systems',    hint: 'Files, Audit' },
   { key: 'spaces',    label: 'Spaces',     hint: 'Sidebar menu' },
-  { key: 'writer',    label: 'Writer',     hint: 'Space cards' },
+  { key: 'writer',    label: 'QPress',     hint: 'Space cards' },
   { key: 'visionary', label: 'Visionary',  hint: 'Space cards' },
   { key: 'innovator', label: 'Innovator',  hint: 'Space cards' },
   { key: 'creator',   label: 'Creator',    hint: 'Space cards' },
@@ -6566,7 +6566,7 @@ function writerBreadcrumb() {
     : `<span class="crumb-here">${escHtml(label)}</span>`;
   return `
     <div class="view-head-meta crumbs">
-      ${seg('Writer', 1, writerWizardStep > 1)}
+      ${seg('QPress', 1, writerWizardStep > 1)}
       <span class="crumb-sep">/</span>
       ${seg(step2Label, 2, writerWizardStep > 2)}
       ${writerWizardStep > 2 ? `<span class="crumb-sep">/</span>${seg(step3Label, 3, false)}` : ''}
@@ -6582,13 +6582,13 @@ function writerGoToStep(step) {
 function renderWriter() {
   if (!WRITER_ARCHETYPES) {
     loadWriterArchetypes();
-    return `<div class="view-head"><h1>Writer</h1><div class="view-head-meta">Document Studio</div></div>
+    return `<div class="view-head"><h1>QPress</h1><div class="view-head-meta">Document Studio</div></div>
             <div class="card"><div class="reader-loading"><div class="spinner-inline"></div><div>Reading the archetype registry…</div></div></div>`;
   }
 
   return `
     <div class="view-head">
-      <h1>Writer</h1>
+      <h1>QPress</h1>
       <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
         ${writerView === 'wizard' ? writerBreadcrumb() : `<div class="view-head-meta">${writerView === 'binder' ? 'The Decision Architect binder' : 'Generated documents'}</div>`}
         ${writerView === 'wizard' && writerWizardStep > 1 ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="writerStartNewDocument()">+ New document</button>` : ''}
@@ -11404,8 +11404,8 @@ const VIEW_LABELS = {
   github:'GitHub', files:'File Manager', tasks:'Tasks', spaces:'Spaces',
   journal:'Journal', learning:'Academia', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
   decisions:'Decision Log', risks:'Risk Register', social:'Buffer',
-  integrations:'Integrations Hub', audit:'Audit Chain', settings:'Settings',
-  task:'Task', 'whatsapp-guide':'WhatsApp', writer:'Writer',
+  integrations:'Integrations Hub', audit:'Audit', settings:'Settings',
+  task:'Task', 'whatsapp-guide':'WhatsApp', writer:'QPress',
 };
 let NAV_TRAIL = [];
 const TRAIL_MAX = 8;
