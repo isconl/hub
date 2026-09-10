@@ -496,7 +496,7 @@ async function main() {
       }
 
       if (pathname === '/api/apk/latest' && req.method === 'GET') {
-        const info = apk.getLatestInfo(path.join(__dirname, '..'));
+        const info = await apk.getLatestInfo(path.join(__dirname, '..'));
         return sendJson(res, 200, info);
       }
 
@@ -513,6 +513,21 @@ async function main() {
         const ticket = String(url.searchParams.get('t') || '');
         if (!apk.isTicketValid(ticket) && !authProxy.verify(req)) {
           return sendJson(res, 404, { error: 'Not Found' });
+        }
+        // BN26091010: prefer the GitHub release asset (works from anywhere,
+        // no USB/adb needed) -- fall back to a local workstation build only
+        // when no matching GitHub release exists.
+        const info = await apk.getLatestInfo(path.join(__dirname, '..'));
+        if (!info.available) {
+          return sendJson(res, 404, { error: 'No APK build available' });
+        }
+        if (info.source === 'github') {
+          try {
+            await apk.streamGithubAsset(info.assetApiUrl, apk.defaultGithubToken(), info.filename, res);
+          } catch (e) {
+            if (!res.headersSent) sendJson(res, 502, { error: 'GitHub asset download failed', detail: String(e.message || e) });
+          }
+          return;
         }
         const file = apk.findLocalApk(path.join(__dirname, '..'));
         if (!file || !fs.existsSync(file)) {
