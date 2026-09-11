@@ -17122,11 +17122,9 @@ function learnGroupIcon(g, size) {
 
 function renderLearnGroupCard(g) {
   const isArchived = g.status === 'archived';
-  const groupIcon = learnGroupIcon(g, 18);
   return `
     <div class="learn-group-card${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
       <div class="learn-group-top">
-        <div class="learn-group-icon">${groupIcon}</div>
         <div style="flex:1;min-width:0">
           <div class="learn-group-title">${escHtml(g.label)}</div>
           ${isArchived ? `<span class="learn-rel-pill rel-archived" style="margin-top:2px">Archived</span>` : ''}
@@ -17360,7 +17358,7 @@ function renderLearning() {
       <div class="view-head">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem">
           <div>
-            <h1 style="display:flex;align-items:center;gap:0.5rem">${learnGroupIcon(group, 22)} ${escHtml(group.label)}</h1>
+            <h1 style="display:flex;align-items:center;gap:0.5rem">${escHtml(group.label)}</h1>
             <div class="view-head-meta crumbs">
               <a href="#" class="crumb-link" onclick="learnCloseGroup();return false">Academia</a>
               <span class="crumb-sep">/</span><span class="crumb-here">Track Overview</span>
@@ -17448,8 +17446,8 @@ function renderLearning() {
           if (!groupCourses.length && learnFilter === 'active') return '';
           return `
             <div class="learn-section-head" style="display:flex;align-items:center;justify-content:space-between">
-              <span>${escHtml(g.icon || '📚')} ${escHtml(g.label)}</span>
-              <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">⚙ Track Settings</button>
+              <span>${escHtml(g.label)}</span>
+              <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">${svgIcon('settings', 12)} Track Settings</button>
             </div>
             <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-bottom:1.5rem">
               ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
