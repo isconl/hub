@@ -17120,10 +17120,33 @@ function learnGroupIcon(g, size) {
        : svgIcon('folder', size);
 }
 
+// Deterministic "bigness" score for a track/group tile (BL26091009) - combines
+// course volume, module depth, and completion progress so tracks with more
+// content (or more invested progress) read as the bigger tile. Pure function
+// of the group's own resolved fields (courseCount/moduleCount/progressPct, set
+// by getResolvedGroups) so the same group always scores the same way.
+function learnTrackBignessScore(g) {
+  return (g.courseCount || 0) * 3 + (g.moduleCount || 0) + Math.round((g.progressPct || 0) / 10);
+}
+
+// Splits a set of groups into two tile tiers ('lg' wide rectangle / 'sm' small
+// square-ish) by a median split on learnTrackBignessScore, so the split stays
+// meaningful relative to whatever tracks currently exist rather than a fixed
+// absolute threshold. Mutates each group with a non-persisted _tileTier field
+// consumed by renderLearnGroupCard.
+function assignLearnTrackTiers(groups) {
+  const scored = groups.map(g => ({ g, score: learnTrackBignessScore(g) }));
+  const sorted = [...scored].sort((a, b) => a.score - b.score);
+  const median = sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)].score : 0;
+  for (const { g, score } of scored) g._tileTier = score >= median ? 'lg' : 'sm';
+  return groups;
+}
+
 function renderLearnGroupCard(g) {
   const isArchived = g.status === 'archived';
+  const tier = g._tileTier === 'lg' ? 'tile-lg' : 'tile-sm';
   return `
-    <div class="learn-group-card${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
+    <div class="learn-group-card ${tier}${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
       <div class="learn-group-top">
         <div style="flex:1;min-width:0">
           <div class="learn-group-title">${escHtml(g.label)}</div>
@@ -17438,7 +17461,7 @@ function renderLearning() {
       ${learnViewMode === 'groups' ? `
         <div class="learn-section-head" style="margin-bottom:0.75rem">Learning Tracks & Classifications</div>
         <div class="learn-groups-grid" style="margin-bottom:1.5rem">
-          ${groups.map(renderLearnGroupCard).join('')}
+          ${assignLearnTrackTiers(groups).map(renderLearnGroupCard).join('')}
         </div>
       ` : `
         ${groups.map(g => {
