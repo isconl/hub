@@ -11291,25 +11291,48 @@ function fmtUptime(s) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 
+/**
+ * Masonry tile tier for one Ops service row -- canon pattern, design-system.md
+ * section 8 (BG26090606, reusing BL26090601's .tile-1x1/2x1/1x2/2x2 verbatim).
+ * Size signals operational significance, not decoration: a service that's
+ * down, missing, or whose deploy didn't land cleanly gets the wide tile
+ * (more visual weight -- it's what Sconl actually has to act on); a healthy,
+ * running, cleanly-deployed service stays small. No 1x2/2x2 tier here -- a
+ * service row's content (name/status/commit/5 actions) doesn't grow with
+ * extra vertical room the way a track description does, so only the
+ * 1x1/2x1 split is meaningful for this surface.
+ */
+function opsTileTier(s, dep) {
+  if (!s.running || s.exists === false) return 'tile-2x1';
+  // "stale/mismatched deploy commit": the frontend has no expected-vs-running
+  // commit comparison available (opsStatus carries no commit field to diff
+  // against opsDeploy's), so a non-'live' deploy status is used as the
+  // signal instead -- a deploy that didn't land as 'live' means what's
+  // running doesn't match the intended latest deploy.
+  if (dep.status && dep.status !== 'live') return 'tile-2x1';
+  return 'tile-1x1';
+}
+
 function renderOps() {
   const deployByService = new Map((opsDeploy || []).map(d => [d.service, d]));
   const rows = (opsStatus || []).map(s => {
     const dep = deployByService.get(s.service) || {};
+    const tier = opsTileTier(s, dep);
+    const broken = !s.running || s.exists === false;
     return `
-    <div class="audit-row ${s.running ? '' : 'broken'}">
-      <span class="audit-tier-dot" style="background:${s.running ? 'var(--green-bright,#2ecc71)' : 'var(--red)'}"></span>
-      <div class="audit-main">
-        <div class="audit-row-top">
-          <span class="audit-name">${escHtml(s.service)}</span>
-          <span class="audit-when">${s.running ? 'running' : (s.exists ? 'stopped' : 'not deployed')}${dep.commit ? ` · ${escHtml(dep.commit)} (${escHtml(dep.branch || '?')})` : ''}</span>
-        </div>
-        <div class="audit-detail">
-          <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','restart')">Restart</button>
-          <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','stop')">Stop</button>
-          <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','start')">Start</button>
-          <button class="btn btn-ghost" onclick="opsShowLogs('${s.service}')">Logs</button>
-          <button class="btn btn-ghost" style="color:var(--red)" onclick="opsServiceAction('${s.service}','destroy')">Destroy</button>
-        </div>
+    <div class="ops-tile ${tier} ${broken ? 'broken' : ''}">
+      <div class="ops-tile-top">
+        <span class="audit-tier-dot" style="background:${s.running ? 'var(--green-bright,#2ecc71)' : 'var(--red)'}"></span>
+        <span class="audit-name">${escHtml(s.service)}</span>
+        <span class="audit-when">${s.running ? 'running' : (s.exists ? 'stopped' : 'not deployed')}</span>
+      </div>
+      ${dep.commit ? `<div class="audit-detail" style="white-space:normal;overflow:visible;text-overflow:clip">${escHtml(dep.commit)} (${escHtml(dep.branch || '?')})${dep.status && dep.status !== 'live' ? ` · ${escHtml(dep.status)}` : ''}</div>` : ''}
+      <div class="ops-tile-actions">
+        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','restart')" title="Restart">Restart</button>
+        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','stop')" title="Stop">Stop</button>
+        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','start')" title="Start">Start</button>
+        <button class="btn btn-ghost" onclick="opsShowLogs('${s.service}')" title="Logs">Logs</button>
+        <button class="btn btn-ghost" style="color:var(--red)" onclick="opsServiceAction('${s.service}','destroy')" title="Destroy">Destroy</button>
       </div>
     </div>`;
   }).join('') || '<div class="empty-state">Loading…</div>';
@@ -11354,7 +11377,7 @@ function renderOps() {
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title">Services</span></div>
-      <div class="audit-rail">${rows}</div>
+      <div class="ops-tile-grid">${rows}</div>
     </div>
     ${logsPanel}
     ${securitySection}`;
@@ -11953,7 +11976,7 @@ function renderFinance() {
     ${renderSpaceInsight('finance')}
 
     <div class="fin-headline card">
-      ${finHeadTiles(f, nw, m, trend, delta)}
+      <div class="fin-tile-grid">${finHeadTiles(f, nw, m, trend, delta)}</div>
       <div class="fin-snap">
         <button class="btn btn-ghost" onclick="finSnapshot(this)"
                 title="Freeze today's position into the trend">Snapshot</button>
@@ -12082,7 +12105,7 @@ function finHeadTiles(f, nw, m, trend, delta) {
       `${Math.round(P + (i / (nets.length - 1)) * (W - P * 2))},${Math.round(H - P - ((n - min) / span) * (H - P * 2))}`);
     const up = nets[nets.length - 1] >= nets[0];
     sparkTile = `
-      <div class="fin-figure">
+      <div class="fin-figure tile-1x1">
         <span class="fin-label">Trend · ${trend.length} snapshots</span>
         <span class="fin-value ${delta && delta.abs < 0 ? 'neg' : ''}" style="font-size:1.1rem">
           ${delta ? `${delta.abs >= 0 ? '+' : '−'}${money(Math.abs(delta.abs))}` : '—'}</span>
@@ -12094,8 +12117,18 @@ function finHeadTiles(f, nw, m, trend, delta) {
       </div>`;
   }
 
+  // Masonry tile tiers -- canon pattern, design-system.md section 8
+  // (BG26090606, reusing BL26090601's .tile-1x1/2x1/1x2/2x2 verbatim).
+  // Net worth is 2x2: "the one number the view exists to answer" (BG26090606
+  // spec). Runway/month-flow/trend are 1x1: none of these headline tiles is
+  // itself a goal, so the row's "2x1 for a goal overdue/due soon" rule has
+  // no headline tile to attach to -- finHeadTiles()/.fin-headline never
+  // carried a goals-remaining tile (confirmed by reading the function; goals
+  // live in the separate .fin-goals section further down renderFinance(),
+  // outside this row's scope). Documented as a deviation rather than
+  // invented scope creep into that other section.
   return `
-      <div class="fin-figure">
+      <div class="fin-figure tile-2x2">
         <span class="fin-label">Net worth</span>
         <span class="fin-value ${nw.net < 0 ? 'neg' : ''}">${money(nw.net)}</span>
         ${grossPos ? `
@@ -12106,7 +12139,7 @@ function finHeadTiles(f, nw, m, trend, delta) {
         <span class="fin-sub"><span class="fin-dot a"></span>${money(nw.assets)} assets
           · <span class="fin-dot l"></span>${money(nw.liabilities)} owed</span>
       </div>
-      <div class="fin-figure">
+      <div class="fin-figure tile-1x1">
         <span class="fin-label">Runway</span>
         <span class="fin-value">${f.runwayMonths != null ? `${f.runwayMonths} mo` : '—'}</span>
         <div class="fin-meter" title="${f.runwayMonths != null ? `${f.runwayMonths} of ${RUNWAY_TRACK} months on the track, marker at 6` : 'no burn figure yet'}">
@@ -12115,7 +12148,7 @@ function finHeadTiles(f, nw, m, trend, delta) {
         </div>
         <span class="fin-sub">${f.burn ? `burn ~${money(f.burn)}/mo · marker = 6 mo` : 'needs a month of data'}</span>
       </div>
-      <div class="fin-figure">
+      <div class="fin-figure tile-1x1">
         <span class="fin-label">${escHtml(m.month || 'This month')}</span>
         <span class="fin-value ${m.netFlow < 0 ? 'neg' : ''}">${m.income || m.expense ? money(m.netFlow) : '—'}</span>
         ${flowMax ? `
@@ -12455,6 +12488,8 @@ function finVentures() {
       <div class="card-header">
         <span class="card-title">Ventures</span>
         <div style="display:flex;gap:0.4rem;align-items:center">
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="finDiscoverVentures()"
+            title="Re-scan onedrive-acexoft:_ace for venture folders and add any new ones as candidates">Sync from OneDrive</button>
           <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="fetchVentures(true)">Refresh</button>
           <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="finAddVenture()">Add</button>
         </div>
@@ -12466,8 +12501,14 @@ function finVentures() {
               <div class="fin-venture-head">
                 <span class="fin-venture-name">${escHtml(v.NAME)}</span>
                 <span class="fin-venture-kind">${escHtml(v.KIND)}</span>
+                ${v.CATEGORY && v.CATEGORY !== '-' ? `<span class="fin-venture-kind" style="opacity:0.7">${escHtml(v.CATEGORY)}</span>` : `<span class="fin-venture-kind" style="opacity:0.5;font-style:italic">category unset</span>`}
                 ${v.fetchedAt ? `<span class="card-meta">as of ${escHtml(v.fetchedAt.slice(11, 16))}</span>` : ''}
+                <span style="flex:1"></span>
+                <button class="btn btn-ghost" style="font-size:0.65rem;padding:1px 7px" onclick="finEditVenture('${escHtml(v.ID)}')">Edit</button>
+                <button class="btn btn-ghost" style="font-size:0.65rem;padding:1px 7px;color:var(--danger,#e5484d)" onclick="finDeleteVenture('${escHtml(v.ID)}','${escHtml(v.NAME)}')">Discard</button>
               </div>
+              ${v.FOLDER && v.FOLDER !== '-' ? `<div class="card-meta" style="opacity:0.6">_ace/${escHtml(v.FOLDER)}</div>` : ''}
+              ${v.NOTE && v.NOTE !== '-' ? `<div class="card-meta" style="opacity:0.6">${escHtml(v.NOTE)}</div>` : ''}
               ${v.metrics && Object.keys(v.metrics).length ? `
                 <div class="fin-venture-metrics">
                   ${Object.entries(v.metrics).slice(0, 8).map(([k, val]) => `
@@ -12481,24 +12522,90 @@ function finVentures() {
           Nothing plugged in yet. When a product ships, give it a metrics endpoint
           returning flat JSON (<code>{"mrr": 0, "users": 0}</code>) and add it here -
           the dashboard renders whatever it reports. Auth tokens go in the secret
-          store by name, never in the registry.
+          store by name, never in the registry. Or click "Sync from OneDrive" to
+          pull in venture candidates from onedrive-acexoft:_ace.
         </div>`}
     </div>`;
 }
 
+// 'portfolio' is a legacy-only alias (pre BA26090501, folded into Products
+// by the Projects view's own `section()`/`products` filter above) -- the
+// live taxonomy an editor should actually choose from is just these two.
+const VENTURE_CATEGORY_OPTIONS = ['-', 'product', 'platform'];
+const VENTURE_KIND_OPTIONS = ['saas', 'app', 'service', 'candidate'];
+
 function finAddVenture() {
   uiForm('Register venture', [
     { id: 'name', label: 'Venture name', placeholder: 'WellPath, Keyvanos' },
-    { id: 'kind', label: 'Kind', type: 'select', value: 'saas', options: ['saas', 'app', 'service'] },
+    { id: 'kind', label: 'Kind', type: 'select', value: 'saas', options: VENTURE_KIND_OPTIONS },
+    { id: 'category', label: 'Category', type: 'select', value: '-', options: VENTURE_CATEGORY_OPTIONS,
+      hint: 'Drives Portfolio / Products / Platforms filtering in the app. Leave as "-" if unsure - never guessed for you.' },
     { id: 'url', label: 'Metrics endpoint URL', placeholder: 'https://… (blank = configure later)',
       hint: 'One small GET returning flat JSON numbers - the card renders whatever it reports.' },
     { id: 'authSecret', label: 'Secret-store key for its auth token', placeholder: 'blank = public endpoint' },
+    { id: 'renderUrl', label: 'Deployed URL', placeholder: 'https:// … blank = not deployed yet' },
+    { id: 'github', label: 'GitHub repo', placeholder: 'org/repo, blank = none' },
+    { id: 'folder', label: 'OneDrive folder', placeholder: 'e.g. acexoft-capital, blank = none' },
+    { id: 'note', label: 'Note', placeholder: 'optional' },
   ], async (v) => {
     if (!v.name) { showToast('Name the venture first', 'warn'); return false; }
     const ok = await finPost('/api/ventures/upsert', v, 'Venture registered … now show me numbers');
     if (ok) fetchVentures(true);
     return ok;
   });
+}
+
+/** Edit an existing venture in place - same form as Add, pre-filled, id carried through so upsertVenture updates rather than creates. */
+function finEditVenture(id) {
+  const v = (VENTURES || []).find(x => x.ID === id);
+  if (!v) { showToast('Venture not found - try Refresh', 'warn'); return; }
+  uiForm(`Edit ${v.NAME}`, [
+    { id: 'name', label: 'Venture name', value: v.NAME },
+    { id: 'kind', label: 'Kind', type: 'select', value: v.KIND || 'saas', options: VENTURE_KIND_OPTIONS },
+    { id: 'category', label: 'Category', type: 'select', value: v.CATEGORY || '-', options: VENTURE_CATEGORY_OPTIONS,
+      hint: 'Drives Portfolio / Products / Platforms filtering in the app.' },
+    { id: 'url', label: 'Metrics endpoint URL', value: v.ANALYTICS_URL === '-' ? '' : v.ANALYTICS_URL },
+    { id: 'authSecret', label: 'Secret-store key for its auth token', value: v.AUTH_SECRET === '-' ? '' : v.AUTH_SECRET },
+    { id: 'renderUrl', label: 'Deployed URL', value: v.RENDER_URL === '-' ? '' : v.RENDER_URL },
+    { id: 'github', label: 'GitHub repo', value: v.GITHUB === '-' ? '' : v.GITHUB },
+    { id: 'folder', label: 'OneDrive folder', value: v.FOLDER === '-' ? '' : v.FOLDER },
+    { id: 'note', label: 'Note', value: v.NOTE === '-' ? '' : v.NOTE },
+  ], async (vals) => {
+    if (!vals.name) { showToast('Name the venture first', 'warn'); return false; }
+    const ok = await finPost('/api/ventures/upsert', { ...vals, id }, 'Venture updated');
+    if (ok) fetchVentures(true);
+    return ok;
+  });
+}
+
+/** Discard a venture row entirely - for a mis-mapped OneDrive discovery candidate, or anything Sconl wants gone. Real delete, confirmed first. */
+async function finDeleteVenture(id, name) {
+  const yes = await uiConfirm({
+    title: `Discard "${name}"?`,
+    body: 'This removes the venture row entirely - not just a status flip. If it was pulled in by OneDrive discovery, re-running the sync will not bring it back unless the folder is still there and still unmatched.',
+    confirmLabel: 'Discard', danger: true,
+  });
+  if (!yes) return;
+  try {
+    const d = await (await fetch('/api/ventures/delete', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })).json();
+    if (d.success) { showToast('Venture discarded', 'success'); fetchVentures(true); }
+    else showToast(d.error || 'Could not discard', 'error');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+/** Re-run the OneDrive (_ace) venture discovery scan now, rather than waiting for its own interval - vault does the listing, pulse does the additive upsert. */
+async function finDiscoverVentures() {
+  showToast('Scanning onedrive-acexoft:_ace …', 'info');
+  try {
+    const d = await (await fetch('/api/ventures/discover', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+    if (d.ok === false) { showToast(d.error || 'Discovery sync failed', 'error'); return; }
+    const created = d.created?.length || 0;
+    showToast(created ? `${created} new venture candidate${created === 1 ? '' : 's'} added - assign categories below`
+                       : 'No new venture folders found', created ? 'success' : 'info');
+    fetchVentures(true);
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 /**
@@ -17347,6 +17454,12 @@ function learnGroupIcon(g, size) {
 // content (or more invested progress) read as the bigger tile. Pure function
 // of the group's own resolved fields (courseCount/moduleCount/progressPct, set
 // by getResolvedGroups) so the same group always scores the same way.
+//
+// Supersedes the earlier masonry-tier approach (learnTileTier, BL26090601) --
+// resolved 11 Sep 2026 merging dev into staging: BL26091009 is the later,
+// already-shipped-and-verified implementation (icons removed drive-wide,
+// two-tier lg/sm split instead of four masonry sizes), so it wins this
+// conflict outright rather than being reconciled with the older function.
 function learnTrackBignessScore(g) {
   return (g.courseCount || 0) * 3 + (g.moduleCount || 0) + Math.round((g.progressPct || 0) / 10);
 }
@@ -17367,6 +17480,9 @@ function assignLearnTrackTiers(groups) {
 function renderLearnGroupCard(g) {
   const isArchived = g.status === 'archived';
   const tier = g._tileTier === 'lg' ? 'tile-lg' : 'tile-sm';
+  // Every field stays visible at every tier -- only the small tier truncates
+  // the description to ~1 line and drops the sort-order footer text.
+  const isSmall = tier === 'tile-sm';
   return `
     <div class="learn-group-card ${tier}${isArchived ? ' is-archived' : ''}" onclick="learnOpenGroup('${escAttr(g.id)}')">
       <div class="learn-group-top">
@@ -17376,37 +17492,71 @@ function renderLearnGroupCard(g) {
         </div>
         <button class="lesson-gear-btn" onclick="event.stopPropagation();learnShowGroupModal('${escAttr(g.id)}')" title="Manage this classification">${svgIcon('settings', 13)}</button>
       </div>
-      <div class="learn-group-desc">${escHtml(g.description || '')}</div>
+      <div class="learn-group-desc"${isSmall ? ' style="display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden"' : ''}>${escHtml(g.description || '')}</div>
       <div class="fin-goal-bar"><div style="width:${g.progressPct || 0}%;background:${escAttr(g.color || '#3b82f6')}"></div></div>
       <div class="learn-group-stats">
         <span>${g.courseCount} course${g.courseCount === 1 ? '' : 's'} · ${g.moduleCount} modules</span>
         <span>${g.doneCount} done (${g.progressPct || 0}%)</span>
       </div>
       <div class="learn-group-footer">
-        <span class="card-meta">Track ${escHtml(g.sortOrder || '')}</span>
+        <span class="card-meta">${isSmall ? '' : `Track ${escHtml(g.sortOrder || '')}`}</span>
         <span class="explore-link">Explore Track ${svgIcon('arrowRight', 12)}</span>
       </div>
     </div>`;
 }
 
-function renderLearnCourseCard(c) {
+// Subtle track color-coding (BL26090601 part 2) -- a thin 3px left accent
+// stripe, not a full background tint or a colored icon. `color` is the
+// parent track's g.color, resolved by the caller (course objects don't
+// carry it directly) and threaded through here so it's not a second lookup
+// per card.
+function renderLearnCourseCard(c, color) {
   const lessons = c.lessons || [];
   const done = lessons.filter(l => l.status === 'done').length;
   const pct = lessons.length ? Math.round(done / lessons.length * 100) : 0;
   const next = lessons.find(l => l.status !== 'done');
   const isArchived = c.STATUS === 'archived';
+  const accent = color || 'transparent';
   return `
-    <div class="circle-card${isArchived ? ' is-archived' : ''}" onclick="learnCourseOpen='${escHtml(c.ID)}';repaintView('learning')">
+    <div class="circle-card${isArchived ? ' is-archived' : ''}" style="border-left:3px solid ${escAttr(accent)}" onclick="learnCourseOpen='${escHtml(c.ID)}';repaintView('learning')">
       <div class="circle-name" style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem">
         <span style="display:flex;align-items:center;gap:0.4rem;min-width:0">${learnGroupIcon({ id: c.GROUP_ID }, 15)}<span>${escHtml(c.TITLE)}</span></span>
         <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.6rem;flex-shrink:0" onclick="event.stopPropagation();learnShowCourseModal('${escAttr(c.ID)}')" title="Course settings">${svgIcon('settings', 12)}</button>
       </div>
       ${c.LEVEL && c.LEVEL !== '-' ? `<span class="learn-level" title="Course progression level">${escHtml(c.LEVEL.replace(/-/g, ' '))}</span>` : ''}
       ${c.SUBTITLE && c.SUBTITLE !== '-' ? `<div class="circle-role">${escHtml(c.SUBTITLE)}</div>` : ''}
-      <div class="fin-goal-bar" style="margin:0.45rem 0"><div style="width:${pct}%"></div></div>
+      <div class="fin-goal-bar" style="margin:0.45rem 0"><div style="width:${pct}%;background:${escAttr(color || '#3b82f6')}"></div></div>
       <div class="circle-meta">${lessons.length} module${lessons.length === 1 ? '' : 's'} · ${done} done${
         next ? ` · next: ${escHtml(next.title.slice(0, 30))}…` : lessons.length ? ' · complete' : ''}</div>
     </div>`;
+}
+
+// Intelligent course ordering within a track (BL26090601 part 3) -- exact
+// precedent of the Hub's Top-3 Task Engine (scoreTask(), design-system.md
+// section 7): score each course, sort descending. Bucket weight (x1000)
+// strictly dominates the level tiebreak so buckets never bleed into each
+// other; the archived penalty (x100000) strictly dominates bucket weight so
+// archived courses always sort last, but preserve the same in-progress /
+// not-started / done ordering among themselves.
+const LEARN_LEVEL_RANK = { intro: 0, introductory: 0, beginner: 0, foundational: 0, intermediate: 1, advanced: 2, expert: 2 };
+function scoreCourse(c, idx) {
+  const lessons = c.lessons || [];
+  const done = lessons.filter(l => l.status === 'done').length;
+  const total = lessons.length;
+  const inProgress = done > 0 && done < total;
+  const fullyDone = total > 0 && done === total;
+  const bucket = inProgress ? 2 : fullyDone ? 0 : 1; // in-progress > not-started > done
+  const levelKey = c.LEVEL ? String(c.LEVEL).toLowerCase().replace(/[^a-z]/g, '') : '';
+  const levelRank = Object.prototype.hasOwnProperty.call(LEARN_LEVEL_RANK, levelKey) ? LEARN_LEVEL_RANK[levelKey] : 1;
+  let s = bucket * 1000 - levelRank * 10 - idx * 0.001; // idx = stable original-order tiebreak
+  if (c.STATUS === 'archived') s -= 1e6; // always last, same relative order preserved within
+  return s;
+}
+function sortGroupCourses(list) {
+  return (list || [])
+    .map((c, idx) => ({ c, s: scoreCourse(c, idx) }))
+    .sort((a, b) => b.s - a.s)
+    .map(x => x.c);
 }
 
 const DEFAULT_LEARNING_GROUPS = [
@@ -17621,7 +17771,7 @@ function renderLearning() {
         <div class="card-meta">${groupCourses.length} courses · ${totalModules} modules · ${doneModules} completed (${progressPct}%)</div>
       </div>
       <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
-        ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state">No courses assigned to this track yet.</div>`}
+        ${groupCourses.length ? sortGroupCourses(groupCourses).map(c => renderLearnCourseCard(c, group.color)).join('') : `<div class="empty-state">No courses assigned to this track yet.</div>`}
       </div>
       ${renderLearnModals()}`;
   }
@@ -17695,7 +17845,7 @@ function renderLearning() {
               <button class="lesson-gear-btn" style="padding:1px 5px;font-size:0.62rem" onclick="learnShowGroupModal('${escAttr(g.id)}')">${svgIcon('settings', 12)} Track Settings</button>
             </div>
             <div class="circle-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr));margin-bottom:1.5rem">
-              ${groupCourses.length ? groupCourses.map(renderLearnCourseCard).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
+              ${groupCourses.length ? sortGroupCourses(groupCourses).map(c => renderLearnCourseCard(c, g.color)).join('') : `<div class="empty-state" style="padding:0.8rem">No courses in this track.</div>`}
             </div>`;
         }).join('')}
       `}
