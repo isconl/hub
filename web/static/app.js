@@ -17254,12 +17254,12 @@ function renderLearning() {
             const prev = i > 0 ? ls[i - 1] : null;
             const next = i >= 0 && i < ls.length - 1 ? ls[i + 1] : null;
             return `
-              ${prev ? `<button class="btn btn-ghost" onclick="learnOpenLesson('${escHtml(course.ID)}','${escHtml(prev.file)}')">← ${escHtml(prev.title.slice(0, 32))}</button>` : '<span></span>'}
+              ${prev ? `<button class="btn btn-ghost" onclick="learnOpenLesson('${escHtml(course.ID)}','${escHtml(prev.file)}')">← ${escHtml(lessonNavLabel('Previous', prev.title))}</button>` : '<span></span>'}
               <button class="btn ${lesson.status === 'done' ? 'btn-ghost' : 'btn-primary'}"
                       onclick="learnMark('${escHtml(course.ID)}','${escHtml(lesson.file)}','${lesson.status === 'done' ? 'learning' : 'done'}')">
                 ${lesson.status === 'done' ? '↺ Mark as still learning' : '✓ Mark lesson done'}</button>
               ${next ? `<button class="btn btn-ghost" onclick="learnMark('${escHtml(course.ID)}','${escHtml(lesson.file)}','done',true);learnOpenLesson('${escHtml(course.ID)}','${escHtml(next.file)}')"
-                title="Marks this one done and moves on">${escHtml(next.title.slice(0, 32))} →</button>` : ''}`;
+                title="Marks this one done and moves on">${escHtml(lessonNavLabel('Next', next.title))} →</button>` : ''}`;
           })()}
         </div>
         <div class="lesson-scroll-top-wrap">
@@ -17898,6 +17898,27 @@ function learnHeadingId(text) {
   return n === 1 ? base : `${base}-${n}`;
 }
 
+// BL26091006: Next/Previous lesson buttons get "Next: <exact 3 words> —
+// <open-length topic>" instead of a flat 32-char title truncation. Titles
+// with 3 or fewer words render with no dash/topic clause (nothing left to
+// split off) rather than a trailing " — ".
+function lessonNavLabel(prefix, title) {
+  const words = String(title || '').trim().split(/\s+/);
+  const lead = words.slice(0, 3).join(' ');
+  const rest = words.slice(3).join(' ');
+  return rest ? `${prefix}: ${lead} — ${rest}` : `${prefix}: ${lead}`;
+}
+
+// BL26091008: "Check yourself" answers are hidden by default -- toggled
+// per-instance (button lives inside the same .lesson-quiz block it controls).
+function toggleQuizReveal(btn) {
+  const box = btn.closest('.lesson-quiz');
+  const body = box && box.querySelector('.quiz-body');
+  if (!body) return;
+  const nowHidden = body.classList.toggle('hidden');
+  btn.textContent = nowHidden ? 'Reveal' : 'Hide';
+}
+
 function learnMd(src, courseId) {
   learnHeadingSeen = {};
   const learnMdCourseId = courseId || '';
@@ -17938,8 +17959,9 @@ function learnMd(src, courseId) {
 
   const esc = escHtml(rawSrc);
   let inQuiz = false;
+  let quizBodyOpen = false; // BL26091008: "Check yourself" wraps its answer content in a second, hidden-by-default div
   const out = [];
-  const closeQuiz = () => { if (inQuiz) { out.push('</div>'); inQuiz = false; } };
+  const closeQuiz = () => { if (inQuiz) { if (quizBodyOpen) { out.push('</div>'); quizBodyOpen = false; } out.push('</div>'); inQuiz = false; } };
 
   // BL26083104: inline jargon marker, `[[term|definition]]`, usable
   // anywhere in flowing body text (not just at a paragraph's start, unlike
@@ -18065,7 +18087,9 @@ function learnMd(src, courseId) {
     }
 
     if (/^## (Check yourself|Open questions)/i.test(line)) {
-      closeQuiz(); out.push(`<div class="lesson-quiz"><h3>${restoreMath(inline(line.slice(3)))}</h3>`); inQuiz = true; continue; }
+      closeQuiz();
+      out.push(`<div class="lesson-quiz"><h3>${restoreMath(inline(line.slice(3)))}<button class="btn btn-ghost quiz-reveal-btn" onclick="toggleQuizReveal(this)">Reveal</button></h3><div class="quiz-body hidden">`);
+      inQuiz = true; quizBodyOpen = true; continue; }
     if (/^## Watch\b/i.test(line)) {
       closeQuiz(); out.push(`<div class="lesson-quiz watch-box"><h3>${restoreMath(inline(line.slice(3)))}</h3>`); inQuiz = true; continue; }
     if (/^## Essentials\b/i.test(line)) {

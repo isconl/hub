@@ -3049,6 +3049,8 @@ body[data-callout-theme="muted"] .lesson-body {
 .lesson-quiz.watch-box h3 { color:var(--lb-warm) !important; }
 .lesson-quiz.watch-box h3::before { background:var(--lb-warm); }
 .lesson-quiz.watch-box .md-li::before { color:var(--lb-warm); }
+.quiz-reveal-btn { margin-left:auto; font-size:0.62rem !important; text-transform:none; letter-spacing:normal;
+  padding:2px 9px; color:var(--lb-quiz, #4fb0a5) !important; }
 
 /* Essentials (BL26090404, 5 Sep 2026, renamed from "Key Takeaways" per
    Sconl's own pick from 4 offered options) - a recap card, distinct from
