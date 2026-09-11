@@ -18290,10 +18290,40 @@ const LESSON_ICONS = {
  *  through every onclick - keeps the toolbar buttons argument-free, which
  *  matters because titles carry quotes and dashes that would otherwise have
  *  to be escaped into an inline attribute. */
+// Real, public production domain (CLAUDE.md S16 -- OCI VM, staging branch,
+// live since early Sep 2026). A shared link's whole point is that it works
+// for someone who is not in this browser session, so it always points here
+// regardless of which host (localhost dev, or the real domain) this page
+// happens to be running against right now.
+const PUBLIC_SHARE_ORIGIN = 'https://isconl.acexoft.com';
+
+// Deterministic clean slug for a lesson's on-disk filename -- mirror of
+// publicLessonSlug() in hub's src/server.js, keep both in sync.
+function learnFileSlug(file) {
+  return String(file || '')
+    .replace(/\.md$/i, '')
+    .replace(/^\d{8}_/, '')
+    .replace(/_v\d+_\d+_\d+$/i, '')
+    .replace(/_/g, '-');
+}
+
 function learnCurrentLessonMeta() {
   const course = (LEARN?.courses || []).find(c => c.ID === learnOpen.course) || {};
   const lesson = (course.lessons || []).find(l => l.file === learnOpen.file) || {};
-  return { course, lesson, title: lesson.title || 'Lesson', courseTitle: course.TITLE || 'Course' };
+  // fileName is the lesson's own on-disk basename (already follows the
+  // house YYYYMMDD_topic_vX_Y_Z naming convention, see CLAUDE.md S10) with
+  // the .md extension stripped - used as the default export/print filename
+  // so a downloaded/printed lesson carries the same name as its source,
+  // instead of a generic title-derived one.
+  const fileName = lesson.file ? String(lesson.file).replace(/\.md$/i, '') : '';
+  // shareUrl (BL26091102): a real, unauthenticated public link -- clean
+  // course/slug path after the domain, reshareable by anyone it reaches,
+  // no vault login required to open it. See /learn/:course/:slug + the
+  // matching /api/public/learn/:course/:slug route in hub's server.js.
+  const shareUrl = lesson.file
+    ? `${PUBLIC_SHARE_ORIGIN}/learn/${encodeURIComponent(course.ID)}/${encodeURIComponent(learnFileSlug(lesson.file))}`
+    : location.href;
+  return { course, lesson, title: lesson.title || 'Lesson', courseTitle: course.TITLE || 'Course', fileName, shareUrl };
 }
 
 /** Strips the lesson's own markdown idioms down to speakable prose - callout
@@ -18373,13 +18403,28 @@ async function learnToggleListen() {
  *  and "view as artifact" (which just opens it) - the reading register, the
  *  six callout colours and KaTeX-rendered maths all travel with it, so the
  *  page still looks like the lesson once it has left the console. */
-function learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint }) {
+function learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint, fileName }) {
   const bodyCss = document.querySelector('link[href*="style.css"]')?.getAttribute('href') || '';
-  return `<!doctype html><html><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
+  // The <title> tag is what Chrome's print/"Save as PDF" dialog and a
+  // saved-HTML download both suggest as the default filename - point it at
+  // the lesson's own source basename (already convention-named, see
+  // CLAUDE.md S10) rather than the free-text lesson title, so every export
+  // (PDF print or the artifact view) defaults to the right name without the
+  // user having to retype it. Falls back to the title when a lesson has no
+  // known source file (e.g. non-file-backed content).
+  const docTitle = fileName || title;
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>${escHtml(docTitle)}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <style>
   :root{--bg:#0d1117;--text:#e6edf3;--text-2:#a8b3bd;--text-3:#7d8790;--border:#30363d;--bg-raised:#161b22;--r-md:8px;--r-lg:10px;--font-mono:ui-monospace,monospace;}
   @media (prefers-color-scheme: light){:root{--bg:#ffffff;--text:#1b1f23;--text-2:#4b5563;--text-3:#6b7280;--border:#d0d7de;--bg-raised:#f6f8fa;}}
+  ${forPrint ? `/* Printing must never inherit a dark-mode preference: without
+     this, print picks up the dark :root values above (near-white text,
+     #e6edf3) and a browser that suppresses background graphics on print
+     renders that as washed-out grey text on white paper instead of black.
+     Force explicit light/black values, unconditionally, for the print path. */
+  :root{--bg:#ffffff;--text:#0d1117;--text-2:#3d444d;--text-3:#57606a;--border:#d0d7de;--bg-raised:#f6f8fa;}
+  @media print{*{-webkit-print-color-adjust:exact!important;color-adjust:exact!important;print-color-scheme:light;}}` : ''}
   *{box-sizing:border-box;} body{background:var(--bg);color:var(--text);margin:0;padding:2.5rem 1.5rem 4rem;font-family:system-ui,sans-serif;}
   .standalone-head{max-width:720px;margin:0 auto 1.6rem;padding-bottom:1rem;border-bottom:1px solid var(--border);}
   .standalone-eyebrow{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);margin-bottom:0.3rem;}
@@ -18397,26 +18442,26 @@ ${forPrint ? '<script>window.onload=()=>{setTimeout(()=>window.print(),300)}</sc
 }
 
 function learnDownloadPdf() {
-  const { title, courseTitle } = learnCurrentLessonMeta();
+  const { title, courseTitle, fileName } = learnCurrentLessonMeta();
   const bodyHtml = refChips(learnMd(learnOpen.content));
   const w = window.open('', '_blank');
   if (!w) { showToast('Allow pop-ups to print this lesson', 'error'); return; }
-  w.document.write(learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint: true }));
+  w.document.write(learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint: true, fileName }));
   w.document.close();
 }
 
 function learnViewArtifact() {
-  const { title, courseTitle } = learnCurrentLessonMeta();
+  const { title, courseTitle, fileName } = learnCurrentLessonMeta();
   const bodyHtml = refChips(learnMd(learnOpen.content));
-  const html = learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint: false });
+  const html = learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint: false, fileName });
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 async function learnShare() {
-  const { title, courseTitle } = learnCurrentLessonMeta();
-  const url = location.href;
+  const { title, courseTitle, shareUrl } = learnCurrentLessonMeta();
+  const url = shareUrl;
   if (navigator.share) {
     try { await navigator.share({ title: `${title} · ${courseTitle}`, url }); return; }
     catch (e) { if (e.name === 'AbortError') return; /* fall through to clipboard */ }

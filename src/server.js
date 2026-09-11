@@ -68,6 +68,17 @@ function bearerToken(req) {
   }
 }
 
+// Deterministic clean slug for a lesson's on-disk filename, used by the
+// public share route below. Mirror of learnFileSlug() in
+// web/static/app.js -- keep both in sync if the naming convention changes.
+function publicLessonSlug(file) {
+  return String(file || '')
+    .replace(/\.md$/i, '')
+    .replace(/^\d{8}_/, '')
+    .replace(/_v\d+_\d+_\d+$/i, '')
+    .replace(/_/g, '-');
+}
+
 /**
  * Presence-based service connectivity for the dashboard/Settings badges --
  * built from vault's secrets.status KEY NAMES only (never values, matching
@@ -297,6 +308,42 @@ async function main() {
     // ensureAuthenticated() in app.js for why that distinction matters.
     if ((pathname === '/auth/verify' || pathname === '/api/auth/verify') && req.method === 'POST') {
       return sendJson(res, 200, await authProxy.verify(bearerToken(req)));
+    }
+
+    // Public, unauthenticated read-only lesson sharing (PL26091102, per
+    // Sconl 11 Sep 2026: Academia's share audience is external
+    // stakeholders, not just himself, and a shared link has to work for a
+    // second-degree recipient with no vault login). Deliberately narrow:
+    // read-only, single-lesson content only, no other API surface exposed
+    // -- everything else in this handler stays behind checkAuth below.
+    // The slug is computed from the lesson's own on-disk filename (mirror
+    // of learnFileSlug() in web/static/app.js) rather than stored, so
+    // both directions agree without a persisted mapping table.
+    if (pathname.startsWith('/api/public/learn/') && req.method === 'GET') {
+      const segs = pathname.slice('/api/public/learn/'.length).split('/');
+      const courseId = decodeURIComponent(segs[0] || '');
+      const slug = decodeURIComponent(segs[1] || '');
+      if (!courseId || !slug) return sendJson(res, 400, { error: 'course and slug required' });
+      const coursesR = await router.route('learning.courses', {});
+      const course = (coursesR?.data?.courses || []).find(c => c.ID === courseId);
+      const lesson = course && (course.lessons || []).find(l => publicLessonSlug(l.file) === slug);
+      if (!lesson) return sendJson(res, 404, { ok: false, error: 'Not found' });
+      const lessonR = await router.route('learning.lesson', { query: { course: courseId, file: lesson.file } });
+      if (!lessonR?.data?.content) return sendJson(res, 404, { ok: false, error: 'Not found' });
+      return sendJson(res, 200, {
+        ok: true, courseId, courseTitle: course.TITLE || courseId,
+        title: lesson.title || 'Lesson', fileName: lesson.file.replace(/\.md$/i, ''),
+        content: lessonR.data.content,
+      });
+    }
+    if (/^\/learn\/[^/]+\/[^/]+$/.test(pathname) && req.method === 'GET') {
+      try {
+        const html = fs.readFileSync(path.join(WEB_DIR, 'learn-public.html'), 'utf8');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(html);
+      } catch {
+        return sendJson(res, 404, { error: 'Not found' });
+      }
     }
 
     if (!(await checkAuth(req, authProxy))) return sendJson(res, 404, { error: 'Not Found' });

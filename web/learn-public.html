@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Loading…</title>
+<script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<style>
+  :root{--bg:#ffffff;--text:#0d1117;--text-2:#3d444d;--text-3:#57606a;--border:#d0d7de;--bg-raised:#f6f8fa;--accent:#3b82f6;}
+  @media (prefers-color-scheme: dark){
+    :root{--bg:#0d1117;--text:#e6edf3;--text-2:#a8b3bd;--text-3:#7d8790;--border:#30363d;--bg-raised:#161b22;}
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);margin:0;padding:2.5rem 1.25rem 4rem;font-family:system-ui,sans-serif;line-height:1.6;}
+  .wrap{max-width:720px;margin:0 auto;}
+  .eyebrow{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);margin-bottom:0.3rem;}
+  .head{padding-bottom:1rem;margin-bottom:1.5rem;border-bottom:1px solid var(--border);}
+  h1{font-size:1.6rem;margin:0;font-family:Charter,Georgia,serif;}
+  .body h2{font-size:1.2rem;margin-top:2rem;}
+  .body h3{font-size:1.05rem;margin-top:1.5rem;}
+  .body table{border-collapse:collapse;width:100%;margin:1rem 0;}
+  .body th,.body td{border:1px solid var(--border);padding:0.4rem 0.6rem;text-align:left;}
+  .callout{border-left:3px solid var(--accent);background:var(--bg-raised);border-radius:6px;padding:0.75rem 1rem;margin:1rem 0;}
+  .callout b:first-child{color:var(--accent);}
+  .callout-book{border-color:#3b82f6;} .callout-book b:first-child{color:#3b82f6;}
+  .callout-research{border-color:#8b5cf6;} .callout-research b:first-child{color:#8b5cf6;}
+  .callout-watch{border-color:#f59e0b;} .callout-watch b:first-child{color:#f59e0b;}
+  .callout-fun{border-color:#10b981;} .callout-fun b:first-child{color:#10b981;}
+  .foot{max-width:720px;margin:2.5rem auto 0;font-size:0.7rem;color:var(--text-3);border-top:1px solid var(--border);padding-top:1rem;}
+  .state{padding:3rem 0;text-align:center;color:var(--text-3);}
+  a{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="state" class="state">Loading…</div>
+  <div id="content" hidden>
+    <div class="head"><div id="eyebrow" class="eyebrow"></div><h1 id="title"></h1></div>
+    <div id="body" class="body"></div>
+  </div>
+  <div class="foot">Shared from Academia · <span id="date"></span></div>
+</div>
+<script>
+(function () {
+  const parts = location.pathname.split('/').filter(Boolean); // ['learn', course, slug]
+  const course = decodeURIComponent(parts[1] || '');
+  const slug = decodeURIComponent(parts[2] || '');
+  const stateEl = document.getElementById('state');
+  document.getElementById('date').textContent = new Date().toLocaleDateString();
+
+  // Wraps the 4 known callout labels this MVP renderer recognizes in a
+  // styled div before markdown parsing -- a deliberately smaller subset of
+  // the in-app learnMd() six-callout system (jargon popups, KaTeX and the
+  // remaining callout types are not reproduced here yet; this is the public
+  // read-only view, not a mirror of the authenticated reader).
+  const CALLOUTS = [
+    ['Book', 'callout-book'], ['Research', 'callout-research'],
+    ['Watch for', 'callout-watch'], ['Fun fact', 'callout-fun'],
+  ];
+  function preprocess(md) {
+    return md.split(/\n\n+/).map(block => {
+      for (const [label, cls] of CALLOUTS) {
+        const re = new RegExp('^\\*\\*' + label + ':\\*\\*\\s*([\\s\\S]*)$');
+        const m = block.match(re);
+        if (m) return `<div class="callout ${cls}">\n\n**${label}:** ${m[1]}\n\n</div>`;
+      }
+      return block;
+    }).join('\n\n');
+  }
+
+  function render(d) {
+    document.title = d.fileName || d.title || 'Lesson';
+    document.getElementById('eyebrow').textContent = d.courseTitle || '';
+    document.getElementById('title').textContent = d.title || 'Lesson';
+    document.getElementById('body').innerHTML = window.marked.parse(preprocess(d.content || ''));
+    stateEl.hidden = true;
+    document.getElementById('content').hidden = false;
+  }
+
+  if (!course || !slug) {
+    stateEl.textContent = 'No lesson specified.';
+    return;
+  }
+  fetch(`/api/public/learn/${encodeURIComponent(course)}/${encodeURIComponent(slug)}`)
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(d => {
+      if (!d || !d.ok) { stateEl.textContent = 'This lesson is not available.'; return; }
+      if (window.marked) render(d);
+      else window.addEventListener('load', () => render(d));
+    })
+    .catch(() => { stateEl.textContent = 'This lesson is not available.'; });
+})();
+</script>
+</body>
+</html>
