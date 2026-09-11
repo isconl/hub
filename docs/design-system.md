@@ -1,8 +1,21 @@
 # iSconl Design System & UI Architecture Standard
 
-Version: `5.1.0`  
-Last Updated: `2026-08-17`  
-Scope: `hub/web`, `circle`, `vault`, `spark`
+Version: `5.3.0`  
+Last Updated: `2026-09-11`  
+Scope: `hub/web`, `circle`, `vault`, `spark`, **`app` (Flutter mobile)**
+
+**Scope correction, 2026-09-06:** `app` (the Flutter mobile client) was
+missing from this list even though every rule below already governs it in
+practice — the omission is exactly what let a real violation ship
+unnoticed (see §2's hardened rule). Any surface that renders UI for
+Sconl is in scope, full stop, whether or not this header happened to
+name it yet.
+
+**Sync note, 2026-09-11:** this file is a near-duplicate of
+`_next/design-system.md`'s §2 (the canonical, more actively edited copy)
+— kept in sync here per `BG26091017`, which found this copy had drifted
+~3 weeks behind (missing the 2026-09-06 hardened rule entirely). Edit
+both when §2 changes; don't let one drift again.
 
 ---
 
@@ -18,6 +31,8 @@ Scope: `hub/web`, `circle`, `vault`, `spark`
 ## 2. Universal Monochrome SVG Icon Standard
 
 All interactive controls, buttons, cards, badges, and headers must use the centralized monochrome SVG icon kit (`SVG_ICONS` / `svgIcon()`). **Raw emojis (e.g. 📁, ⚙, 💬, 📚) in operational UI chrome are strictly prohibited.**
+
+**Hardened, 2026-09-11 (`BG26091017`) — no per-feature exceptions, ever:** no client may ever render a raw `icon` (or any emoji-shaped) field from ANY data source — a habit, a task, a Kanban column, a track, a contact, or any future field shaped the same way — directly as UI. Full stop. This is not a case-by-case judgment call; it generalizes the 2026-09-06 hardened rule below (which closed this class of bug for Learning tracks specifically) to every present and future feature, because that incident already proved a narrowly-scoped fix doesn't stay contained — the exact same pattern (`h.icon ? h.icon : ...`, a raw emoji/color literal bound straight into UI) turned up independently in Rhythm/habits (web and mobile) and web Kanban within days of the Learning-tracks fix landing. For any user-configurable item with no fixed finite semantic category (a habit, a Kanban column), the two compliant options are: (a) a curated picker of monochrome icons from the client's own local icon set (`SVG_ICONS`/`IconData`), never free-text emoji entry, or (b) one fixed neutral glyph for every item of that type, dropping per-item icon choice entirely. A raw data field is never an acceptable silent fallback either way — see the "Hardened rule, 2026-09-06" section immediately below for the full mechanics (why, the color-only exception, and the per-client mapping requirement) this statement generalizes.
 
 ### Geometric Specifications
 - **ViewBox**: `0 0 24 24`
@@ -73,6 +88,67 @@ All interactive controls, buttons, cards, badges, and headers must use the centr
 // Render inline SVG icon with customizable size and CSS class
 const buttonHtml = `<button class="btn btn-primary">${svgIcon('plus', 13)} Add Contact</button>`;
 ```
+
+### Hardened rule, 2026-09-06 — never render a raw icon value from shared API data
+
+**Incident this rule closes:** `/api/learning`'s `groups[].icon` field carries
+a raw emoji string (`'📚'`, `'⚠️'`, etc.) as a convenience default. The
+webconsole never renders it — `renderLearnGroupCard()`/`renderLearnCourseCard()`
+resolve every track to a monochrome icon via `learnGroupIcon(g, size)`
+(`hub/web/static/app.js:17011-17021`, a fixed `g.id → svgIcon(name)` switch)
+and never touch `g.icon` at all. The mobile app (`app/lib/ui/views/learning.dart`)
+had no equivalent mapping and rendered `group.icon` directly as `Text` —
+full-color platform emoji glyphs, on every track tile, discovered by Sconl
+and reported as "why do we have multicolored icons in the tracks in the
+app." The rule was never violated *in code that existed when v5.1.0 was
+written* — it broke because a new client (mobile) consumed a shared payload
+field the rule didn't yet explicitly cover, and nothing caught it until a
+human looked at the screen. That is the gap this hardening closes.
+
+**Standing rule, applies to every current and future client (web, mobile,
+any future surface) consuming shared backend/API data:**
+
+1. **A raw icon value from an API payload — an emoji string, a font-icon
+   class name, a color hex, anything not already a resolved reference into
+   that client's own local monochrome icon set — is data, never a
+   renderable UI element.** Never bind it directly into `Text`/innerHTML/a
+   glyph widget. Treat it exactly like an untrusted string: something to
+   look up, not something to display.
+2. **Every client resolves shared identifiers (e.g. a track's `group.id`)
+   through its OWN local icon mapping**, matching the *semantic category*
+   (briefcase/tag/shield/layers/zap/grid/users/settings/folder, per the
+   Icon Registry above) — not by copying the API's literal `icon` field.
+   The web's `learnGroupIcon()` switch is the canonical mapping; any new
+   client (the mobile app now, anything future) ports the same `id →
+   category` associations into its own icon system (SVG kit web-side,
+   `IconData` switch Flutter-side, etc.) rather than trusting the payload.
+   Where a client's local mapping and the web's mapping drift out of sync,
+   that is a design-system violation to fix, same severity as a raw emoji
+   leaking through.
+3. **Color-only exception:** a genuine per-group *accent hue* (`group.color`,
+   used for a progress-bar fill or a thin border accent) is fine to consume
+   directly from the API — hue-as-accent is explicitly allowed by this
+   document's Core Visual Philosophy (#3, "monochrome... accented by
+   contextual group hues"). The exception is narrow: **the icon GLYPH
+   itself stays monochrome always; only a secondary accent element (bar
+   fill, border stripe, dot) may carry the group's hue.** Tinting the icon
+   glyph itself with `group.color` is the same violation as rendering a
+   raw multicolor emoji — don't reach for it as a "compliant-looking"
+   workaround.
+4. **A new engine/API author does not need to stop sending a convenience
+   `icon` field for non-Claude tooling or debugging** — the fix lives on
+   the *consuming* side (map, don't trust), not by stripping the field from
+   the API. If a field is later confirmed to have zero remaining
+   consumers reading it directly (check every client, not just the one
+   just fixed), it can be dropped as a separate cleanup — don't couple that
+   decision to this rule's enforcement.
+5. **A design-system audit that only diffs git commits (like `BN26090601`'s
+   UI-parity pass) will not catch this class of bug** — a payload field
+   existed unchanged the whole time; what changed was a new client reading
+   it naively. Any future parity/consistency audit across clients should
+   explicitly grep for direct rendering of known "convenience" API fields
+   (`icon`, and any future field shaped the same way) in every client, not
+   just diff what code changed since the last audit.
 
 ---
 

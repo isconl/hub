@@ -714,7 +714,7 @@ select option { background:var(--panel); color:var(--text); }
   padding:0.65rem 0.85rem; border-bottom:1px solid var(--border);
   background:var(--panel); flex-shrink:0;
 }
-.kanban-col-dot { font-size:0.8rem; }
+.kanban-col-dot { display:inline-block; width:0.55rem; height:0.55rem; border-radius:50%; flex:none; }
 .kanban-col-title { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-2); flex:1; }
 .kanban-col-count {
   font-size:0.68rem; font-family:var(--font-mono); background:var(--surface);
@@ -4308,8 +4308,12 @@ body.focus-mode-off .view-container[data-card-focus] .card {
   padding:0.45rem 0.5rem; background:var(--bg-raised); min-width:0; }
 .ym-cell.past { opacity:0.45; }
 .ym-cell.now { border-color:var(--green-dim); background:var(--green-bg2); }
-.ym-theme { font-size:0.72rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-2); }
+.ym-theme { font-size:0.72rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-2);
+  display:flex; align-items:center; gap:0.3rem; }
 .ym-cell.now .ym-theme { color:var(--green-bright); }
+.ym-theme-edit { padding:0 2px; font-size:0.7rem; line-height:1; min-height:0; height:auto;
+  text-transform:none; letter-spacing:normal; font-weight:400; opacity:0.6; }
+.ym-theme-edit:hover { opacity:1; }
 .ym-dates { font-size:0.6rem; color:var(--text-3); font-variant-numeric:tabular-nums; margin-top:2px; }
 .ym-sprints { font-size:0.6rem; color:var(--text-3); font-family:var(--font-mono); margin-top:2px; }
 .ym-here { font-size:0.58rem; color:var(--green); margin-top:3px; }

@@ -495,6 +495,48 @@ function clearCardFocus() {
 
 // ── EQUICYCLE ENGINE ─────────────────────────────────────────────────────────
 
+// BT26091001: per-cycle theme overrides (scope/cycle_themes.tsv, via
+// vault's /cycle-theme). cycleKey is "<eqYear>-<cycleNum>" so an override
+// is specific to one cycle instance, not every future cycle landing on
+// that position in the 13-slot rotation. Cache fetched lazily and
+// per-key, since the year map (renderYearMap) needs up to 13 keys at
+// once but the header ring only ever needs the current one.
+const CYCLE_THEME_OVERRIDES = {};
+const CYCLE_THEME_FETCHES = {};
+function cycleKeyFor(eqYear, cycleNum) { return `${eqYear}-${cycleNum}`; }
+async function fetchCycleTheme(cycleKey, { repaint } = {}) {
+  if (cycleKey in CYCLE_THEME_OVERRIDES) return CYCLE_THEME_OVERRIDES[cycleKey];
+  if (!CYCLE_THEME_FETCHES[cycleKey]) {
+    CYCLE_THEME_FETCHES[cycleKey] = (async () => {
+      try {
+        const d = await (await fetch(`/api/cycle-theme?cycleKey=${encodeURIComponent(cycleKey)}`)).json();
+        CYCLE_THEME_OVERRIDES[cycleKey] = d && d.theme ? d.theme : null;
+      } catch { CYCLE_THEME_OVERRIDES[cycleKey] = null; }
+      if (repaint !== false) repaintView(currentView);
+    })();
+  }
+  return CYCLE_THEME_FETCHES[cycleKey];
+}
+async function setCycleTheme(cycleKey, theme) {
+  const res = await (await fetch('/api/cycle-theme', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cycleKey, theme: theme || '' }),
+  })).json();
+  CYCLE_THEME_OVERRIDES[cycleKey] = (res && res.theme) || null;
+  delete CYCLE_THEME_FETCHES[cycleKey];
+  repaintView(currentView);
+  return res;
+}
+async function editCycleTheme(cycleKey, currentTheme) {
+  const value = await uiPrompt({
+    title: 'This cycle\'s theme', label: `Cycle ${cycleKey}`, value: currentTheme,
+    placeholder: 'One word, e.g. Leverage', confirmLabel: 'Save',
+    hint: 'Overrides just this one cycle, not the default rotation. Use the revert icon (once set) to clear it.',
+  });
+  if (value === null) return; // cancelled
+  await setCycleTheme(cycleKey, value);
+}
+
 function getEquicycleContext() {
   const today = new Date();
   const month = today.getMonth();
@@ -513,14 +555,18 @@ function getEquicycleContext() {
   // one-word elegance, concrete enough to act on before coffee. Mostly a
   // planting-to-harvest arc, which is the shape a year actually has.
   const themes = ['Plant','Push','Climb','Reap','Dig','Weave','Mend','Scout','Scale','Make','Run','Stock','Audit'];
-  const theme = themes[Math.min(cycleNum - 1, 12)];
+  const cycleKey = cycleKeyFor(eqYear, cycleNum);
+  const defaultTheme = themes[Math.min(cycleNum - 1, 12)];
+  const override = CYCLE_THEME_OVERRIDES[cycleKey];
+  if (!(cycleKey in CYCLE_THEME_OVERRIDES)) fetchCycleTheme(cycleKey); // populates cache, repaints when it lands
+  const theme = override || defaultTheme;
   const startOfYear = new Date(today.getFullYear(), 0, 1);
   const dayOfYear = Math.ceil((today - startOfYear) / 86400000);
   const yearPct = Math.round((dayOfYear / 365) * 100);
   const opts = { weekday:'long', year:'numeric', month:'long', day:'numeric' };
   return {
     gregorian: today.toLocaleDateString('en-US', opts),
-    eqYear, cycleNum, dayInCycle, sprintNum, sprintDay, theme,
+    eqYear, cycleNum, cycleKey, dayInCycle, sprintNum, sprintDay, theme,
     dayOfYear, yearPct,
     eqShort: `Cycle ${cycleNum}  ·  Day ${dayInCycle}  ·  ${theme}`,
     sprintShort: `Sprint ${sprintNum}  ·  Day ${sprintDay}`,
@@ -1955,7 +2001,7 @@ function renderJira() {
              ondragleave="kanbanDragLeave(event)"
              ondrop="kanbanDrop(event,'${escHtml(col.id)}')">
           <div class="kanban-col-header">
-            <span class="kanban-col-dot" style="color:${col.color}">${col.icon}</span>
+            <span class="kanban-col-dot" style="background:${col.color}"></span>
             <span class="kanban-col-title">${col.label}</span>
             <span class="kanban-col-count">${col.issues.length}</span>
           </div>
@@ -16874,7 +16920,7 @@ function openHabitDetailModal(habitId) {
   openModal(`
     <div style="padding:0.4rem">
       <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem">
-        <span style="font-size:1.8rem;display:inline-flex">${h.icon ? h.icon : svgIcon('pin', 26)}</span>
+        <span style="font-size:1.8rem;display:inline-flex">${svgIcon('pin', 26)}</span>
         <div>
           <h2 style="margin:0;font-size:1.2rem">${escHtml(h.title)}</h2>
           <div style="font-size:0.75rem;color:var(--text-3)">${h.auto ? `Automated from ${h.auto}` : 'Manual check-in habit'}</div>
@@ -16958,7 +17004,7 @@ function renderRhythm() {
             <div class="b-card ${isDone ? 'done' : ''}" style="cursor:pointer;background:${isDone ? 'var(--green-bg)' : 'var(--panel)'}"
                  onclick="openHabitDetailModal('${escAttr(h.id)}')">
               <div class="b-head">
-                <span style="display:inline-flex;align-items:center;gap:0.35rem">${h.icon ? h.icon : svgIcon('pin', 14)} ${escHtml(h.title)}</span>
+                <span style="display:inline-flex;align-items:center;gap:0.35rem">${svgIcon('pin', 14)} ${escHtml(h.title)}</span>
                 ${h.auto ? `<span class="badge badge-low" style="font-size:0.6rem">Auto: ${escHtml(h.auto)}</span>` : ''}
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.6rem">
@@ -19161,10 +19207,15 @@ function renderYearMap(active, ctx) {
     const end = new Date(start.getTime() + 27 * 86400000);
     const now = n === ctx.cycleNum;
     const s1 = 2 * n - 1, s2 = 2 * n;
+    // BT26091001: this specific cycle's theme may be overridden (cycle_themes.tsv,
+    // keyed "<eqYear>-<n>") -- the default 13-name rotation stays the fallback.
+    const cellKey = cycleKeyFor(eqYear, n);
+    if (!(cellKey in CYCLE_THEME_OVERRIDES)) fetchCycleTheme(cellKey);
+    const displayTheme = CYCLE_THEME_OVERRIDES[cellKey] || th;
     return `
       <div class="ym-cell${now ? ' now' : ''}${n < ctx.cycleNum ? ' past' : ''}"
            title="${escHtml(EQ_THEME_MEANING[th]?.do || '')}">
-        <div class="ym-theme">${th}</div>
+        <div class="ym-theme">${escHtml(displayTheme)}${now ? `<button class="btn btn-ghost ym-theme-edit" title="Rename this cycle's theme" onclick="event.stopPropagation();editCycleTheme('${escAttr(cellKey)}','${escAttr(displayTheme)}')">✎</button>` : ''}${now && CYCLE_THEME_OVERRIDES[cellKey] ? `<button class="btn btn-ghost ym-theme-edit" title="Revert to the default '${escAttr(th)}'" onclick="event.stopPropagation();setCycleTheme('${escAttr(cellKey)}','')">↺</button>` : ''}</div>
         <div class="ym-dates">${fmt(start)} - ${fmt(end)}</div>
         <div class="ym-sprints">S${s1}${now && ctx.sprintNum === s1 ? ' ·' : ''} / S${s2}${now && ctx.sprintNum === s2 ? ' ·' : ''}</div>
         ${now ? `<div class="ym-here">here · day ${ctx.dayInCycle}</div>` : ''}
