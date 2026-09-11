@@ -3848,7 +3848,229 @@ function renderSettings() {
         </div>
         <div id="block-colors-result" class="settings-result hidden"></div>
       </div>
+
+      <!-- BI26091022: News/breaking-updates engine config -- pulse-owned
+           (lib/news.js). Same lazy-load + module-level-cache + repaintView
+           pattern as the Day Schedule section above (renderScheduleBlockList/
+           loadSettingsBlocks), just two lists instead of one: tracked
+           competitors (venture/org -> competitor) and a freeform
+           location/topic list. Both are pure CRUD over pulse's own
+           memory/news/{competitors,topics}.tsv, routed through hub's
+           /api/news/* compat entries (lib/api-compat.js) the same way
+           notifications.* already is. -->
+      <div class="settings-section" id="news-competitors-section">
+        <div class="settings-section-title">News Tracking &middot; Competitors</div>
+        <p class="settings-hint">
+          Every row here is one query term the news sweep watches for a
+          competitor's moves. <code>Venture</code> is which of your own
+          ventures/orgs it competes against (freeform, optional).
+        </p>
+        ${renderNewsCompetitorsList()}
+        <div class="settings-actions"><button class="btn btn-ghost" onclick="addNewsCompetitorDraft()">+ Add competitor</button></div>
+      </div>
+
+      <div class="settings-section" id="news-topics-section">
+        <div class="settings-section-title">News Tracking &middot; Locations / Topics</div>
+        <p class="settings-hint">
+          Any other freeform term to watch -- a location, an industry topic,
+          anything not already covered by a tracked competitor or an active
+          corporate engagement (those are pulled in automatically from
+          circle's career org list).
+        </p>
+        ${renderNewsTopicsList()}
+        <div class="settings-actions"><button class="btn btn-ghost" onclick="addNewsTopicDraft()">+ Add term</button></div>
+      </div>
+
+      <div class="settings-section" id="news-sweep-section">
+        <div class="settings-section-title">News Tracking &middot; Sweep</div>
+        <p class="settings-hint">
+          Queries NewsAPI, GNews, NewsData, and Google News RSS for every
+          active term above (plus every active corporate engagement), and
+          raises an in-app Alert + Telegram push for each genuinely new
+          match. Not yet on a recurring schedule -- run it manually here
+          until a scheduler is wired up.
+        </p>
+        <div class="settings-actions"><button class="btn btn-primary" onclick="runNewsSweepNow()">Run sweep now</button></div>
+        <div id="news-sweep-result" class="settings-result hidden"></div>
+      </div>
     </div>`;
+}
+
+// ── NEWS TRACKING (Settings) -- BI26091022 ───────────────────────────────────
+let NEWS_COMPETITORS = null;
+let NEWS_TOPICS = null;
+
+async function loadNewsCompetitors(force = false) {
+  if (NEWS_COMPETITORS && !force) return;
+  try {
+    const r = await fetch('/api/news/competitors');
+    const d = await r.json();
+    NEWS_COMPETITORS = (d.competitors || []).slice();
+  } catch (e) { NEWS_COMPETITORS = []; }
+  if (currentView === 'settings') repaintView('settings');
+}
+
+async function loadNewsTopics(force = false) {
+  if (NEWS_TOPICS && !force) return;
+  try {
+    const r = await fetch('/api/news/topics');
+    const d = await r.json();
+    NEWS_TOPICS = (d.topics || []).slice();
+  } catch (e) { NEWS_TOPICS = []; }
+  if (currentView === 'settings') repaintView('settings');
+}
+
+function renderNewsCompetitorsList() {
+  if (!NEWS_COMPETITORS) { loadNewsCompetitors(); return `<div class="empty-state" style="text-align:left;padding:0.6rem 0">Reading tracked competitors…</div>`; }
+  if (!NEWS_COMPETITORS.length) return `<div class="empty-state" style="text-align:left;padding:0.6rem 0">No competitors tracked yet.</div>`;
+  return `
+    <div class="sched-list">
+      ${NEWS_COMPETITORS.map(c => `
+        <div class="sched-row" id="news-comp-row-${escAttr(c.ID)}"${(c.STATUS || 'active') !== 'active' ? ' style="opacity:0.55"' : ''}>
+          <input id="news-comp-venture-${escAttr(c.ID)}" type="text" class="input sched-name" style="max-width:9rem" value="${escAttr(c.VENTURE === '-' ? '' : c.VENTURE)}" placeholder="venture/org" maxlength="60"/>
+          <input id="news-comp-name-${escAttr(c.ID)}" type="text" class="input sched-name" value="${escAttr(c.COMPETITOR)}" placeholder="competitor name" maxlength="120"/>
+          <select id="news-comp-status-${escAttr(c.ID)}" class="input" style="max-width:7rem">
+            <option value="active" ${(c.STATUS || 'active') === 'active' ? 'selected' : ''}>active</option>
+            <option value="disabled" ${(c.STATUS || 'active') === 'disabled' ? 'selected' : ''}>disabled</option>
+          </select>
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:3px 9px" onclick="saveNewsCompetitorRow('${escAttr(c.ID)}')">Save</button>
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:3px 9px" onclick="deleteNewsCompetitorRow('${escAttr(c.ID)}')">Delete</button>
+        </div>`).join('')}
+    </div>`;
+}
+
+function renderNewsTopicsList() {
+  if (!NEWS_TOPICS) { loadNewsTopics(); return `<div class="empty-state" style="text-align:left;padding:0.6rem 0">Reading tracked terms…</div>`; }
+  if (!NEWS_TOPICS.length) return `<div class="empty-state" style="text-align:left;padding:0.6rem 0">No freeform terms tracked yet.</div>`;
+  return `
+    <div class="sched-list">
+      ${NEWS_TOPICS.map(t => `
+        <div class="sched-row" id="news-topic-row-${escAttr(t.ID)}"${(t.STATUS || 'active') !== 'active' ? ' style="opacity:0.55"' : ''}>
+          <select id="news-topic-kind-${escAttr(t.ID)}" class="input" style="max-width:8rem">
+            <option value="location" ${t.KIND === 'location' ? 'selected' : ''}>location</option>
+            <option value="topic" ${(t.KIND || 'topic') === 'topic' ? 'selected' : ''}>topic</option>
+          </select>
+          <input id="news-topic-term-${escAttr(t.ID)}" type="text" class="input sched-name" value="${escAttr(t.TERM)}" placeholder="term" maxlength="120"/>
+          <select id="news-topic-status-${escAttr(t.ID)}" class="input" style="max-width:7rem">
+            <option value="active" ${(t.STATUS || 'active') === 'active' ? 'selected' : ''}>active</option>
+            <option value="disabled" ${(t.STATUS || 'active') === 'disabled' ? 'selected' : ''}>disabled</option>
+          </select>
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:3px 9px" onclick="saveNewsTopicRow('${escAttr(t.ID)}')">Save</button>
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:3px 9px" onclick="deleteNewsTopicRow('${escAttr(t.ID)}')">Delete</button>
+        </div>`).join('')}
+    </div>`;
+}
+
+/** A brand-new, not-yet-saved row -- draft:true and a temporary client-only id so its
+ *  inputs render with real DOM ids before the server has assigned a real one; Save
+ *  posts with no `id`, letting upsertCompetitor() mint the real ID server-side. */
+function addNewsCompetitorDraft() {
+  if (!NEWS_COMPETITORS) NEWS_COMPETITORS = [];
+  NEWS_COMPETITORS.push({ ID: `draft-${Date.now()}`, VENTURE: '-', COMPETITOR: '', STATUS: 'active', NOTE: '-', _draft: true });
+  if (currentView === 'settings') repaintView('settings');
+}
+function addNewsTopicDraft() {
+  if (!NEWS_TOPICS) NEWS_TOPICS = [];
+  NEWS_TOPICS.push({ ID: `draft-${Date.now()}`, KIND: 'topic', TERM: '', STATUS: 'active', NOTE: '-', _draft: true });
+  if (currentView === 'settings') repaintView('settings');
+}
+
+async function saveNewsCompetitorRow(id) {
+  const draft = (NEWS_COMPETITORS || []).find(c => c.ID === id);
+  const venture = document.getElementById(`news-comp-venture-${id}`)?.value?.trim();
+  const competitor = document.getElementById(`news-comp-name-${id}`)?.value?.trim();
+  const status = document.getElementById(`news-comp-status-${id}`)?.value;
+  if (!competitor) { showToast('Competitor name is required', 'error'); return; }
+  try {
+    const body = { venture, competitor, status };
+    if (!(draft && draft._draft)) body.id = id;
+    const r = await fetch('/api/news/competitors', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok || d.success === false) throw new Error(d.error || 'Could not save this competitor');
+    showToast(`${competitor} saved`, 'success');
+    await loadNewsCompetitors(true);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteNewsCompetitorRow(id) {
+  const draft = (NEWS_COMPETITORS || []).find(c => c.ID === id);
+  if (draft && draft._draft) { // never saved -- just drop it locally
+    NEWS_COMPETITORS = NEWS_COMPETITORS.filter(c => c.ID !== id);
+    if (currentView === 'settings') repaintView('settings');
+    return;
+  }
+  if (!confirm('Remove this tracked competitor?')) return;
+  try {
+    const r = await fetch('/api/news/competitors/delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.success === false) throw new Error(d.error || 'Could not delete this competitor');
+    showToast('Competitor removed', 'success');
+    await loadNewsCompetitors(true);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function saveNewsTopicRow(id) {
+  const draft = (NEWS_TOPICS || []).find(t => t.ID === id);
+  const kind = document.getElementById(`news-topic-kind-${id}`)?.value;
+  const term = document.getElementById(`news-topic-term-${id}`)?.value?.trim();
+  const status = document.getElementById(`news-topic-status-${id}`)?.value;
+  if (!term) { showToast('Term is required', 'error'); return; }
+  try {
+    const body = { kind, term, status };
+    if (!(draft && draft._draft)) body.id = id;
+    const r = await fetch('/api/news/topics', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok || d.success === false) throw new Error(d.error || 'Could not save this term');
+    showToast(`${term} saved`, 'success');
+    await loadNewsTopics(true);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteNewsTopicRow(id) {
+  const draft = (NEWS_TOPICS || []).find(t => t.ID === id);
+  if (draft && draft._draft) {
+    NEWS_TOPICS = NEWS_TOPICS.filter(t => t.ID !== id);
+    if (currentView === 'settings') repaintView('settings');
+    return;
+  }
+  if (!confirm('Remove this tracked term?')) return;
+  try {
+    const r = await fetch('/api/news/topics/delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+    });
+    const d = await r.json();
+    if (!r.ok || d.success === false) throw new Error(d.error || 'Could not delete this term');
+    showToast('Term removed', 'success');
+    await loadNewsTopics(true);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function runNewsSweepNow() {
+  const el = document.getElementById('news-sweep-result');
+  const btn = event?.target;
+  const show = (text, ok) => {
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.className = 'settings-result' + (ok ? ' success' : '');
+    el.textContent = text;
+  };
+  if (btn) { btn.disabled = true; btn.textContent = 'Sweeping…'; }
+  try {
+    const r = await fetch('/api/news/sweep', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok || d.success === false) throw new Error(d.error || 'Sweep failed');
+    show(`Sweep complete -- ${d.raised || 0} new match${d.raised === 1 ? '' : 'es'} raised.`, true);
+  } catch (e) {
+    show(e.message || 'Could not reach the agent.', false);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run sweep now'; }
+  }
 }
 
 /**
