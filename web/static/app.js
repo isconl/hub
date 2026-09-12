@@ -17008,11 +17008,19 @@ function learnPositionCheckpoints() {
   const vcRect = vc.getBoundingClientRect();
   const railWidth = 28;   // dots + hover-tooltip breathing room
   const gap = 20;
-  const roomLeft = vcRect.right - bodyRect.right - gap - railWidth;
+  // BL26091112: rail sits to the LEFT of the content column and is centred in
+  // the viewport, rather than sitting right and stretching the column's full
+  // height. The room check moves with it -- measured against the container's
+  // left edge now, not its right, or the rail hides on the wrong condition.
+  const roomLeft = bodyRect.left - vcRect.left - gap - railWidth;
   if (roomLeft < 0) { rail.classList.remove('visible'); return; }
-  rail.style.left = `${bodyRect.right + gap}px`;
-  rail.style.top = `${Math.max(vcRect.top, bodyRect.top)}px`;
-  rail.style.height = `${Math.min(vcRect.bottom, bodyRect.bottom) - Math.max(vcRect.top, bodyRect.top)}px`;
+  // Bounded height, not the content's full span: a rail taller than the
+  // viewport cannot be centred in it, and the progress fill reads as a
+  // scrollbar rather than an indicator. 70% of the viewport, capped at 480.
+  const railHeight = Math.min(vcRect.height * 0.7, 480);
+  rail.style.left = `${bodyRect.left - gap - railWidth}px`;
+  rail.style.top = `${vcRect.top + (vcRect.height - railHeight) / 2}px`;
+  rail.style.height = `${railHeight}px`;
   rail.classList.add('visible');
   learnUpdateCheckpointProgress();
 }
