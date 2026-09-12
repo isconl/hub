@@ -17448,9 +17448,10 @@ function learnGroupIcon(g, size) {
        : g.id === 'medicine-surgery' ? svgIcon('shield', size)
        : g.id === 'markets-economics' ? svgIcon('layers', size)
        : g.id === 'wealth-finance' ? svgIcon('zap', size)
-       : g.id === 'platforms-systems' ? svgIcon('grid', size)
+       : g.id === 'platforms-experience' ? svgIcon('grid', size)
        : g.id === 'profiles-psychology' ? svgIcon('users', size)
        : g.id === 'systems-architecture' ? svgIcon('settings', size)
+       : g.id === 'practice-fieldwork' ? svgIcon('book', size)
        : svgIcon('folder', size);
 }
 
@@ -17570,9 +17571,10 @@ const DEFAULT_LEARNING_GROUPS = [
   { id: 'medicine-surgery', label: 'Medicine & Surgery', description: 'Anatomy, first aid, trauma, clinical conditions, pharmacology, and surgical practice.', color: '#ef4444', sortOrder: 3, status: 'active' },
   { id: 'markets-economics', label: 'Markets & Economics', description: 'The ten markets and how they actually move.', color: '#8b5cf6', sortOrder: 4, status: 'active' },
   { id: 'wealth-finance', label: 'Wealth & Finance', description: 'Financial intelligence, capital allocation, valuation, and wealth velocity.', color: '#f59e0b', sortOrder: 5, status: 'active' },
-  { id: 'platforms-systems', label: 'Platforms & Systems', description: 'The B2B portals, publishing pipeline, and UX journeys.', color: '#10b981', sortOrder: 6, status: 'active' },
+  { id: 'platforms-experience', label: 'Platforms & Experience', description: 'The B2B portals, publishing pipeline, and UX journeys.', color: '#10b981', sortOrder: 6, status: 'active' },
   { id: 'profiles-psychology', label: 'Profiles & Psychology', description: 'Reading people, behavior, influence, and profiling - real and archetypal.', color: '#06b6d4', sortOrder: 7, status: 'active' },
   { id: 'systems-architecture', label: 'Systems & Architecture', description: 'Systems thinking, software architecture, business systems, and scaling.', color: '#6366f1', sortOrder: 8, status: 'active' },
+  { id: 'practice-fieldwork', label: 'Practice & Fieldwork', description: 'How these systems actually run - runbooks, deploys, incidents, and the operational detail you only learn by doing the work.', color: '#f97316', sortOrder: 9, status: 'active' },
 ];
 
 function getResolvedGroups(courses, backendGroups) {
