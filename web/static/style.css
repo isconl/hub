@@ -5312,6 +5312,25 @@ body.chat-selecting .chat-msg-real.picked { background:var(--green-bg);
   font-family:system-ui,sans-serif; font-size:0.92rem; line-height:1.6; color:var(--text);
   clear:both;
 }
+/* BL26091115: optional origin / example sub-sections and a copy button.
+   Both sub-sections share one shape so the eye learns it once, matching how
+   the mobile card renders the same two fields. */
+.jargon-popup-copy {
+  float:right; background:none; border:1px solid var(--border-mid, #3D4450);
+  color:var(--text-3); font-family:system-ui,sans-serif; font-size:0.68rem;
+  line-height:1; cursor:pointer; padding:0.2rem 0.4rem; border-radius:var(--r-sm, 4px);
+  margin:-0.1rem 0.35rem 0.3rem 0;
+}
+.jargon-popup-copy:hover { color:var(--text); border-color:var(--violet); }
+.jargon-popup-section { margin-top:0.6rem; clear:both; }
+.jargon-popup-label {
+  font-family:system-ui,sans-serif; font-size:0.62rem; font-weight:700;
+  letter-spacing:0.8px; color:var(--text-3); margin-bottom:0.15rem;
+}
+.jargon-popup-subbody {
+  font-family:system-ui,sans-serif; font-size:0.84rem; line-height:1.5; color:var(--text-2);
+}
+.jargon-popup-example .jargon-popup-subbody { font-style:italic; }
 
 .lesson-body h5 { font-family:system-ui,sans-serif; font-size:0.78rem; margin:0.7rem 0 0.2rem; color:var(--text-2);
   text-transform:uppercase; letter-spacing:0.05em; }

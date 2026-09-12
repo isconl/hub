@@ -2620,8 +2620,54 @@ function toggleJargonPopup(el) {
   const body = document.createElement('div');
   body.className = 'jargon-popup-body';
   body.textContent = el.getAttribute('data-def') || '';
+
+  // BL26091115: optional origin and example sub-sections, plus a copy button.
+  // textContent throughout, never innerHTML -- this text comes from lesson
+  // content, and the reason data-def is escAttr'd at render time is precisely
+  // that it is not trusted markup.
+  const etym = el.getAttribute('data-etym') || '';
+  const example = el.getAttribute('data-example') || '';
+  const section = (label, text, cls) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'jargon-popup-section' + (cls ? ' ' + cls : '');
+    const h = document.createElement('div');
+    h.className = 'jargon-popup-label';
+    h.textContent = label;
+    const b = document.createElement('div');
+    b.className = 'jargon-popup-subbody';
+    b.textContent = text;
+    wrap.appendChild(h);
+    wrap.appendChild(b);
+    return wrap;
+  };
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'jargon-popup-copy';
+  copyBtn.setAttribute('aria-label', 'Copy definition');
+  copyBtn.title = 'Copy definition';
+  copyBtn.textContent = 'Copy';
+  copyBtn.onclick = async (e) => {
+    e.stopPropagation();
+    const parts = [el.textContent.trim(), el.getAttribute('data-def') || ''];
+    if (etym) parts.push('Origin: ' + etym);
+    if (example) parts.push('Example: ' + example);
+    try {
+      await navigator.clipboard.writeText(parts.join('\n\n'));
+      copyBtn.textContent = 'Copied';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+    } catch {
+      // The Clipboard API needs a secure context and can be refused outright.
+      // Say so rather than leaving the button looking like it worked.
+      copyBtn.textContent = 'Ctrl+C';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2500);
+    }
+  };
+
   popup.appendChild(closeBtn);
+  popup.appendChild(copyBtn);
   popup.appendChild(body);
+  if (etym) popup.appendChild(section('ORIGIN', etym));
+  if (example) popup.appendChild(section('IN A SENTENCE', example, 'jargon-popup-example'));
   document.body.appendChild(popup);
 
   const r = el.getBoundingClientRect();
@@ -18382,8 +18428,17 @@ function learnMd(src, courseId) {
   // a data attribute (escAttr'd) rather than inline HTML, since the popup
   // reads it straight off the DOM -- see toggleJargonPopup() below.
   const inline = (s) => s
-    .replace(/\[\[([^\|\]\n]+)\|([^\]\n]+)\]\]/g, (_m, term, def) =>
-      `<span class="jargon-term" tabindex="0" role="button" aria-haspopup="true" data-def="${escAttr(def.trim())}" onclick="event.stopPropagation();toggleJargonPopup(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleJargonPopup(this)}">${term.trim()}</span>`)
+    // BL26091115: the marker grew to [[term|definition|etymology|example]].
+    // The tail stays one greedy group and is split here, so every existing
+    // two-field marker matches unchanged rather than needing a second pattern.
+    // Etymology and example are optional and simply absent when not supplied.
+    .replace(/\[\[([^\|\]\n]+)\|([^\]\n]+)\]\]/g, (_m, term, rest) => {
+      const [def, etym, example] = String(rest).split('|');
+      const extra =
+        (etym && etym.trim() ? ` data-etym="${escAttr(etym.trim())}"` : '') +
+        (example && example.trim() ? ` data-example="${escAttr(example.trim())}"` : '');
+      return `<span class="jargon-term" tabindex="0" role="button" aria-haspopup="true" data-def="${escAttr(def.trim())}"${extra} onclick="event.stopPropagation();toggleJargonPopup(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleJargonPopup(this)}">${term.trim()}</span>`;
+    })
     .replace(/!\[([^\]\n]*)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)/g, (_m, alt, src, title) => {
       // Resolve _assets/ paths to the vault-proxied asset endpoint.
       // <img src> can't carry an Authorization header, and this route sits
