@@ -222,10 +222,20 @@ start_one() {
         # VAULT_STORE_ENGINE=tsv to roll back.
         export VAULT_STORE_ENGINE="${VAULT_STORE_ENGINE:-sqlite}"
       fi
+      # BL26091105: --watch restarts the engine on any file save, so a code change
+      # is live without a manual restart. Node 24 here; --watch has been stable since
+      # Node 20, no experimental flag needed.
+      #
+      # Main engines ONLY. NOT learning-sync (handled in its own branch above): that
+      # runs vault/scripts/sync-learning-from-live.js, a one-shot script that returns
+      # and exits -- --watch would keep it resident forever instead of letting it
+      # complete, turning a pre-launch sync into a hung process. The row that asked
+      # for this named the learning-sync branch explicitly; that part of its scope is
+      # wrong and is deliberately not applied, matching the PowerShell half.
       if command -v setsid >/dev/null 2>&1; then
-        setsid node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+        setsid node --watch src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
       else
-        nohup node src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
+        nohup node --watch src/server.js </dev/null >"$LOG_DIR/$name.log" 2>&1 &
       fi
     fi
     local p=$!
