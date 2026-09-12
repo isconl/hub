@@ -39,6 +39,15 @@ services:
       # server.js's own unmigrated-deployment default). Set here, not just
       # in dev-local.sh, so this reproduces on ANY machine that runs this
       # compose file, not only the one it was first configured on.
+      #
+      # BI26091201 (12 Sep 2026): vault's OWN fallback is now 0 (backups
+      # off) rather than 1800000 -- every machine running vault shares one
+      # OneDrive backup history, so "on unless turned off" meant every dev
+      # checkout pushed into the history the OCI VM's disaster recovery
+      # depends on. Setting it explicitly here is therefore now load-bearing,
+      # not belt-and-braces: delete this line and this stack stops backing up
+      # silently. The VM's own deploy/docker-compose.vm.yml needs the same
+      # line for the same reason.
       VAULT_BACKUP_INTERVAL_MS: ${VAULT_BACKUP_INTERVAL_MS:-1800000}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}
