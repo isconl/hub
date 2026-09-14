@@ -14900,6 +14900,16 @@ async function fetchCircle() {
 let circleRing = 'all';   // the sidebar menu selection: all / family / professional / social
 let circleOpenPerson = null;
 
+// BM26091204: TAGS is the multi-value replacement for the scalar GROUP
+// column (vault/circle keep them in lockstep until the tag-management UI,
+// step 4, ships) -- reads should prefer TAGS and fall back to GROUP, not
+// the other way round, so a contact edited after the tag UI lands shows
+// up correctly here without another pass over this file.
+function personTagList(p) {
+  const raw = (p.TAGS && p.TAGS !== '-') ? p.TAGS : (p.GROUP && p.GROUP !== '-' ? p.GROUP : '');
+  return String(raw).split(',').map(t => t.trim()).filter(Boolean);
+}
+
 function renderCircle() {
   if (!CIRCLE) { fetchCircle(); return `<div class="card"><div class="empty-state">Gathering the circle…</div></div>`; }
   const people = CIRCLE.people || [];
@@ -14922,7 +14932,7 @@ function renderCircle() {
           ${members.sort((a, b) => (a.dueIn ?? 9e9) - (b.dueIn ?? 9e9)).map(p => `
             <div class="circle-card" onclick="circleOpen('${escHtml(p.ID)}')">
               <div class="circle-name"><span class="ring-dot sm" style="background:${col}"></span>${escHtml(p.NAME)}</div>
-              <div class="circle-role">${escHtml(p.ROLE !== '-' ? p.ROLE : (p.GROUP !== '-' ? p.GROUP : ''))}</div>
+              <div class="circle-role">${escHtml(p.ROLE !== '-' ? p.ROLE : (personTagList(p)[0] || ''))}</div>
               <div class="circle-meta">
                 ${p.lastTouch ? `last ${escHtml(p.lastTouch)}` : 'no touch on record'}
                 ${p.dueIn != null ? (p.dueIn <= 0 ? ` · <span class="circle-due">due now</span>` : ` · due in ${p.dueIn}d`) : ''}
@@ -15140,23 +15150,6 @@ function personInsightCallout(p) {
     </div>`;
 }
 
-function renderCirclePerson() {
-  const p = (CIRCLE.people || []).find(x => x.ID === circleOpenPerson);
-  if (!p) { circleOpenPerson = null; return renderCircle(); }
-  const ringCol = { family: '#3fb950', professional: '#58a6ff', social: '#bc8cff' }[p.CIRCLE] || 'var(--text-3)';
-  return `
-    <div class="view-head">
-      <h1><span class="ring-dot" style="background:${ringCol}"></span>${escHtml(p.NAME)}</h1>
-      <div class="view-head-meta crumbs">
-        <a href="#" class="crumb-link" onclick="circleOpenPerson=null;repaintView('circle');return false">Circle</a>
-        <span class="crumb-sep">/</span><span class="crumb-here">${escHtml(p.CIRCLE)}${p.GROUP !== '-' && p.GROUP !== p.CIRCLE ? ` · ${escHtml(p.GROUP)}` : ''}</span>
-        ${p.FOLDER && p.FOLDER !== '-' ? `<button class="btn btn-ghost crumb-action" title="Their files, in the File Manager"
-          onclick="circleOpenFolder('${escHtml(p.FOLDER)}','${escHtml(p.NAME)}')">Open folder</button>` : ''}</div>
-    </div>
-
-    ${personInsightCallout(p)}`;
-}
-
 let REACHOUT = {};
 
 async function loadReachout(personId) {
@@ -15256,12 +15249,13 @@ function renderCirclePerson() {
   const p = (CIRCLE.people || []).find(x => x.ID === circleOpenPerson);
   if (!p) { circleOpenPerson = null; return renderCircle(); }
   const ringCol = { family: '#3fb950', professional: '#58a6ff', social: '#bc8cff' }[p.CIRCLE] || 'var(--text-3)';
+  const crumbTags = personTagList(p).filter(t => t !== p.CIRCLE);
   return `
     <div class="view-head">
       <h1><span class="ring-dot" style="background:${ringCol}"></span>${escHtml(p.NAME)}</h1>
       <div class="view-head-meta crumbs">
         <a href="#" class="crumb-link" onclick="circleOpenPerson=null;repaintView('circle');return false">Circle</a>
-        <span class="crumb-sep">/</span><span class="crumb-here">${escHtml(p.CIRCLE)}${p.GROUP !== '-' && p.GROUP !== p.CIRCLE ? ` · ${escHtml(p.GROUP)}` : ''}</span>
+        <span class="crumb-sep">/</span><span class="crumb-here">${escHtml(p.CIRCLE)}${crumbTags.length ? ` · ${escHtml(crumbTags.join(', '))}` : ''}</span>
         ${p.FOLDER && p.FOLDER !== '-' ? `<button class="btn btn-ghost crumb-action" title="Their files, in the File Manager"
           onclick="circleOpenFolder('${escHtml(p.FOLDER)}','${escHtml(p.NAME)}')">Open folder</button>` : ''}</div>
     </div>
@@ -15724,7 +15718,7 @@ function openContactPreviewInRail(id) {
   if (nameEl) nameEl.textContent = p.NAME;
   if (metaEl) {
     const ringCap = (p.CIRCLE || 'social').toUpperCase();
-    const roleStr = p.ROLE !== '-' ? p.ROLE : (p.GROUP !== '-' ? p.GROUP : 'Contact');
+    const roleStr = p.ROLE !== '-' ? p.ROLE : (personTagList(p)[0] || 'Contact');
     metaEl.textContent = `${ringCap} · ${roleStr} · OneDrive Dossier`;
   }
   if (bodyEl) {
@@ -15918,7 +15912,7 @@ function renderContactsGrid(contacts) {
               ${avatarHtml}
               <div class="contact-card-info">
                 <div class="contact-card-name">${escHtml(p.NAME)}</div>
-                <div class="contact-card-role">${escHtml(p.ROLE !== '-' ? p.ROLE : (p.GROUP !== '-' ? p.GROUP : ringCap))}</div>
+                <div class="contact-card-role">${escHtml(p.ROLE !== '-' ? p.ROLE : (personTagList(p)[0] || ringCap))}</div>
               </div>
               <span class="contact-tag" style="border-color:${col};color:${col};text-transform:capitalize;font-size:0.65rem">${escHtml(ringKey)}</span>
             </div>
@@ -15994,7 +15988,7 @@ function renderContactsTable(contacts) {
                 </td>
                 <td>
                   <div>${escHtml(p.ROLE !== '-' ? p.ROLE : '—')}</div>
-                  ${p.GROUP && p.GROUP !== '-' ? `<div style="font-size:0.68rem;color:var(--text-3)">${escHtml(p.GROUP)}</div>` : ''}
+                  ${personTagList(p).length ? `<div style="font-size:0.68rem;color:var(--text-3)">${escHtml(personTagList(p).join(', '))}</div>` : ''}
                 </td>
                 <td style="font-family:var(--font-mono);font-size:0.72rem">
                   ${p.CADENCE_DAYS ? `${p.CADENCE_DAYS}d` : '<span style="color:var(--text-3)">—</span>'}
@@ -16063,7 +16057,7 @@ function renderContactDetail() {
         <div class="contact-detail-role">${escHtml(p.ROLE !== '-' ? p.ROLE : 'No formal role specified')}</div>
         <div style="display:flex;gap:0.35rem;margin-top:0.4rem;align-items:center;flex-wrap:wrap">
           <span class="contact-tag" style="text-transform:capitalize;border-color:${col};color:${col}">${escHtml(p.CIRCLE || 'social')}</span>
-          ${p.GROUP && p.GROUP !== '-' ? `<span class="contact-tag">${escHtml(p.GROUP)}</span>` : ''}
+          ${personTagList(p).map(t => `<span class="contact-tag">${escHtml(t)}</span>`).join('')}
           ${isGoogle ? `<span class="contact-tag" style="border-color:var(--amber);color:var(--amber);font-weight:600">Google Pool</span>` : (p.hasDia ? `<span class="contact-tag" style="border-color:var(--cyan);color:var(--cyan)">${svgIcon('zap', 12)} DIA Dossier</span>` : '')}
         </div>
         <div class="contact-detail-actions">
@@ -16099,8 +16093,8 @@ function renderContactDetail() {
             <span class="contact-field-value">${escHtml(p.CHANNEL || 'WhatsApp')}</span>
           </div>
           <div class="contact-field">
-            <span class="contact-field-label">Group / Organization</span>
-            <span class="contact-field-value">${escHtml(p.GROUP !== '-' ? p.GROUP : 'Individual')}</span>
+            <span class="contact-field-label">Group / Tags</span>
+            <span class="contact-field-value">${personTagList(p).length ? escHtml(personTagList(p).join(', ')) : 'Individual'}</span>
           </div>
           <div class="contact-field">
             <span class="contact-field-label">Last Interaction</span>
