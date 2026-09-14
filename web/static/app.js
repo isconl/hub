@@ -15902,6 +15902,7 @@ function renderContacts() {
             <button class="btn btn-ghost" style="border:none;border-left:1px solid var(--border);border-radius:0;padding:5px 9px;font-size:0.78rem" onclick="contactsExport('json')" title="Export JSON">JSON</button>
             <button class="btn btn-ghost" style="border:none;border-left:1px solid var(--border);border-radius:0;padding:5px 9px;font-size:0.78rem" onclick="contactsExport('tsv')" title="Export TSV">TSV</button>
           </div>
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsExportByTag('csv')" title="One CSV file per tag, per Sconl's export convention">${svgIcon('export', 12)} Export by tag</button>
           <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="fetchCircle();repaintView('contacts')">${svgIcon('refresh', 13)} Refresh</button>
         </div>
       </div>
@@ -16884,14 +16885,14 @@ async function contactsSubmitTouch(personId) {
   }
 }
 
-function contactsExport(format = 'csv') {
-  const people = CIRCLE?.people || [];
-  if (!people.length) { showToast('No contacts to export', 'error'); return; }
-
-  const todayStr = new Date().toISOString().slice(0, 10);
+// Shared by contactsExport (one file, everyone) and contactsExportByTag
+// (BM26091204 step 5, one file per tag) -- the three format bodies below
+// are unchanged from before the split, just operating on whatever `people`
+// slice the caller hands in instead of always reading the full roster.
+function contactsBuildExportContent(people, format) {
   let content = '';
   let mimeType = 'text/plain';
-  let ext = format;
+  const ext = format;
 
   if (format === 'csv' || format === 'tsv') {
     const delim = format === 'tsv' ? '\t' : ',';
@@ -16948,15 +16949,55 @@ function contactsExport(format = 'csv') {
     }).join('\n\n');
   }
 
+  return { content, mimeType, ext };
+}
+
+function contactsDownloadBlob(content, mimeType, filename) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `contacts_export_${todayStr}.${ext}`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  // Deferred: revoking synchronously can race the download start in some
+  // browsers (the click triggers it asynchronously).
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function contactsExport(format = 'csv') {
+  const people = CIRCLE?.people || [];
+  if (!people.length) { showToast('No contacts to export', 'error'); return; }
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const { content, mimeType, ext } = contactsBuildExportContent(people, format);
+  contactsDownloadBlob(content, mimeType, `contacts_export_${todayStr}.${ext}`);
   showToast(`Contacts exported to ${format.toUpperCase()}`, 'success');
+}
+
+// BM26091204 step 5: one file per tag, per Sconl's 4 Sep 2026 decision.
+// A contact with more than one tag appears in more than one file --
+// that's the point of a tag (unlike GROUP, membership isn't exclusive).
+// Untagged contacts land in a single "untagged" file rather than being
+// silently dropped from every export.
+function contactsExportByTag(format = 'csv') {
+  const people = CIRCLE?.people || [];
+  if (!people.length) { showToast('No contacts to export', 'error'); return; }
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const groups = new Map();
+  people.forEach(p => {
+    const tags = personTagList(p);
+    (tags.length ? tags : ['untagged']).forEach(t => {
+      if (!groups.has(t)) groups.set(t, []);
+      groups.get(t).push(p);
+    });
+  });
+  const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'tag';
+  groups.forEach((peopleForTag, tag) => {
+    const { content, mimeType, ext } = contactsBuildExportContent(peopleForTag, format);
+    contactsDownloadBlob(content, mimeType, `contacts_${slug(tag)}_${todayStr}.${ext}`);
+  });
+  showToast(`Exported ${groups.size} file${groups.size === 1 ? '' : 's'}, one per tag`, 'success');
 }
 
 function contactsExportCSV() {
