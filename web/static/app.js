@@ -16802,13 +16802,29 @@ async function contactsPromoteGoogle(googleId) {
 async function contactsSavePerson(existingId) {
   const name = document.getElementById('cm-name')?.value.trim();
   if (!name) { showToast('Name is required', 'error'); return; }
+  const newGroup = document.getElementById('cm-group')?.value.trim() || '-';
+
+  // BM26091204: this form only edits GROUP, but circle's upsertPerson keeps
+  // TAGS in lockstep with GROUP whenever p.tags is omitted -- without this,
+  // saving through this modal would silently collapse any tags added via
+  // the newer tag-management UI (Step 4) back down to just this one GROUP
+  // value. Preserve every existing tag except the old GROUP value, then
+  // add the new one, and pass the result explicitly.
+  let tags;
+  if (existingId) {
+    const existing = (CIRCLE?.people || []).find(p => p.ID === existingId);
+    const oldGroup = existing?.GROUP && existing.GROUP !== '-' ? existing.GROUP : null;
+    const preserved = existing ? personTagList(existing).filter(t => t !== oldGroup) : [];
+    tags = [...preserved, ...(newGroup !== '-' ? [newGroup] : [])].join(', ') || '-';
+  }
 
   const payload = {
     id: existingId || undefined,
     name,
     circle: document.getElementById('cm-circle')?.value || 'social',
     role: document.getElementById('cm-role')?.value.trim() || '-',
-    group: document.getElementById('cm-group')?.value.trim() || '-',
+    group: newGroup,
+    ...(tags !== undefined ? { tags } : {}),
     cadence: document.getElementById('cm-cadence')?.value || '30',
     channel: document.getElementById('cm-channel')?.value.trim() || 'WhatsApp',
     notes: document.getElementById('cm-notes')?.value.trim() || ''
