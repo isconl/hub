@@ -40,6 +40,7 @@ async function startHub(fakes, envOverrides = {}) {
   // process.env (a truthy string!) rather than unsetting it -- delete first.
   delete process.env.SCOPE_URL;
   delete process.env.SPARK_URL;
+  delete process.env.CIRCLE_URL;
   Object.assign(process.env, {
     HUB_PORT: '0', HUB_BIND: '127.0.0.1', HUB_TOKEN: 'test-static-token',
     HUB_LOGS_DIR: logsDir, BWS_ACCESS_TOKEN: '',
@@ -53,6 +54,7 @@ async function startHub(fakes, envOverrides = {}) {
     VAULT_URL: `http://127.0.0.1:${fakes.vault.port}`,
     ...(fakes.scope ? { SCOPE_URL: `http://127.0.0.1:${fakes.scope.port}` } : {}),
     ...(fakes.spark ? { SPARK_URL: `http://127.0.0.1:${fakes.spark.port}` } : {}),
+    ...(fakes.circle ? { CIRCLE_URL: `http://127.0.0.1:${fakes.circle.port}` } : {}),
     ...envOverrides,
   });
   delete require.cache[require.resolve('../src/server')];
@@ -236,6 +238,35 @@ test('/api/tasks/detail?taskId=X (the app\'s literal call) maps taskId onto scop
     const body = await res.json();
     assert.equal(body.task.ID, 'T1');
   } finally { server.close(); vault.server.close(); scope.server.close(); cleanup(); }
+});
+
+test('BM26091401: POST /api/circle/regenerate-dia?id=X maps onto circle.dia.regenerate\'s :id path param, no SSH/VM access involved', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const circle = await startFakeEngine({ name: 'circle',
+    manifestCapabilities: [{ name: 'circle.dia.regenerate', method: 'POST', path: '/people/:id/regenerate-dia' }],
+    routes: { 'POST /people/taylor/regenerate-dia': () => [200, { ok: true, personId: 'taylor' }] },
+  });
+  const { server, port, cleanup } = await startHub({ vault, circle });
+  const auth = { Authorization: 'Bearer test-static-token' };
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/circle/regenerate-dia?id=taylor`, { method: 'POST', headers: auth });
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.personId, 'taylor');
+  } finally { server.close(); vault.server.close(); circle.server.close(); cleanup(); }
+});
+
+test('BM26091401: POST /api/circle/regenerate-dia requires auth, same as every other mutating route -- not a bare passthrough', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const circle = await startFakeEngine({ name: 'circle',
+    manifestCapabilities: [{ name: 'circle.dia.regenerate', method: 'POST', path: '/people/:id/regenerate-dia' }],
+    routes: { 'POST /people/taylor/regenerate-dia': () => [200, { ok: true, personId: 'taylor' }] },
+  });
+  const { server, port, cleanup } = await startHub({ vault, circle });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/circle/regenerate-dia?id=taylor`, { method: 'POST' });
+    assert.equal(res.status, 404); // hub's standard "unauthenticated" shape, matches every other non-public route
+  } finally { server.close(); vault.server.close(); circle.server.close(); cleanup(); }
 });
 
 test('an /api/* route marked legacy returns 501 since the legacy monolith is retired', async () => {
