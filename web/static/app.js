@@ -15675,8 +15675,91 @@ let contactsSearch = '';
 let contactsFilter = 'all'; // 'all' | 'family' | 'professional' | 'social' | 'due' | 'dia'
 let contactsSort = 'name';   // 'name' | 'due' | 'cadence' | 'lastTouch'
 let selectedContactId = null;
-let contactsModalState = null; // null | { type: 'add'|'edit'|'import'|'touch', id?: string }
+let contactsModalState = null; // null | { type: 'add'|'edit'|'import'|'touch'|'tags', id?: string }
 let contactsImportData = [];
+let contactsTagsList = null; // BM26091204 step 4: null = not fetched yet, else [{tag,count}]
+
+async function contactsLoadTags() {
+  try {
+    const d = await (await fetch('/api/circle/tags')).json();
+    contactsTagsList = d.tags || [];
+  } catch {
+    contactsTagsList = [];
+  }
+  if (contactsModalState?.type === 'tags') repaintView('contacts');
+}
+
+// Re-pulls the roster (so display everywhere reflects the change) and the
+// tag list together -- every tag mutation below calls this rather than
+// hand-patching local state, since a rename/merge/delete touches however
+// many contacts carried the tag, not just the one row a caller has handy.
+async function contactsRefreshAfterTagChange() {
+  contactsTagsList = null;
+  await fetchCircle();
+  await contactsLoadTags();
+}
+
+async function contactsAddTagToContact(id) {
+  const tag = await uiPrompt({ title: 'Add a tag', label: 'Tag name', placeholder: 'e.g. mentor, alumni, investor' });
+  if (!tag || !tag.trim()) return;
+  try {
+    await fetch('/api/circle/tags/add', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ personId: id, tag: tag.trim() }) });
+    await contactsRefreshAfterTagChange();
+    showToast(`Tagged "${tag.trim()}"`, 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function contactsRemoveTagFromContact(id, tag) {
+  try {
+    await fetch('/api/circle/tags/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ personId: id, tag }) });
+    await contactsRefreshAfterTagChange();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function contactsOpenTagsModal() {
+  contactsModalState = { type: 'tags' };
+  contactsTagsList = null;
+  contactsLoadTags();
+  repaintView('contacts');
+}
+
+async function contactsRenameTag(from, idx) {
+  const input = document.getElementById(`tag-rename-${idx}`);
+  const to = (input?.value || '').trim();
+  if (!to || to === from) return;
+  try {
+    await fetch('/api/circle/tags/rename', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to }) });
+    await contactsRefreshAfterTagChange();
+    showToast(`Renamed "${from}" to "${to}"`, 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function contactsMergeTag(from, idx) {
+  const sel = document.getElementById(`tag-merge-target-${idx}`);
+  const into = sel?.value;
+  if (!into) { showToast('Pick a tag to merge into first', 'warn'); return; }
+  try {
+    await fetch('/api/circle/tags/merge', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sources: [from], into }) });
+    await contactsRefreshAfterTagChange();
+    showToast(`Merged "${from}" into "${into}"`, 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function contactsDeleteTag(tag, count) {
+  if (!await uiConfirm({ title: `Delete tag "${tag}"?`,
+      body: `Removes it from ${count} contact${count === 1 ? '' : 's'}. The contacts themselves are untouched.`,
+      confirmLabel: 'Delete tag', danger: true })) return;
+  try {
+    await fetch('/api/circle/tags/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tag }) });
+    await contactsRefreshAfterTagChange();
+    showToast(`Deleted tag "${tag}"`, 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+}
 
 let contactsViewMode = 'grid'; // 'grid' | 'table'
 
@@ -15812,6 +15895,7 @@ function renderContacts() {
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
           <button class="btn btn-primary" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('add')">${svgIcon('plus', 13)} Add Contact</button>
           <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenModal('import')">${svgIcon('import', 13)} Import</button>
+          <button class="btn btn-ghost" style="padding:5px 12px;font-size:0.78rem" onclick="contactsOpenTagsModal()">${svgIcon('tag', 13)} Manage Tags</button>
           <div style="display:inline-flex;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden">
             <button class="btn btn-ghost" style="border:none;border-radius:0;padding:5px 9px;font-size:0.78rem" onclick="contactsExport('csv')" title="Export CSV">${svgIcon('export', 12)} CSV</button>
             <button class="btn btn-ghost" style="border:none;border-left:1px solid var(--border);border-radius:0;padding:5px 9px;font-size:0.78rem" onclick="contactsExport('vcf')" title="Export vCard (.vcf)">vCard</button>
@@ -16074,7 +16158,8 @@ function renderContactDetail() {
         <div class="contact-detail-role">${escHtml(p.ROLE !== '-' ? p.ROLE : 'No formal role specified')}</div>
         <div style="display:flex;gap:0.35rem;margin-top:0.4rem;align-items:center;flex-wrap:wrap">
           <span class="contact-tag" style="text-transform:capitalize;border-color:${col};color:${col}">${escHtml(p.CIRCLE || 'social')}</span>
-          ${personTagList(p).map(t => `<span class="contact-tag">${escHtml(t)}</span>`).join('')}
+          ${personTagList(p).map(t => `<span class="contact-tag">${escHtml(t)}${!isGoogle ? `<span style="cursor:pointer;margin-left:4px;opacity:0.6" title="Remove this tag" onclick="event.stopPropagation();contactsRemoveTagFromContact('${escAttr(p.ID)}','${escAttr(t)}')">×</span>` : ''}</span>`).join('')}
+          ${!isGoogle ? `<span class="contact-tag" style="cursor:pointer;border-style:dashed" title="Add a tag" onclick="contactsAddTagToContact('${escAttr(p.ID)}')">+ tag</span>` : ''}
           ${isGoogle ? `<span class="contact-tag" style="border-color:var(--amber);color:var(--amber);font-weight:600">Google Pool</span>` : (p.hasDia ? `<span class="contact-tag" style="border-color:var(--cyan);color:var(--cyan)">${svgIcon('zap', 12)} DIA Dossier</span>` : '')}
         </div>
         <div class="contact-detail-actions">
@@ -16354,6 +16439,40 @@ function renderContactsModal() {
           <div class="modal-footer">
             <button class="btn btn-ghost" onclick="contactsCloseModal()">Cancel</button>
             <button class="btn btn-primary" onclick="contactsSavePhoto('${escAttr(p?.ID || '')}')">${svgIcon('check', 13)} Save Profile Photo</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (type === 'tags') {
+    const list = contactsTagsList || [];
+    return `
+      <div class="modal-overlay" onclick="if(event.target===this)contactsCloseModal()">
+        <div class="modal-box" style="max-width:560px">
+          <div class="modal-header">
+            <span class="modal-title">Manage Tags</span>
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">${svgIcon('x', 14)}</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:0.5rem;max-height:60vh;overflow-y:auto">
+            ${contactsTagsList === null ? '<div class="empty-state">Loading tags…</div>'
+              : !list.length ? '<div class="empty-state">No tags yet — add one from a contact\'s detail view.</div>'
+              : list.map((t, i) => `
+              <div class="jr-compose-row" style="align-items:center;gap:0.4rem;flex-wrap:nowrap">
+                <input class="jira-input" style="flex:1;min-width:100px" id="tag-rename-${i}" value="${escAttr(t.tag)}"
+                       onkeydown="if(event.key==='Enter')contactsRenameTag('${escAttr(t.tag)}',${i})">
+                <span class="card-meta" style="white-space:nowrap;flex-shrink:0">${t.count} contact${t.count === 1 ? '' : 's'}</span>
+                <button class="btn btn-ghost" style="padding:3px 8px;font-size:0.68rem;flex-shrink:0" onclick="contactsRenameTag('${escAttr(t.tag)}',${i})">Rename</button>
+                <select class="jira-input" style="width:8rem;font-size:0.68rem;flex-shrink:0" id="tag-merge-target-${i}">
+                  <option value="">Merge into…</option>
+                  ${list.filter(o => o.tag !== t.tag).map(o => `<option value="${escAttr(o.tag)}">${escHtml(o.tag)}</option>`).join('')}
+                </select>
+                <button class="btn btn-ghost" style="padding:3px 8px;font-size:0.68rem;flex-shrink:0" onclick="contactsMergeTag('${escAttr(t.tag)}',${i})">Merge</button>
+                <button class="btn btn-ghost" style="padding:3px 6px;font-size:0.68rem;flex-shrink:0;color:var(--red)" title="Delete this tag from every contact"
+                        onclick="contactsDeleteTag('${escAttr(t.tag)}',${t.count})">${svgIcon('trash', 12)}</button>
+              </div>`).join('')}
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="contactsCloseModal()">Close</button>
           </div>
         </div>
       </div>`;

@@ -269,6 +269,33 @@ test('BM26091401: POST /api/circle/regenerate-dia requires auth, same as every o
   } finally { server.close(); vault.server.close(); circle.server.close(); cleanup(); }
 });
 
+test('BM26091204 step 4: /api/circle/tags/* routes pass straight through to circle.tags.*, and require auth', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const circle = await startFakeEngine({ name: 'circle',
+    manifestCapabilities: [
+      { name: 'circle.tags.list', method: 'GET', path: '/tags' },
+      { name: 'circle.tags.rename', method: 'POST', path: '/tags/rename' },
+    ],
+    routes: {
+      'GET /tags': () => [200, { tags: [{ tag: 'Viva', count: 2 }] }],
+      'POST /tags/rename': (body) => [200, { success: true, touched: body.from === 'Viva' ? 2 : 0 }],
+    },
+  });
+  const { server, port, cleanup } = await startHub({ vault, circle });
+  const auth = { Authorization: 'Bearer test-static-token', 'Content-Type': 'application/json' };
+  try {
+    const list = await fetch(`http://127.0.0.1:${port}/api/circle/tags`, { headers: auth });
+    assert.deepEqual((await list.json()).tags, [{ tag: 'Viva', count: 2 }]);
+
+    const rename = await fetch(`http://127.0.0.1:${port}/api/circle/tags/rename`, { method: 'POST', headers: auth,
+      body: JSON.stringify({ from: 'Viva', to: 'Viva Team' }) });
+    assert.equal((await rename.json()).touched, 2);
+
+    const noAuth = await fetch(`http://127.0.0.1:${port}/api/circle/tags`);
+    assert.equal(noAuth.status, 404);
+  } finally { server.close(); vault.server.close(); circle.server.close(); cleanup(); }
+});
+
 test('an /api/* route marked legacy returns 501 since the legacy monolith is retired', async () => {
   const vault = await startFakeEngine({ name: 'vault' });
   const { server, port, cleanup } = await startHub({ vault });
