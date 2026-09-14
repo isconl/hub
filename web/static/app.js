@@ -15119,17 +15119,32 @@ function chatImportUpload(input) {
   reader.readAsDataURL(f);
 }
 
+// BM26082601-era callout, resurrected under FI26091403 -- the original
+// invented its own fixed per-ring cadence (family 7d/professional 14d/
+// social 21d) instead of reading the person's real, configured
+// CADENCE_DAYS. That disagreed with the due badge everywhere else on this
+// page (renderCircle's "due now", the Contacts table's contact-due-badge,
+// both driven by the server-computed `p.dueIn`) -- a contact could read
+// "Cadence Healthy" here while showing overdue two cards down. Rebuilt to
+// read the same `p.dueIn`/`p.lastTouch` the rest of the page already
+// trusts, so this card can never disagree with them.
 function personInsightCallout(p) {
   const lastTouch = (p.recent || [])[0];
-  const daysSince = lastTouch?.DATE ? Math.round((new Date() - new Date(lastTouch.DATE)) / 86400000) : null;
-  const cadence = p.CIRCLE === 'family' ? 7 : p.CIRCLE === 'professional' ? 14 : 21;
-  const isDue = daysSince === null || daysSince >= cadence;
+  const daysSince = p.lastTouch ? Math.round((Date.now() - Date.parse(p.lastTouch)) / 86400000) : null;
+  const hasCadence = p.dueIn != null;
+  const isDue = hasCadence ? p.dueIn <= 0 : daysSince === null;
+  const days = (n) => `${n} day${n === 1 ? '' : 's'}`;
+  const channelOf = (t) => t?.CHANNEL && t.CHANNEL !== '-' ? ` (${t.CHANNEL})` : '';
 
-  let advice = `Active relationship in the ${p.CIRCLE} ring.`;
-  if (isDue) {
-    advice = `Touch window active: ${daysSince !== null ? `last contact ${daysSince} days ago (${lastTouch.CHANNEL || 'interaction'})` : 'no recent interactions logged'}. Reach out to maintain momentum.`;
+  let advice;
+  if (!hasCadence) {
+    advice = daysSince === null
+      ? 'No cadence configured, and no touches logged yet.'
+      : `No cadence configured. Last contact ${days(daysSince)} ago${channelOf(lastTouch)}.`;
+  } else if (isDue) {
+    advice = `Touch window active: ${daysSince !== null ? `last contact ${days(daysSince)} ago${channelOf(lastTouch)}` : 'no touches logged yet'}. Reach out to maintain momentum.`;
   } else {
-    advice = `Contact healthy: last touch was ${daysSince} days ago via ${lastTouch.CHANNEL || 'interaction'}. Next cadence check in ${cadence - daysSince} days.`;
+    advice = `Contact healthy: last touch was ${days(daysSince)} ago${channelOf(lastTouch)}. Next cadence check in ${days(p.dueIn)}.`;
   }
 
   if (p.NOTE && p.NOTE !== '-') {
@@ -15142,7 +15157,7 @@ function personInsightCallout(p) {
         Relationship Intelligence · ${escHtml(p.CIRCLE)} Ring
       </div>
       <div style="font-size:0.88rem;font-weight:650;color:var(--text);margin-bottom:0.25rem">
-        ${escHtml(p.NAME)} ${isDue ? '· Touch Suggested' : '· Cadence Healthy'}
+        ${escHtml(p.NAME)} ${isDue ? '· Touch Suggested' : (hasCadence ? '· Cadence Healthy' : '· No Cadence Set')}
       </div>
       <div style="font-size:0.78rem;color:var(--text-3);line-height:1.45">
         ${escHtml(advice)}
@@ -15259,6 +15274,8 @@ function renderCirclePerson() {
         ${p.FOLDER && p.FOLDER !== '-' ? `<button class="btn btn-ghost crumb-action" title="Their files, in the File Manager"
           onclick="circleOpenFolder('${escHtml(p.FOLDER)}','${escHtml(p.NAME)}')">Open folder</button>` : ''}</div>
     </div>
+
+    ${personInsightCallout(p)}
 
     <div class="card">
       <div class="card-header"><span class="card-title">On record</span>
