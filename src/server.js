@@ -654,6 +654,31 @@ async function main() {
         return sendJson(res, r.success ? 200 : 404, r);
       }
 
+      // BL26091107: a real server-rendered PDF, not a print-dialogue popup.
+      // The browser already built the standalone lesson HTML (same string
+      // learnViewArtifact() would show) -- this just prints it headlessly
+      // and streams a genuine PDF back as a direct download.
+      if (pathname === '/api/learning/pdf' && req.method === 'POST') {
+        const bodyText = await readBody(req);
+        let body;
+        try { body = JSON.parse(bodyText || '{}'); } catch { return sendJson(res, 400, { error: 'Bad JSON body' }); }
+        const { html, fileName } = body || {};
+        if (!html || typeof html !== 'string') return sendJson(res, 400, { error: 'html is required' });
+        try {
+          const pdf = await require('../lib/pdf').renderHtmlToPdf(html);
+          const safeName = String(fileName || 'lesson').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 120) || 'lesson';
+          res.writeHead(200, {
+            'Content-Type': 'application/pdf',
+            'Content-Length': pdf.length,
+            'Content-Disposition': `attachment; filename="${safeName}.pdf"`,
+          });
+          return res.end(pdf);
+        } catch (e) {
+          auditLog.log('pdf_render_failed', { error: String(e.message || e) });
+          return sendJson(res, 502, { error: 'PDF rendering failed', detail: String(e.message || e) });
+        }
+      }
+
       // Profile photo binary passthrough -- see api-compat.js's note on why
       // this one path bypasses the generic JSON router below.
       if (pathname === '/api/profile/photo' && req.method === 'GET') {

@@ -17693,7 +17693,7 @@ function renderLearning() {
           <button class="lesson-gear-btn" onclick="learnShowModuleModal('${escAttr(course.ID)}','${escAttr(lesson.file)}')">${svgIcon('settings', 12)} Edit Metadata</button>
         </div>
         <div class="lesson-toolbar">
-          <button class="lesson-tool-btn" onclick="learnDownloadPdf()" title="Save this lesson as a PDF (print dialogue)">${LESSON_ICONS.pdf}<span>PDF</span></button>
+          <button class="lesson-tool-btn" onclick="learnDownloadPdf(this)" title="Download this lesson as a PDF">${LESSON_ICONS.pdf}<span>PDF</span></button>
           <button class="lesson-tool-btn" id="lesson-listen-btn" onclick="learnToggleListen()" title="Read this lesson aloud">${LESSON_ICONS.listen}<span>Listen</span></button>
           <button class="lesson-tool-btn" onclick="learnShare()" title="Share a link to this lesson">${LESSON_ICONS.share}<span>Share</span></button>
           <button class="lesson-tool-btn" onclick="learnViewArtifact()" title="Open a clean, standalone reading page in a new tab">${LESSON_ICONS.artifact}<span>View as artifact</span></button>
@@ -18866,7 +18866,7 @@ async function learnToggleListen() {
  *  and "view as artifact" (which just opens it) - the reading register, the
  *  six callout colours and KaTeX-rendered maths all travel with it, so the
  *  page still looks like the lesson once it has left the console. */
-function learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint, fileName }) {
+function learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint, fileName, autoPrint = true }) {
   const bodyCss = document.querySelector('link[href*="style.css"]')?.getAttribute('href') || '';
   // The <title> tag is what Chrome's print/"Save as PDF" dialog and a
   // saved-HTML download both suggest as the default filename - point it at
@@ -18892,7 +18892,7 @@ function learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint, fileName 
   .standalone-head{max-width:720px;margin:0 auto 1.6rem;padding-bottom:1rem;border-bottom:1px solid var(--border);}
   .standalone-eyebrow{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);margin-bottom:0.3rem;}
   .standalone-head h1{font-size:1.5rem;margin:0;font-family:Charter,Georgia,serif;}
-  ${forPrint ? '@page{margin:1.6cm;} .standalone-foot{display:none;}' : ''}
+  ${forPrint ? '@page{size:A4;margin:1.6cm;} .standalone-foot{display:none;}' : ''}
   .standalone-foot{max-width:720px;margin:2.5rem auto 0;font-size:0.7rem;color:var(--text-3);border-top:1px solid var(--border);padding-top:1rem;}
 </style>
 ${bodyCss ? `<link rel="stylesheet" href="${escAttr(new URL(bodyCss, location.href).href)}"/>` : ''}
@@ -18900,17 +18900,45 @@ ${bodyCss ? `<link rel="stylesheet" href="${escAttr(new URL(bodyCss, location.hr
 <div class="standalone-head"><div class="standalone-eyebrow">${escHtml(courseTitle)}</div><h1>${escHtml(title)}</h1></div>
 <div class="lesson-body">${bodyHtml}</div>
 <div class="standalone-foot">Exported from the Learning module · ${escHtml(new Date().toLocaleDateString())}</div>
-${forPrint ? '<script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script>' : ''}
+${(forPrint && autoPrint) ? '<script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script>' : ''}
 </body></html>`;
 }
 
-function learnDownloadPdf() {
+// Real server-side render (BL26091107): the browser builds the exact same
+// standalone HTML learnViewArtifact() would show, then hub renders it with
+// headless Chromium and streams back a genuine PDF -- a direct download,
+// no popup window, no OS print dialog. autoPrint:false so the HTML posted
+// to the server never tries to call window.print() inside Puppeteer's page.
+async function learnDownloadPdf(btn) {
   const { title, courseTitle, fileName } = learnCurrentLessonMeta();
   const bodyHtml = refChips(learnMd(learnOpen.content));
-  const w = window.open('', '_blank');
-  if (!w) { showToast('Allow pop-ups to print this lesson', 'error'); return; }
-  w.document.write(learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint: true, fileName }));
-  w.document.close();
+  const html = learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint: true, fileName, autoPrint: false });
+  const originalHtml = btn && btn.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = `${LESSON_ICONS.pdf}<span>Rendering…</span>`; }
+  try {
+    const res = await fetch('/api/learning/pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html, fileName: fileName || 'lesson' }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || `PDF export failed (${res.status})`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${fileName || 'lesson'}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    showToast(e.message || 'PDF export failed', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+  }
 }
 
 function learnViewArtifact() {

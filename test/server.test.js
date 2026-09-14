@@ -477,3 +477,53 @@ test('GET /api/spaces degrades to empty rather than throwing when vault is unrea
     assert.deepEqual(await res.json(), { tree: [], spaces: [] });
   } finally { server.close(); vault.server.close(); cleanup(); }
 });
+
+// -- POST /api/learning/pdf (BL26091107) ----------------------------------
+// Real Puppeteer, real headless Chromium -- proves the whole pipeline
+// (route -> lib/pdf.js -> a genuine PDF byte stream), not just that the
+// route exists. Slower than the rest of this suite's mocked-engine tests
+// (a real browser launch), which is expected and acceptable for the one
+// route that does real, heavy work. lib/pdf.js keeps ONE shared browser
+// process alive across requests (real server behaviour, not a test bug) --
+// without an explicit shutdown() the launched Chromium process keeps
+// `node --test`'s event loop alive forever after the last assertion runs.
+test.after(async () => { await require('../lib/pdf').shutdown(); });
+
+test('POST /api/learning/pdf renders real HTML into a real, non-empty PDF', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  const auth = { Authorization: 'Bearer test-static-token', 'Content-Type': 'application/json' };
+  try {
+    const html = '<!doctype html><html><body><h1>Test lesson</h1><p>Body text.</p></body></html>';
+    const res = await fetch(`http://127.0.0.1:${port}/api/learning/pdf`, {
+      method: 'POST', headers: auth, body: JSON.stringify({ html, fileName: 'My Lesson!' }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'application/pdf');
+    assert.match(res.headers.get('content-disposition'), /attachment; filename="My_Lesson_\.pdf"/);
+    const buf = Buffer.from(await res.arrayBuffer());
+    assert.ok(buf.length > 1000, `expected a real PDF, got ${buf.length} bytes`);
+    assert.equal(buf.slice(0, 5).toString('latin1'), '%PDF-');
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('POST /api/learning/pdf requires auth, same as every other non-public route', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/learning/pdf`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: '<p>x</p>' }),
+    });
+    assert.equal(res.status, 404);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
+
+test('POST /api/learning/pdf rejects a missing html body cleanly', async () => {
+  const vault = await startFakeEngine({ name: 'vault' });
+  const { server, port, cleanup } = await startHub({ vault });
+  const auth = { Authorization: 'Bearer test-static-token', 'Content-Type': 'application/json' };
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/learning/pdf`, { method: 'POST', headers: auth, body: JSON.stringify({}) });
+    assert.equal(res.status, 400);
+  } finally { server.close(); vault.server.close(); cleanup(); }
+});
