@@ -16766,12 +16766,13 @@ function contactsExport(format = 'csv') {
   if (format === 'csv' || format === 'tsv') {
     const delim = format === 'tsv' ? '\t' : ',';
     mimeType = format === 'tsv' ? 'text/tab-separated-values;charset=utf-8;' : 'text/csv;charset=utf-8;';
-    const headers = ['ID', 'NAME', 'CIRCLE', 'GROUP', 'ROLE', 'CADENCE_DAYS', 'CHANNEL', 'LAST_TOUCH', 'DUE_IN_DAYS', 'NOTES'];
+    const headers = ['ID', 'NAME', 'CIRCLE', 'GROUP', 'TAGS', 'ROLE', 'CADENCE_DAYS', 'CHANNEL', 'LAST_TOUCH', 'DUE_IN_DAYS', 'NOTES'];
     const rows = people.map(p => [
       p.ID || '',
       `"${(p.NAME || '').replace(/"/g, '""')}"`,
       p.CIRCLE || '',
       `"${(p.GROUP || '').replace(/"/g, '""')}"`,
+      `"${(p.TAGS && p.TAGS !== '-' ? p.TAGS : '').replace(/"/g, '""')}"`,
       `"${(p.ROLE || '').replace(/"/g, '""')}"`,
       p.CADENCE_DAYS || '',
       p.CHANNEL || '',
@@ -16787,6 +16788,7 @@ function contactsExport(format = 'csv') {
       name: p.NAME,
       circle: p.CIRCLE,
       group: p.GROUP,
+      tags: p.TAGS && p.TAGS !== '-' ? p.TAGS.split(',').map(t => t.trim()).filter(Boolean) : [],
       role: p.ROLE,
       cadence_days: p.CADENCE_DAYS,
       channel: p.CHANNEL,
@@ -16809,7 +16811,7 @@ function contactsExport(format = 'csv') {
         p.ROLE && p.ROLE !== '-' ? `TITLE:${p.ROLE}` : '',
         p.GROUP && p.GROUP !== '-' ? `ORG:${p.GROUP}` : '',
         p.REMEMBER || p.NOTES ? `NOTE:${(p.REMEMBER || p.NOTES).replace(/\n/g, ' ')}` : '',
-        `CATEGORIES:${(p.CIRCLE || 'social').toUpperCase()}`,
+        `CATEGORIES:${[(p.CIRCLE || 'social').toUpperCase(), ...(p.TAGS && p.TAGS !== '-' ? p.TAGS.split(',').map(t => t.trim()).filter(Boolean) : [])].join(',')}`,
         'END:VCARD'
       ].filter(Boolean);
       return lines.join('\n');
