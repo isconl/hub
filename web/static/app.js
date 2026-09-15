@@ -4227,7 +4227,7 @@ const MENU_COLOR_GROUPS = [
   { key: 'command',   label: 'Command',    hint: 'Today, Kanban, Calendar' },
   { key: 'flow',      label: 'Channels',   hint: 'Inbox, GitHub, Notifications' },
   { key: 'projects',  label: 'Projects',   hint: 'Ventures, deployments' },
-  { key: 'life',      label: 'Personal',   hint: 'Rhythm, Grove, Ideas' },
+  { key: 'life',      label: 'Personal',   hint: 'Rhythm, Study, Ideas' },
   { key: 'circle',    label: 'Circle',     hint: 'People, Contacts' },
   { key: 'system',    label: 'Systems',    hint: 'Files, Audit' },
   { key: 'spaces',    label: 'Spaces',     hint: 'Sidebar menu' },
@@ -9640,7 +9640,7 @@ const toneOf = (b) => BLOCK_TONE[b?.axis] || 'var(--text-3)';
 // (used everywhere a block's color is read) picks it up automatically.
 const BLOCK_COLOR_GROUPS = [
   { key: 'protected',  cssVar: 'wx-protected', label: 'Protected',  hint: '05:00-06:00 · no phone' },
-  { key: 'learning',   cssVar: 'wx-learn',     label: 'Grove',   hint: 'Before the engagement day' },
+  { key: 'learning',   cssVar: 'wx-learn',     label: 'Study',   hint: 'Before the engagement day' },
   { key: 'flex',       cssVar: 'wx-flex',      label: 'Flex',       hint: 'Commute, unallocated' },
   { key: 'innovator',  cssVar: 'wx-inn',       label: 'Innovator',  hint: 'Systems built and engineered' },
   { key: 'visionary',  cssVar: 'wx-lead',      label: 'Visionary',  hint: 'People, decisions, the record' },
@@ -11809,7 +11809,7 @@ function pushHistory(viewName, params, replace) {
 const VIEW_LABELS = {
   today:'Hub', jira:'Kanban', calendar:'Calendar', inbox:'Inbox', notifications:'Alerts',
   github:'GitHub', files:'File Manager', tasks:'Tasks', spaces:'Spaces',
-  journal:'Journal', learning:'Grove', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
+  journal:'Journal', learning:'Study', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
   decisions:'Decision Log', risks:'Risk Register', social:'Buffer',
   integrations:'Integrations Hub', audit:'Audit', backlog:'Backlog', settings:'Settings',
   task:'Task', 'whatsapp-guide':'WhatsApp', writer:'QPress', ops:'Ops',
@@ -17661,7 +17661,7 @@ function ideasInsight() {
 }
 
 /**
- * Grove's "Carry on from where you left" callout (BL26090401) - reuses
+ * Study's "Carry on from where you left" callout (BL26090401) - reuses
  * the same LEARN.resume data the Level 1A resume banner and Level 2's
  * "Continue exactly where you left off" button already read, surfaced
  * through the same renderSpaceInsight() template every other space uses.
@@ -17672,7 +17672,7 @@ function learningInsight() {
   const lesson = course && (course.lessons || []).find(l => l.file === resume.LESSON);
   if (!course || !lesson) {
     return { title: 'Nothing in progress', category: 'Continue learning',
-      text: 'Open a course from Grove to start tracking progress here.', tone: 'cyan' };
+      text: 'Open a course from Study to start tracking progress here.', tone: 'cyan' };
   }
   const pct = parseInt(resume.SCROLL_PCT, 10) || 0;
   return { title: truncateWords(lesson.title, 10), category: 'Continue learning',
@@ -17805,7 +17805,7 @@ function renderRhythm() {
   const filters = [
     { id: 'all', label: 'All Activity' },
     { id: 'github', label: 'GitHub' },
-    { id: 'learning', label: 'Grove' },
+    { id: 'learning', label: 'Study' },
     { id: 'journal', label: 'Journal' },
     { id: 'tasks', label: 'Tasks' },
     { id: 'custom', label: 'Custom' }
@@ -18127,7 +18127,7 @@ function renderLearning() {
       <div class="view-head lesson-view-head">
         <h1>${escHtml(lesson.title || 'Lesson')}</h1>
         <div class="view-head-meta crumbs">
-          <a href="#" class="crumb-link" onclick="learnBack();learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Grove</a>
+          <a href="#" class="crumb-link" onclick="learnBack();learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Study</a>
           ${group ? `<span class="crumb-sep">/</span><a href="#" class="crumb-link" onclick="learnOpenGroup('${escAttr(group.id)}');return false">${escHtml(group.label)}</a>` : ''}
           <span class="crumb-sep">/</span>
           <a href="#" class="crumb-link" onclick="learnBack();return false">${escHtml(course.TITLE || 'Course')}</a>
@@ -18211,7 +18211,7 @@ function renderLearning() {
           <div>
             <h1>${escHtml(c.TITLE)}</h1>
             <div class="view-head-meta crumbs">
-              <a href="#" class="crumb-link" onclick="learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Grove</a>
+              <a href="#" class="crumb-link" onclick="learnCourseOpen=null;learnGroupOpen=null;repaintView('learning');return false">Study</a>
               ${group ? `<span class="crumb-sep">/</span><a href="#" class="crumb-link" onclick="learnOpenGroup('${escAttr(group.id)}');return false">${escHtml(group.label)}</a>` : ''}
               <span class="crumb-sep">/</span><span class="crumb-here">${done}/${lessons.length} lessons done · updated ${fmtWhen(c.UPDATED_AT, { rel: true })}</span>
             </div>
@@ -18268,7 +18268,7 @@ function renderLearning() {
           <div>
             <h1 style="display:flex;align-items:center;gap:0.5rem">${escHtml(group.label)}</h1>
             <div class="view-head-meta crumbs">
-              <a href="#" class="crumb-link" onclick="learnCloseGroup();return false">Grove</a>
+              <a href="#" class="crumb-link" onclick="learnCloseGroup();return false">Study</a>
               <span class="crumb-sep">/</span><span class="crumb-here">Track Overview</span>
             </div>
           </div>
@@ -18303,7 +18303,7 @@ function renderLearning() {
 
   return `
     <div class="view-head">
-      <h1>Grove</h1>
+      <h1>Study</h1>
       <div class="view-head-meta" style="display:flex;justify-content:space-between;align-items:center;width:100%">
         <span>private classroom … classified tracks, living courses, and verifiable competency</span>
         <button class="btn btn-ghost" onclick="navigate('today')" style="font-size:0.75rem">Go to Dashboard ↗</button>

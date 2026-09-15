@@ -325,11 +325,11 @@ async function main() {
       const courseId = decodeURIComponent(segs[0] || '');
       const slug = decodeURIComponent(segs[1] || '');
       if (!courseId || !slug) return sendJson(res, 400, { error: 'course and slug required' });
-      const coursesR = await router.route('learning.courses', {});
+      const coursesR = await router.route('study.courses', {});
       const course = (coursesR?.data?.courses || []).find(c => c.ID === courseId);
       const lesson = course && (course.lessons || []).find(l => publicLessonSlug(l.file) === slug);
       if (!lesson) return sendJson(res, 404, { ok: false, error: 'Not found' });
-      const lessonR = await router.route('learning.lesson', { query: { course: courseId, file: lesson.file } });
+      const lessonR = await router.route('study.lesson', { query: { course: courseId, file: lesson.file } });
       if (!lessonR?.data?.content) return sendJson(res, 404, { ok: false, error: 'Not found' });
       return sendJson(res, 200, {
         ok: true, courseId, courseTitle: course.TITLE || courseId,
