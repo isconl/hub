@@ -18487,8 +18487,8 @@ function chartLabelTspans(label, x, yBase, maxChars) {
 }
 
 /** Dependency-free inline SVG so a module can show a real comparison rather
- *  than a table pretending to be one - no chart library, themed entirely off
- *  the lesson's own six callout colours so it never clashes with them. */
+ *  than a table pretending to be one - no chart library, themed off a subset
+ *  of the lesson's own callout colours so it never clashes with them. */
 function renderChartSVG(spec) {
   const { type, title, rows } = spec;
   if (!rows.length) return '<div class="reader-note">Chart has no readable data rows.</div>';
@@ -18917,11 +18917,13 @@ const VAULT_DRIVE_ROOT = 'Sconl/Core/Apex/Vault/vault-documents/isconl-vault';
 
 // ── LEARNING CALLOUT COLOUR THEME ───────────────────────────────────────────
 // A pure client-side preference (no server round-trip, nothing to sync) - it
-// only ever changes how the six callout types are coloured, never what they
+// only ever changes how the seven callout types are coloured, never what they
 // say, so localStorage is the right amount of persistence for it.
+// FL26091208: was "six" throughout -- stale since RL26083102 (3 Sep 2026)
+// formalised the seventh, Fact.
 const LEARN_THEME_KEY = 'isconl.learnCalloutTheme';
 const LEARN_THEMES = [
-  { id: 'default', label: 'Default', hint: 'Six callouts, each its own hue - the house standard, tuned so none of them reads as "success green"' },
+  { id: 'default', label: 'Default', hint: 'Seven callouts, each its own hue - the house standard, tuned so none of them reads as "success green"' },
   { id: 'vivid', label: 'Vivid', hint: 'Higher saturation - easier to tell apart on a dim screen or at a glance' },
   { id: 'muted', label: 'Muted', hint: 'Colour pulled toward the text tone - a callout stands out by its border and label, not by hue' },
 ];
@@ -18939,14 +18941,14 @@ function learnSetTheme(theme) {
 function renderLearnThemeSection() {
   const current = learnGetTheme();
   const swatches = {
-    default: ['#6fc0af', '#d9a259', '#8aa9d9', '#a892d9', '#d98a4f', '#6ea6d9'],
-    vivid:   ['#3ddbb8', '#f0a83e', '#6f9ee6', '#b48ef2', '#f2884a', '#4fb8e0'],
-    muted:   ['#8a9a95', '#a99a83', '#8b93a3', '#9a8fa8', '#a68d78', '#82949e'],
+    default: ['#6fc0af', '#d9a259', '#8aa9d9', '#a892d9', '#d98a4f', '#6ea6d9', '#d9c15c'],
+    vivid:   ['#3ddbb8', '#f0a83e', '#6f9ee6', '#b48ef2', '#f2884a', '#4fb8e0', '#f0d452'],
+    muted:   ['#8a9a95', '#a99a83', '#8b93a3', '#9a8fa8', '#a68d78', '#82949e', '#a39b7a'],
   };
   return `
     <div class="settings-section">
       <div class="settings-section-title">Learning · Callout colours</div>
-      <p class="settings-hint">Objective, watch-for, jargon, in-a-book, book quote and research each keep their
+      <p class="settings-hint">Objective, watch-for, jargon, in-a-book, book quote, research and fact each keep their
         own colour across every course. Pick the palette here; it applies immediately, everywhere, with no reload.</p>
       <div class="learn-theme-row">
         ${LEARN_THEMES.map(t => `
@@ -19087,7 +19089,7 @@ async function learnToggleListen() {
 
 /** One self-contained page, used by both the PDF window (which prints it)
  *  and "view as artifact" (which just opens it) - the reading register, the
- *  six callout colours and KaTeX-rendered maths all travel with it, so the
+ *  seven callout colours and KaTeX-rendered maths all travel with it, so the
  *  page still looks like the lesson once it has left the console. */
 function learnStandaloneHtml({ title, courseTitle, bodyHtml, forPrint, fileName, autoPrint = true }) {
   const bodyCss = document.querySelector('link[href*="style.css"]')?.getAttribute('href') || '';
