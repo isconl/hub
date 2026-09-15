@@ -14708,6 +14708,7 @@ function renderTeams() {
       <div class="tm-tabs">
         <button class="tm-tab${teamsTab === 'board' ? ' on' : ''}" onclick="teamsGo('board')">Board</button>
         <button class="tm-tab${teamsTab === 'people' ? ' on' : ''}" onclick="teamsGo('people')">People</button>
+        <button class="tm-tab${teamsTab === 'architect' ? ' on' : ''}" onclick="teamsGo('architect')">Architect</button>
       </div>
     </div>
     <div class="tm-strip">
@@ -14720,7 +14721,7 @@ function renderTeams() {
       <div class="tm-stat${c.slipped ? ' warn' : ''}"><b>${c.slipped}</b>slipped</div>
     </div>`;
 
-  const body = teamsTab === 'people' ? renderTeamsPeople(t) : renderTeamsBoard(t);
+  const body = teamsTab === 'people' ? renderTeamsPeople(t) : teamsTab === 'architect' ? renderTeamsArchitect(t) : renderTeamsBoard(t);
 
   return head + (window.__tmNew ? newTeamCard : '') + body;
 }
@@ -14903,6 +14904,43 @@ function renderTeamsPeople(t) {
           <button class="btn btn-primary" onclick="teamsSaveSettings()">Save</button>
           <button class="btn btn-ghost" onclick="teamsArchive()" title="Leaves the switcher; nothing is deleted">Archive team</button>
         </div>
+      </div>
+    </div>`;
+}
+
+// BM26091503: the Architect diagnostic view -- per-force quiet/corrupted/
+// unstaffed/healthy status, computed server-side by circle's
+// architectDiagnosis() from real teams/work.tsv history, never
+// self-reported. This view only renders what t.architect already
+// contains; see circle/lib/teams.js and the canon doc (§3) for the
+// quiet/corrupted definitions themselves.
+const TEAMS_ARCHITECT_LABEL = {
+  healthy: 'Healthy', quiet: 'Quiet', corrupted: 'Corrupted',
+  'quiet+corrupted': 'Quiet + Corrupted', unstaffed: 'Unstaffed',
+};
+
+function renderTeamsArchitect(t) {
+  const d = t.architect || {};
+  const architects = (t.forces && t.forces.architects) || [];
+  return `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Architect</span>
+        <span class="card-meta">a position over the team, not a seventh force -- diagnosed from real work history, never self-reported</span></div>
+      ${architects.length ? `<div class="tm-architect-row">Holding the Architect position: ${architects.map(a => escHtml(a.name)).join(', ')}</div>`
+        : `<div class="tm-empty">No one on this team is flagged Architect yet -- set it on a member in the People tab.</div>`}
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Force diagnosis, this cycle</span>
+        <span class="card-meta">quiet = nothing signed this cycle · corrupted = something is blocked right now · unstaffed = no one holds it</span></div>
+      <div class="tm-force-grid">
+        ${TEAMS_FORCES.map(f => {
+          const fd = d[f] || { status: 'unstaffed', holders: [] };
+          return `<div class="tm-force-cell ${fd.status === 'healthy' ? 'covered' : fd.status === 'unstaffed' ? 'missing' : 'doubled'}">
+            <div class="tm-force-cell-name">${escHtml(teamsForceLabel(f))}</div>
+            <div class="tm-force-cell-state">${escHtml(TEAMS_ARCHITECT_LABEL[fd.status] || fd.status)}</div>
+            ${fd.holders.length ? `<div class="tm-force-cell-state">${fd.holders.map(escHtml).join(', ')}</div>` : ''}
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
 }
