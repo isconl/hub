@@ -11368,6 +11368,16 @@ function opsRenderTile(s, deployByService) {
   const dep = deployByService.get(s.service) || {};
   const tier = opsTileTier(s, dep);
   const broken = !s.running || s.exists === false;
+  // BI26091501 follow-up: observable-by-default, controllable-by-opt-in --
+  // a service with no `ops.control: "true"` compose label is read-only,
+  // so its write buttons never render (not just disabled) rather than
+  // inviting a click that the server will refuse anyway.
+  const writeButtons = s.controllable ? `
+        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','restart')" title="Restart">Restart</button>
+        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','stop')" title="Stop">Stop</button>
+        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','start')" title="Start">Start</button>
+        <button class="btn btn-ghost" style="color:var(--red)" onclick="opsServiceAction('${s.service}','destroy')" title="Destroy">Destroy</button>` :
+    `<span class="audit-when" title="This service's group has not opted into control">Read-only</span>`;
   return `
     <div class="ops-tile ${tier} ${broken ? 'broken' : ''}">
       <div class="ops-tile-top">
@@ -11377,11 +11387,8 @@ function opsRenderTile(s, deployByService) {
       </div>
       ${dep.commit ? `<div class="audit-detail" style="white-space:normal;overflow:visible;text-overflow:clip">${escHtml(dep.commit)} (${escHtml(dep.branch || '?')})${dep.status && dep.status !== 'live' ? ` · ${escHtml(dep.status)}` : ''}</div>` : ''}
       <div class="ops-tile-actions">
-        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','restart')" title="Restart">Restart</button>
-        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','stop')" title="Stop">Stop</button>
-        <button class="btn btn-ghost" onclick="opsServiceAction('${s.service}','start')" title="Start">Start</button>
+        ${writeButtons}
         <button class="btn btn-ghost" onclick="opsShowLogs('${s.service}')" title="Logs">Logs</button>
-        <button class="btn btn-ghost" style="color:var(--red)" onclick="opsServiceAction('${s.service}','destroy')" title="Destroy">Destroy</button>
       </div>
     </div>`;
 }
