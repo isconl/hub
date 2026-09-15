@@ -11419,7 +11419,7 @@ function renderOps() {
 
   return `
     <div class="view-head">
-      <h1>Opsec</h1>
+      <h1>Ops</h1>
       <div class="view-head-meta">the fleet + the OCI VM, live — restart/stop/start/destroy a service, tail its logs, see what's actually deployed</div>
     </div>
     <div class="card">
@@ -11789,7 +11789,7 @@ const VIEW_LABELS = {
   journal:'Journal', learning:'Academia', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
   decisions:'Decision Log', risks:'Risk Register', social:'Buffer',
   integrations:'Integrations Hub', audit:'Audit', settings:'Settings',
-  task:'Task', 'whatsapp-guide':'WhatsApp', writer:'QPress', ops:'Opsec',
+  task:'Task', 'whatsapp-guide':'WhatsApp', writer:'QPress', ops:'Ops',
 };
 let NAV_TRAIL = [];
 const TRAIL_MAX = 8;
