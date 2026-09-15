@@ -17424,7 +17424,7 @@ function renderSpaceInsight(space) {
   if (!ins) return '';
   const accentColor = ins.tone === 'gold' ? 'var(--amber)' : ins.tone === 'cyan' ? 'var(--cyan)' : ins.tone === 'violet' ? 'var(--violet)' : 'var(--green)';
   return `
-    <div class="card learn-resume" style="border-left:3px solid ${accentColor};margin-bottom:1rem">
+    <div class="card learn-resume" style="border-left:3px solid ${accentColor};background:color-mix(in srgb, ${accentColor} 8%, var(--panel));margin-bottom:1rem">
       <div style="font-size:0.62rem;font-weight:650;color:${accentColor};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.25rem">
         ${escHtml(ins.category || 'Executive Insight')}
       </div>

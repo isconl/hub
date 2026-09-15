@@ -5580,7 +5580,11 @@ textarea.draft-message:focus, textarea.ro-body:focus {
    The classroom remembers the paragraph. The resume banner is one calm line,
    not a billboard; the notes panel is margin space, styled like paper rather
    than a form. */
-.learn-resume { cursor:pointer; border-left:2px solid var(--green); }
+/* BG26091405 (15 Sep 2026): flattened per Sconl -- no rounded corners, no
+   external border, no shadow (a shadow reads as an edge too); keep only
+   the left accent bar plus a subtle tinted background (set inline by
+   renderSpaceInsight(), app.js, since it needs the per-space accentColor). */
+.learn-resume { cursor:pointer; border:none; border-radius:0; box-shadow:none; border-left:2px solid var(--green); }
 .learn-resume:hover { background:var(--bg-raised); }
 .learn-resume-label { font-size:0.64rem; text-transform:uppercase; letter-spacing:0.07em;
   color:var(--green); margin-bottom:0.25rem; }
