@@ -25,6 +25,7 @@ const manifest = require('../lib/manifest');
 const apk = require('../lib/apk');
 const backlog = require('../lib/backlog');
 const { createChatThreadStore } = require('../lib/chat-threads');
+const { buildChatTools, runChatTurn, executeConfirmedToolCall } = require('../lib/chat-tools');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
 const BIND = process.env.HUB_BIND || '127.0.0.1';
@@ -611,10 +612,39 @@ async function main() {
       if (pathname === '/api/chat' && req.method === 'POST') {
         if (!engines.spark) return sendJson(res, 502, { error: 'spark is not configured on this hub' });
         const p = JSON.parse(await readBody(req) || '{}');
-        const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: [{ role: 'user', content: p.message || '' }] } });
-        if (r.status !== 200) return sendJson(res, r.status || 502, { error: (r.data && r.data.error) || 'spark did not answer' });
-        try { await chatThreads.appendTurn(p.message || '', r.data.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
-        return sendJson(res, 200, { response: r.data.response, captured: [] });
+
+        // BI26091505: a confirmed Tier 2 write, sent back exactly as this
+        // route handed it to the client in a prior needsConfirmation
+        // response -- executed directly, no second model round trip,
+        // mirroring spark's own /act `confirm: true` re-call.
+        if (p.confirmToolCall) {
+          const routeFn = (name, args) => router.route(name, { params: args.params, query: args.query, body: args.body });
+          const result = await executeConfirmedToolCall(p.confirmToolCall, routeFn);
+          auditLog.log('chat_tool_confirmed', { name: p.confirmToolCall.name, ok: result.ok !== false });
+          return sendJson(res, 200, { response: null, toolResult: result, captured: [] });
+        }
+
+        const { capabilities } = await registry.list();
+        const tools = buildChatTools(capabilities);
+        const chatFn = async (history, toolDefs) => {
+          const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: history, tools: toolDefs } });
+          if (r.status !== 200) throw new Error((r.data && r.data.error) || 'spark did not answer');
+          return { content: r.data.response, toolCalls: r.data.toolCalls || [] };
+        };
+        const routeFn = (name, args) => router.route(name, { params: args.params, query: args.query, body: args.body });
+
+        let turn;
+        try {
+          turn = await runChatTurn({ messages: [{ role: 'user', content: p.message || '' }], tools, chatFn, routeFn });
+        } catch (e) {
+          return sendJson(res, 502, { error: String(e.message || e) });
+        }
+        if (turn.needsConfirmation) {
+          auditLog.log('chat_tool_gated', { name: turn.toolCall.name });
+          return sendJson(res, 200, turn);
+        }
+        try { await chatThreads.appendTurn(p.message || '', turn.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
+        return sendJson(res, 200, { response: turn.response, captured: turn.captured || [] });
       }
       if (pathname === '/api/chat/stream' && req.method === 'POST') {
         if (!engines.spark) return sendJson(res, 502, { error: 'spark is not configured on this hub' });
