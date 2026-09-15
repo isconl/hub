@@ -140,3 +140,38 @@ test('buildBacklog skips a project with neither live rows nor documents from the
   assert.equal(discoveredProjectCount, 2, 'both projects were discovered in the tree walk');
   assert.equal(shownProjectCount, 1, 'only the project with a live row is shown');
 });
+
+test('discoverProjects indexes work/_arc/<project>/canon-canvas/*.md files under the same project key as work/dev/', () => {
+  const tree = [
+    { path: 'work/dev/relay/_next/backlog/build.md', type: 'blob' },
+    { path: 'work/_arc/relay/canon-canvas/20260818_canon_project_development_canvas_relay_v0_0_0.md', type: 'blob' },
+  ];
+  const projects = discoverProjects(tree);
+  assert.equal(projects.size, 1, 'canon-only and backlog paths fold into the same project key');
+  assert.equal(projects.get('relay').canonFiles.length, 1);
+});
+
+test('buildBacklog exposes canon docs, newest first, with title/version parsed from the filename', async () => {
+  const tree = [
+    { path: 'work/_arc/relay/canon-canvas/20260801_canon_project_development_canvas_relay_v1_0_0.md', type: 'blob' },
+    { path: 'work/_arc/relay/canon-canvas/20260901_canon_project_development_canvas_relay_v2_0_0.md', type: 'blob' },
+  ];
+  const { projects: result } = await buildBacklog({ force: true, token: '', request: fakeRequest(tree, {}) });
+  const relay = result.find(p => p.project === 'relay');
+  assert.equal(relay.canon.length, 2);
+  assert.equal(relay.canon[0].version, '2.0.0', 'newest (by date prefix) sorts first');
+  assert.equal(relay.canon[1].version, '1.0.0');
+  assert.equal(relay.canon[0].title, 'Project Development Canvas Relay');
+  assert.match(relay.canon[0].url, /github\.com\/Sconl\/_kit\/blob\/main\/work\/_arc\/relay\/canon-canvas\//);
+});
+
+test('buildBacklog shows a project that has canon docs but no live backlog rows', async () => {
+  const tree = [
+    { path: 'work/_arc/canon-only-proj/canon-canvas/20260801_canon_something_v1_0_0.md', type: 'blob' },
+  ];
+  const { projects: result } = await buildBacklog({ force: true, token: '', request: fakeRequest(tree, {}) });
+  const proj = result.find(p => p.project === 'canon-only-proj');
+  assert.ok(proj, 'a project with only canon docs still appears');
+  assert.equal(proj.rows.length, 0);
+  assert.equal(proj.canon.length, 1);
+});

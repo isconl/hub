@@ -15602,7 +15602,9 @@ let backlogFilter = { q: '', category: '', project: '', status: '' };
 async function fetchBacklog(force) {
   try { BACKLOG = (await (await fetch(`/api/backlog${force ? '?refresh=1' : ''}`)).json()).projects || []; }
   catch { BACKLOG = []; }
-  if (currentView === 'backlog') repaintView('backlog');
+  // BI26091304 also renders from BACKLOG inside the projects view's detail
+  // (open) branch -- repaint there too, not just the SYSTEMS-level space.
+  if (currentView === 'backlog' || currentView === 'projects') repaintView(currentView);
 }
 
 function backlogSetFilter(key, val) {
@@ -15689,6 +15691,54 @@ async function fetchProjects() {
   }
 }
 
+// BI26091304: per-project Backlog + Canon tabs inside a PROJECTS card's
+// detail view. Reuses BI26091301's /api/backlog data (already fetches
+// every project's rows and canon docs in one call) rather than a second
+// endpoint. Matched by normalized name against the backlog project keys
+// BI26091301 already discovers -- not via work/_registry.tsv, since a
+// PROJECTS card's own registry (finance/ventures.tsv) is a different,
+// unrelated dataset (monetizable products/platforms/ventures) from the
+// ~20 work/dev/*/_next/backlog/ projects; most PROJECTS cards simply have
+// no match, which is correct, not an error.
+function backlogSlug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+function renderProjectBacklogCanon(projectName) {
+  if (BACKLOG === null) { fetchBacklog(); return `<div class="card"><div class="empty-state">Checking the drive-wide backlog…</div></div>`; }
+  const target = backlogSlug(projectName);
+  const match = BACKLOG.find(p => backlogSlug(p.project) === target);
+  if (!match) return ''; // no work/dev/ project by this name -- not an error, most PROJECTS cards won't have one
+
+  const categories = Object.keys(BACKLOG_CATEGORY_LABELS).filter(c => match.rows.some(r => r.category === c));
+  return `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Backlog</span>
+        <span class="card-meta">${match.rows.length} row${match.rows.length === 1 ? '' : 's'}</span></div>
+      ${match.rows.length ? categories.map(c => `
+        <div class="learn-section-head" style="margin:0.6rem 0 0.3rem">${BACKLOG_CATEGORY_LABELS[c]}</div>
+        ${match.rows.filter(r => r.category === c).map(r => `
+          <div class="fin-tx" style="grid-template-columns:auto 1fr auto">
+            <span class="fin-tx-date">${escHtml(r.id)}</span>
+            <span class="fin-tx-desc">${escHtml(r.title)}${r.legacySource ? ` <span class="card-meta" style="opacity:0.6">(legacy ${escHtml(r.legacySource)}, pre-migration)</span>` : ''}</span>
+            <span class="fin-tx-cat">${r.status ? escHtml(r.status) : ''}</span>
+          </div>`).join('')}`).join('') : `<div class="empty-state" style="text-align:left;padding:0.5rem 0">No live rows right now.</div>`}
+    </div>
+    ${match.canon && match.canon.length ? `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Canon</span>
+        <span class="card-meta">${match.canon.length} document${match.canon.length === 1 ? '' : 's'}</span></div>
+      ${match.canon.map(c => `
+        <div class="card-meta">
+          <a href="${escHtml(c.url)}" target="_blank" rel="noreferrer">${escHtml(c.title)}</a>${c.version ? ` <span style="opacity:0.7">v${escHtml(c.version)}</span>` : ''}
+        </div>`).join('')}
+    </div>` : ''}
+    ${match.documents && match.documents.length ? `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Documents</span></div>
+      ${match.documents.map(d => `<div class="card-meta"><a href="${escHtml(d.url)}" target="_blank" rel="noreferrer">${escHtml(d.name)}</a></div>`).join('')}
+    </div>` : ''}
+  `;
+}
+
 function renderProjects() {
   if (!PROJECTS) { fetchProjects(); return `<div class="card"><div class="empty-state">Checking the fleet…</div></div>`; }
   const list = PROJECTS.projects || [];
@@ -15718,7 +15768,8 @@ function renderProjects() {
         <div class="card-meta" style="margin-top:0.4rem">If the instance refuses to embed, its headers forbid iframes - use open ↗ above.</div>`
       : `<div class="card"><div class="empty-state">No deployed instance on record. Paste the Render URL below.</div>
           <div class="jr-compose-row"><input id="pj-url" class="jira-input" style="flex:1" placeholder="https://…onrender.com"/>
-          <button class="btn btn-primary" style="padding:6px 14px" onclick="projectSetUrl('${escHtml(open.ID)}')">Save</button></div></div>`}`;
+          <button class="btn btn-primary" style="padding:6px 14px" onclick="projectSetUrl('${escHtml(open.ID)}')">Save</button></div></div>`}
+      ${renderProjectBacklogCanon(open.NAME)}`;
   }
 
   // Two sections now (BA26090501, 5 Sep 2026): Portfolio moved out to its
