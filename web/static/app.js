@@ -11448,7 +11448,7 @@ const viewFns = {
   today:renderToday, jira:renderJira,
   calendar:renderCalendar, settings:renderSettings, github:renderGitHub,
   inbox:renderInbox, tasks:renderTasks, decisions:renderDecisions,
-  risks:renderRisks, 'whatsapp-guide':renderWhatsAppGuide, audit:renderAudit, ops:renderOps,
+  risks:renderRisks, 'whatsapp-guide':renderWhatsAppGuide, audit:renderAudit, ops:renderOps, backlog:renderBacklog,
   files:renderFileManager, social:renderSocial, spaces:renderSpaces,
   task:renderTaskView, finance:renderFinance, planning:renderPlanning,
   journal:renderJournal, learning:renderLearning, circle:renderCircle, ideas:renderIdeas,
@@ -11788,7 +11788,7 @@ const VIEW_LABELS = {
   github:'GitHub', files:'File Manager', tasks:'Tasks', spaces:'Spaces',
   journal:'Journal', learning:'Grove', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
   decisions:'Decision Log', risks:'Risk Register', social:'Buffer',
-  integrations:'Integrations Hub', audit:'Audit', settings:'Settings',
+  integrations:'Integrations Hub', audit:'Audit', backlog:'Backlog', settings:'Settings',
   task:'Task', 'whatsapp-guide':'WhatsApp', writer:'QPress', ops:'Ops',
 };
 let NAV_TRAIL = [];
@@ -15591,6 +15591,94 @@ function renderPortfolio() {
       </div>
     </div>
     <div class="card-meta" style="margin-top:0.6rem">Phase 1: a simple curated link list. A live, public-facing portfolio product is a future build, not this.</div>`;
+}
+
+// BI26091301: drive-wide Backlog view, live from GitHub (Sconl/_kit) via
+// hub's own /api/backlog -- same cache-then-repaint shape fetchProjects()/
+// renderProjects() already use.
+let BACKLOG = null;
+let backlogFilter = { q: '', category: '', project: '', status: '' };
+
+async function fetchBacklog(force) {
+  try { BACKLOG = (await (await fetch(`/api/backlog${force ? '?refresh=1' : ''}`)).json()).projects || []; }
+  catch { BACKLOG = []; }
+  if (currentView === 'backlog') repaintView('backlog');
+}
+
+function backlogSetFilter(key, val) {
+  backlogFilter[key] = val;
+  repaintView('backlog');
+}
+
+const BACKLOG_CATEGORY_LABELS = {
+  plan: 'Plan', build: 'Build', work: 'Work', light: 'Light', content: 'Content', hands: 'Hands', shelved: 'Shelved',
+};
+
+function renderBacklog() {
+  if (BACKLOG === null) { fetchBacklog(); return `<div class="card"><div class="empty-state">Reading the drive-wide backlog from GitHub…</div></div>`; }
+
+  const projectNames = BACKLOG.map(p => p.project).sort();
+  const categories = Object.keys(BACKLOG_CATEGORY_LABELS);
+  const statuses = new Set();
+  for (const p of BACKLOG) for (const r of p.rows) if (r.status) statuses.add(r.status);
+
+  const q = backlogFilter.q.trim().toLowerCase();
+  const matches = (row, project) => {
+    if (backlogFilter.category && row.category !== backlogFilter.category) return false;
+    if (backlogFilter.project && project !== backlogFilter.project) return false;
+    if (backlogFilter.status && row.status !== backlogFilter.status) return false;
+    if (q && !(`${row.id} ${row.title}`.toLowerCase().includes(q))) return false;
+    return true;
+  };
+
+  const visibleProjects = BACKLOG
+    .map(p => ({ ...p, rows: p.rows.filter(r => matches(r, p.project)) }))
+    .filter(p => p.rows.length || (!backlogFilter.category && !backlogFilter.status && !q &&
+      (!backlogFilter.project || backlogFilter.project === p.project) && p.documents.length));
+
+  const totalRows = visibleProjects.reduce((n, p) => n + p.rows.length, 0);
+
+  return `
+    <div class="view-head">
+      <h1>Backlog</h1>
+      <div class="view-head-meta">every project's task queue, read live from GitHub — <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="fetchBacklog(true)">Refresh</button></div>
+    </div>
+
+    <div class="card" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+      <input class="jira-input" style="flex:1;min-width:180px" placeholder="Search ID or title…"
+        value="${escAttr(backlogFilter.q)}" oninput="backlogSetFilter('q', this.value)"/>
+      <select class="jira-input" onchange="backlogSetFilter('category', this.value)">
+        <option value="">All categories</option>
+        ${categories.map(c => `<option value="${c}"${backlogFilter.category === c ? ' selected' : ''}>${BACKLOG_CATEGORY_LABELS[c]}</option>`).join('')}
+      </select>
+      <select class="jira-input" onchange="backlogSetFilter('project', this.value)">
+        <option value="">All projects</option>
+        ${projectNames.map(p => `<option value="${escAttr(p)}"${backlogFilter.project === p ? ' selected' : ''}>${escHtml(p)}</option>`).join('')}
+      </select>
+      <select class="jira-input" onchange="backlogSetFilter('status', this.value)">
+        <option value="">All statuses</option>
+        ${[...statuses].sort().map(s => `<option value="${escAttr(s)}"${backlogFilter.status === s ? ' selected' : ''}>${escHtml(s)}</option>`).join('')}
+      </select>
+      <span class="card-meta">${totalRows} row${totalRows === 1 ? '' : 's'} across ${visibleProjects.length} project${visibleProjects.length === 1 ? '' : 's'}</span>
+    </div>
+
+    ${visibleProjects.length ? visibleProjects.map(p => `
+      <div class="card">
+        <div class="card-header"><span class="card-title">${escHtml(p.project)}</span>
+          <span class="card-meta">${p.rows.length} row${p.rows.length === 1 ? '' : 's'}</span></div>
+        ${categories.filter(c => p.rows.some(r => r.category === c)).map(c => `
+          <div class="learn-section-head" style="margin:0.6rem 0 0.3rem">${BACKLOG_CATEGORY_LABELS[c]}</div>
+          ${p.rows.filter(r => r.category === c).map(r => `
+            <div class="fin-tx" style="grid-template-columns:auto 1fr auto">
+              <span class="fin-tx-date">${escHtml(r.id)}</span>
+              <span class="fin-tx-desc">${escHtml(r.title)}${r.legacySource ? ` <span class="card-meta" style="opacity:0.6">(legacy ${escHtml(r.legacySource)}, pre-migration)</span>` : ''}</span>
+              <span class="fin-tx-cat">${r.status ? escHtml(r.status) : ''}</span>
+            </div>`).join('')}`).join('')}
+        ${p.documents.length ? `
+          <div class="learn-section-head" style="margin:0.6rem 0 0.3rem">Documents</div>
+          ${p.documents.map(d => `<div class="card-meta"><a href="${escHtml(d.url)}" target="_blank" rel="noreferrer">${escHtml(d.name)}</a></div>`).join('')}` : ''}
+      </div>`).join('') : `<div class="empty-state">No rows match this filter.</div>`}
+  `;
 }
 
 async function fetchProjects() {

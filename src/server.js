@@ -23,6 +23,7 @@ const path = require('path');
 const servicesRegistry = require('../lib/services-registry');
 const manifest = require('../lib/manifest');
 const apk = require('../lib/apk');
+const backlog = require('../lib/backlog');
 const { createChatThreadStore } = require('../lib/chat-threads');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
@@ -540,6 +541,15 @@ async function main() {
         const mediaUrl = process.env.MEDIA_PUBLIC_URL || process.env.MEDIA_URL || '';
         if (!mediaUrl) return sendJson(res, 502, { error: 'media is not configured on this hub' });
         return sendJson(res, 200, { url: mediaUrl });
+      }
+
+      if (pathname === '/api/backlog' && req.method === 'GET') {
+        try {
+          const rollup = await backlog.buildBacklog({ force: url.searchParams.get('refresh') === '1' });
+          return sendJson(res, 200, { projects: rollup });
+        } catch (e) {
+          return sendJson(res, 502, { error: String(e.message || e).slice(0, 200) });
+        }
       }
 
       if (pathname === '/api/apk/latest' && req.method === 'GET') {
