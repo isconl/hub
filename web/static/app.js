@@ -14617,6 +14617,13 @@ async function teamsPost(url, body, okMsg) {
 
 const teamsDepthDot = l => `<span class="tm-dot ${l}" title="queue depth"></span>`;
 
+// BM26091502: the six-force team archetype (canon:
+// 20260914_canon_team_archetype_framework_isconl_v1_0_0.md). Architect is a
+// position over the team, not a seventh force -- kept out of this list on
+// purpose, tracked as its own isArchitect flag per member instead.
+const TEAMS_FORCES = ['captain', 'strategist', 'operator', 'warrior', 'scout', 'guardian'];
+const teamsForceLabel = f => f ? f.charAt(0).toUpperCase() + f.slice(1) : '';
+
 function renderTeams() {
   if (!TEAMS) {
     if (TEAMS_STATE !== 'loading') fetchTeams();
@@ -14839,6 +14846,9 @@ function renderTeamsPeople(t) {
         <span class="tm-member-role">${escHtml(m.role)}</span>
         <span class="tm-depth ${m.depthLevel}">${m.depth}d</span>
         ${m.directs ? `<span class="tm-directs${m.spanOver ? ' over' : ''}">${m.directs} direct${m.directs === 1 ? '' : 's'}${m.spanOver ? ' - OVER SPAN, promote one' : ''}</span>` : ''}
+        ${m.forcePrimary ? `<span class="tm-force" title="primary force">${escHtml(teamsForceLabel(m.forcePrimary))}</span>` : ''}
+        ${m.forceSecondary ? `<span class="tm-force secondary" title="secondary force">${escHtml(teamsForceLabel(m.forceSecondary))}</span>` : ''}
+        ${m.isArchitect ? `<span class="tm-architect" title="Architect -- diagnostic position over the team, not a seventh force">Architect</span>` : ''}
         ${m.personId ? `<span class="tm-linkmark" title="linked to the Circle dossier ${escAttr(m.personId)}">linked</span>` : `<span class="tm-linkmark off" title="not linked to the Circle yet">unlinked</span>`}
         <span class="tm-node-acts">
           <button class="btn btn-ghost tm-act" onclick="teamsEditMember='${escAttr(m.id)}';repaintView('teams')">edit</button>
@@ -14848,7 +14858,26 @@ function renderTeamsPeople(t) {
       ${(kids[id] || []).map(k => node(k, depth + 1)).join('')}`;
   };
 
+  const forces = t.forces || { forces: TEAMS_FORCES, holders: {}, covered: [], doubled: [], missing: [], architects: [] };
+  const forceCoverage = `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Force coverage</span>
+        <span class="card-meta">six slots, always -- covered, doubled up, or missing, never a seventh "Architect" force</span></div>
+      <div class="tm-force-grid">
+        ${forces.forces.map(f => {
+          const holders = forces.holders[f] || [];
+          const state = holders.length === 0 ? 'missing' : holders.length > 1 ? 'doubled' : 'covered';
+          return `<div class="tm-force-cell ${state}">
+            <div class="tm-force-cell-name">${escHtml(teamsForceLabel(f))}</div>
+            <div class="tm-force-cell-state">${state === 'missing' ? 'missing' : holders.map(h => escHtml(h.name)).join(', ')}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      ${forces.architects.length ? `<div class="tm-architect-row">Architect: ${forces.architects.map(a => escHtml(a.name)).join(', ')}</div>` : ''}
+    </div>`;
+
   return `
+    ${forceCoverage}
     <div class="card">
       <div class="card-header"><span class="card-title">Who reports to who</span>
         <span class="card-meta">${escHtml(t.owner)} at the root · ${t.layers} layer${t.layers === 1 ? '' : 's'} · the sixth report means promoting someone, never a sixth line</span></div>
@@ -14908,6 +14937,19 @@ function tmMemberForm(t, m, depth) {
           <input id="tm-m-person" class="jira-input" placeholder="Circle id (auto-fills from the name)" value="${m ? escAttr(m.personId) : ''}" style="max-width:200px">
         </div>
         <div class="tm-form-row">
+          <select id="tm-m-force1" class="jira-input" title="primary force">
+            <option value="">no primary force</option>
+            ${TEAMS_FORCES.map(f => `<option value="${f}" ${m && m.forcePrimary === f ? 'selected' : ''}>${escHtml(teamsForceLabel(f))} (primary)</option>`).join('')}
+          </select>
+          <select id="tm-m-force2" class="jira-input" title="secondary force">
+            <option value="">no secondary force</option>
+            ${TEAMS_FORCES.map(f => `<option value="${f}" ${m && m.forceSecondary === f ? 'selected' : ''}>${escHtml(teamsForceLabel(f))} (secondary)</option>`).join('')}
+          </select>
+          <label class="tm-architect-check" title="Architect -- a diagnostic position over the team, not a seventh force">
+            <input type="checkbox" id="tm-m-architect" ${m && m.isArchitect ? 'checked' : ''}> Architect
+          </label>
+        </div>
+        <div class="tm-form-row">
           <button class="btn btn-primary" onclick="teamsSaveMember(${editing ? `'${escAttr(m.id)}'` : 'null'})">${editing ? 'Save' : 'Add'}</button>
           <button class="btn btn-ghost" onclick="teamsShowMemberForm=false;teamsEditMember=null;repaintView('teams')">Cancel</button>
         </div>
@@ -14952,7 +14994,9 @@ async function teamsSaveMember(id) {
   const t = teamsCurrent(); if (!t) return;
   const g = x => (document.getElementById(x)?.value || '').trim();
   const r = await teamsPost('/api/teams/member', { id: id || undefined, teamId: t.id,
-    name: g('tm-m-name'), role: g('tm-m-role'), reportsTo: g('tm-m-leader'), personId: g('tm-m-person') },
+    name: g('tm-m-name'), role: g('tm-m-role'), reportsTo: g('tm-m-leader'), personId: g('tm-m-person'),
+    forcePrimary: g('tm-m-force1'), forceSecondary: g('tm-m-force2'),
+    isArchitect: !!document.getElementById('tm-m-architect')?.checked },
     id ? 'Saved' : 'Added');
   if (r) { teamsShowMemberForm = false; teamsEditMember = null; }
 }

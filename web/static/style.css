@@ -6164,6 +6164,21 @@ input[type="number"]:focus, .num-input:focus { border-color: var(--green, #2ea04
 .tm-linkmark.off { color: var(--text-3); border-color: var(--border); }
 .tm-link { font-size: 0.66rem; color: var(--cyan); text-decoration: none; }
 
+.tm-force { font-size: 0.62rem; color: var(--cyan); border: 1px solid var(--cyan); border-radius: 4px; padding: 0 6px; }
+.tm-force.secondary { color: var(--text-3); border-color: var(--border-mid); }
+.tm-architect { font-size: 0.62rem; color: var(--purple, #a78bfa); border: 1px solid var(--purple, #a78bfa); border-radius: 4px; padding: 0 6px; font-weight: 600; }
+.tm-architect-check { display: flex; align-items: center; gap: 4px; font-size: 0.78rem; color: var(--text-2); }
+.tm-architect-row { font-size: 0.72rem; color: var(--text-2); padding-top: 8px; }
+
+.tm-force-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.tm-force-cell { border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+.tm-force-cell-name { font-size: 0.72rem; font-weight: 600; }
+.tm-force-cell-state { font-size: 0.64rem; color: var(--text-3); margin-top: 4px; }
+.tm-force-cell.covered { border-color: var(--green-dim); }
+.tm-force-cell.doubled { border-color: var(--cyan); }
+.tm-force-cell.missing { border-color: var(--red); }
+.tm-force-cell.missing .tm-force-cell-state { color: var(--red); }
+
 @media (max-width: 700px) {
   .tm-member-head { flex-direction: column; align-items: flex-start; }
   .tm-member-nums { width: 100%; justify-content: space-between; }
