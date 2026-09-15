@@ -11388,7 +11388,7 @@ function opsRenderTile(s, deployByService) {
 
 function renderOps() {
   const deployByService = new Map((opsDeploy || []).map(d => [d.service, d]));
-  // BI26091401: ops/status now reports {services, groups, ungrouped,
+  // BI26091501: ops/status now reports {services, groups, ungrouped,
   // discoveryOk, discoveryError} instead of a flat array -- each service
   // self-declares its group via an `ops.group` compose label, so this
   // renders whatever groups are actually discovered rather than a fixed
