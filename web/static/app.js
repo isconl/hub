@@ -11655,7 +11655,7 @@ function notifDetail(id, ev) {
   ov.id = 'notif-detail';
   ov.className = 'modal-overlay';
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
-  const goLabel = { task: 'Open the task', jira: 'Open the board', finance: 'Open Finance',
+  const goLabel = { task: 'Open the task', jira: 'Open the board', finance: 'Open Holdings',
     calendar: 'Open the calendar', github: 'Open GitHub', circle: 'Open the Circle',
     settings: 'Open Settings' }[n.VIEW] || 'Open where this came from';
   const when = (n.TS || '').replace('T', ' ').slice(0, 16);
@@ -12016,7 +12016,7 @@ function renderFinance() {
 
   return `
     <div class="view-head">
-      <h1>Finance</h1>
+      <h1>Holdings</h1>
       <div class="view-head-meta">${f.sync?.status === 'synced'
         ? `private … synced to your OneDrive Vault${f.sync.at ? ` · ${escHtml(f.sync.at.slice(11, 16))}` : ''}`
         : f.sync?.status === 'offline' || f.sync?.status === 'push failed'
@@ -12048,6 +12048,7 @@ function renderFinance() {
     ${finAllocation(f)}
     ${finAnalysis(f)}
     ${finReceipts()}
+    ${finPossessions()}
     ${finVentures()}
 
     <div class="grid-2">
@@ -12525,6 +12526,104 @@ async function finLogAll(btn) {
  * The convention is one small GET returning flat JSON numbers - the card renders
  * exactly the keys it receives, and an unreachable endpoint says so plainly.
  */
+// BF26091401: Holdings' general possessions/asset registry, alongside the
+// money-tracking data above. First cut -- flat list, no valuation-over-time.
+let POSSESSIONS = null;
+async function fetchPossessions() {
+  try { POSSESSIONS = (await (await fetch('/api/possessions')).json()).possessions || []; }
+  catch { POSSESSIONS = []; }
+  repaintView('finance');
+}
+
+function finPossessions() {
+  if (POSSESSIONS === null) { fetchPossessions(); return ''; }
+  return `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Possessions</span>
+        <div style="display:flex;gap:0.4rem;align-items:center">
+          <button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px" onclick="finAddPossession()">Add</button>
+        </div>
+      </div>
+      ${POSSESSIONS.length ? `
+        <div class="fin-ventures">
+          ${POSSESSIONS.map(p => `
+            <div class="fin-venture">
+              <div class="fin-venture-head">
+                <span class="fin-venture-name">${escHtml(p.ITEM)}</span>
+                ${p.CATEGORY && p.CATEGORY !== '-' ? `<span class="fin-venture-kind">${escHtml(p.CATEGORY)}</span>` : ''}
+                <span class="fin-venture-kind" style="opacity:0.7">${money(p.VALUE)}</span>
+                <span style="flex:1"></span>
+                <button class="btn btn-ghost" style="font-size:0.65rem;padding:1px 7px" onclick="finEditPossession('${escHtml(p.ID)}')">Edit</button>
+                <button class="btn btn-ghost" style="font-size:0.65rem;padding:1px 7px;color:var(--danger,#e5484d)" onclick="finDeletePossession('${escHtml(p.ID)}','${escAttr(p.ITEM)}')">Discard</button>
+              </div>
+              <div class="card-meta" style="opacity:0.6">
+                ${[p.LOCATION, p.CONDITION, p.ACQUIRED_DATE].filter(x => x && x !== '-').map(escHtml).join(' · ')}
+              </div>
+              ${p.NOTES && p.NOTES !== '-' ? `<div class="card-meta" style="opacity:0.6">${escHtml(p.NOTES)}</div>` : ''}
+            </div>`).join('')}
+        </div>` : `
+        <div class="empty-state" style="text-align:left;padding:0.5rem 0">
+          Nothing registered yet. Track anything of value here, not just money -
+          a laptop, a vehicle, jewelry, equipment. First cut: a flat list, no
+          depreciation or valuation history.
+        </div>`}
+    </div>`;
+}
+
+function finAddPossession() {
+  uiForm('Add possession', [
+    { id: 'item', label: 'Item', placeholder: 'MacBook Pro, family car, watch' },
+    { id: 'category', label: 'Category', placeholder: 'electronics, vehicle, jewelry … (free text)' },
+    { id: 'value', label: 'Value', type: 'number', placeholder: 'estimated current value' },
+    { id: 'acquiredDate', label: 'Acquired', placeholder: 'YYYY-MM-DD, blank if unknown' },
+    { id: 'location', label: 'Location', placeholder: 'where it is' },
+    { id: 'condition', label: 'Condition', placeholder: 'new, good, worn … (free text)' },
+    { id: 'notes', label: 'Notes', placeholder: 'optional' },
+  ], async (v) => {
+    if (!v.item) { showToast('Name the item first', 'warn'); return false; }
+    const ok = await finPost('/api/possessions/upsert', v, 'Possession registered');
+    if (ok) fetchPossessions();
+    return ok;
+  });
+}
+
+/** Edit an existing possession in place - same form as Add, pre-filled, id carried through so upsertPossession updates rather than creates. */
+function finEditPossession(id) {
+  const p = (POSSESSIONS || []).find(x => x.ID === id);
+  if (!p) { showToast('Possession not found - try again', 'warn'); return; }
+  uiForm(`Edit ${p.ITEM}`, [
+    { id: 'item', label: 'Item', value: p.ITEM },
+    { id: 'category', label: 'Category', value: p.CATEGORY === '-' ? '' : p.CATEGORY },
+    { id: 'value', label: 'Value', type: 'number', value: p.VALUE },
+    { id: 'acquiredDate', label: 'Acquired', value: p.ACQUIRED_DATE === '-' ? '' : p.ACQUIRED_DATE },
+    { id: 'location', label: 'Location', value: p.LOCATION === '-' ? '' : p.LOCATION },
+    { id: 'condition', label: 'Condition', value: p.CONDITION === '-' ? '' : p.CONDITION },
+    { id: 'notes', label: 'Notes', value: p.NOTES === '-' ? '' : p.NOTES },
+  ], async (vals) => {
+    if (!vals.item) { showToast('Name the item first', 'warn'); return false; }
+    const ok = await finPost('/api/possessions/upsert', { ...vals, id }, 'Possession updated');
+    if (ok) fetchPossessions();
+    return ok;
+  });
+}
+
+/** Discard a possession row entirely - real delete, confirmed first. */
+async function finDeletePossession(id, item) {
+  const yes = await uiConfirm({
+    title: `Discard "${item}"?`,
+    body: 'This removes the possession row entirely.',
+    confirmLabel: 'Discard', danger: true,
+  });
+  if (!yes) return;
+  try {
+    const d = await (await fetch('/api/possessions/delete', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })).json();
+    if (d.success) { showToast('Possession discarded', 'success'); fetchPossessions(); }
+    else showToast(d.error || 'Could not discard', 'error');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
 let VENTURES = null;
 async function fetchVentures(force) {
   try { VENTURES = (await (await fetch(`/api/ventures${force ? '?refresh=1' : ''}`)).json()).ventures || []; }
@@ -20115,7 +20214,7 @@ function renderPlanning() {
       const LIFE_AREAS = [
         ['Legacy', /legacy|compound|ip\b|aquifer|isconl|system/i],
         ['Contribution', /volunt|contribut|giv|serv|communit|ministry/i],
-        ['Finance', /financ|money|fund|income|invest|net worth|emergency/i],
+        ['Holdings', /financ|money|fund|income|invest|net worth|emergency/i],
         ['Physical', /physi|gym|fitness|health|body|run|sleep/i],
         ['Mental', /mental|read|learn|study|course|mind/i],
         ['Devotion', /devot|spirit|faith|church|pray/i],
