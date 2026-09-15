@@ -545,8 +545,8 @@ async function main() {
 
       if (pathname === '/api/backlog' && req.method === 'GET') {
         try {
-          const rollup = await backlog.buildBacklog({ force: url.searchParams.get('refresh') === '1' });
-          return sendJson(res, 200, { projects: rollup });
+          const data = await backlog.buildBacklog({ force: url.searchParams.get('refresh') === '1' });
+          return sendJson(res, 200, data);
         } catch (e) {
           return sendJson(res, 502, { error: String(e.message || e).slice(0, 200) });
         }
