@@ -17691,6 +17691,9 @@ function learnGroupIcon(g, size) {
        : g.id === 'profiles-psychology' ? svgIcon('users', size)
        : g.id === 'systems-architecture' ? svgIcon('settings', size)
        : g.id === 'projects-memory' ? svgIcon('book', size)
+       : g.id === 'legal-compliance' ? svgIcon('file', size)
+       : g.id === 'identity-self' ? svgIcon('eye', size)
+       : g.id === 'brands-ventures' ? svgIcon('star', size)
        : svgIcon('folder', size);
 }
 
@@ -17814,6 +17817,9 @@ const DEFAULT_LEARNING_GROUPS = [
   { id: 'profiles-psychology', label: 'Profiles & Psychology', description: 'Reading people, behavior, influence, and profiling - real and archetypal.', color: '#06b6d4', sortOrder: 7, status: 'active' },
   { id: 'systems-architecture', label: 'Systems & Architecture', description: 'Systems thinking, software architecture, business systems, and scaling.', color: '#6366f1', sortOrder: 8, status: 'active' },
   { id: 'projects-memory', label: 'Projects & Memory', description: 'Every project drive-wide -- progress, decisions and reasoning, open risks, and current state. The first thing an AI reads before advising Sconl on anything.', color: '#f97316', sortOrder: 9, status: 'active' },
+  { id: 'legal-compliance', label: 'Legal & Compliance', description: 'Kenyan and international law worth practical awareness of -- drug law, employment law, financial and tax regulation, and related subjects still being scoped.', color: '#64748b', sortOrder: 10, status: 'active' },
+  { id: 'identity-self', label: 'Identity & Self', description: 'Self-understanding and personal architecture -- a very helpful personal coach function, not a conventional course subject.', color: '#a855f7', sortOrder: 11, status: 'active' },
+  { id: 'brands-ventures', label: 'Brands & Ventures', description: "Understanding Sconl's own brand portfolio inside out and building each one from the ground up.", color: '#ec4899', sortOrder: 12, status: 'active' },
 ];
 
 function getResolvedGroups(courses, backendGroups) {
