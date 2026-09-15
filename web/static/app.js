@@ -17896,7 +17896,7 @@ function renderLearning() {
               ${prev ? `<button class="btn btn-ghost" onclick="learnOpenLesson('${escHtml(course.ID)}','${escHtml(prev.file)}')">← ${escHtml(lessonNavLabel('Previous', prev.title))}</button>` : '<span></span>'}
               <button class="btn ${lesson.status === 'done' ? 'btn-ghost' : 'btn-primary'}"
                       onclick="learnMark('${escHtml(course.ID)}','${escHtml(lesson.file)}','${lesson.status === 'done' ? 'learning' : 'done'}')">
-                ${lesson.status === 'done' ? '↺ Mark as still learning' : '✓ Mark lesson done'}</button>
+                ${lesson.status === 'done' ? 'Still learning' : 'Done'}</button>
               ${next ? `<button class="btn btn-ghost" onclick="learnMark('${escHtml(course.ID)}','${escHtml(lesson.file)}','done',true);learnOpenLesson('${escHtml(course.ID)}','${escHtml(next.file)}')"
                 title="Marks this one done and moves on">${escHtml(lessonNavLabel('Next', next.title))} →</button>` : ''}`;
           })()}
