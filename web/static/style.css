@@ -422,49 +422,14 @@ select option { background:var(--panel); color:var(--text); }
 .nav-item.active { background:var(--green-bg2); color:var(--green-bright); border-left-color:var(--green); }
 .nav-item.active .nav-icon { opacity:1; color:var(--green-bright); }
 
-/* ── NAV GROUP ACCENT COLORS ─────────────────────────────────────────────
-   Each nav group wears its own accent, on both hover AND active (hover
-   used to only tint the icon, leaving background/text a flat neutral no
-   matter which group - fixed 17 Aug per Architect: "the coloring of the hover
-   is determined by the main menus"). Colors come from the --mc-* custom
-   properties defined in :root above, which Settings > Menu Colors can
-   override live - never a literal hex/var here, so a saved color takes
-   effect without touching this file again. color-mix() derives the
-   translucent wash backgrounds from whatever color is set, instead of a
-   fixed rgba() per group that would go stale the moment the color changes. */
-#nav-group-command .nav-item.active .nav-icon { color:var(--mc-command); }
-#nav-group-command .nav-item:hover { background:color-mix(in srgb, var(--mc-command) 7%, transparent); color:var(--mc-command); }
-#nav-group-command .nav-item:hover .nav-icon { color:var(--mc-command); }
-
-#nav-group-flow .nav-item.active { background:color-mix(in srgb, var(--mc-flow) 10%, transparent); color:var(--mc-flow); border-left-color:var(--mc-flow); }
-#nav-group-flow .nav-item.active .nav-icon { color:var(--mc-flow); }
-#nav-group-flow .nav-item:hover { background:color-mix(in srgb, var(--mc-flow) 7%, transparent); color:var(--mc-flow); }
-#nav-group-flow .nav-item:hover .nav-icon { color:var(--mc-flow); }
-
-#nav-group-life .nav-item.active { background:color-mix(in srgb, var(--mc-life) 10%, transparent); color:var(--mc-life); border-left-color:var(--mc-life); }
-#nav-group-life .nav-item.active .nav-icon { color:var(--mc-life); }
-#nav-group-life .nav-item:hover { background:color-mix(in srgb, var(--mc-life) 7%, transparent); color:var(--mc-life); }
-#nav-group-life .nav-item:hover .nav-icon { color:var(--mc-life); }
-
-#nav-group-circle .nav-item.active { background:color-mix(in srgb, var(--mc-circle) 10%, transparent); color:var(--mc-circle); border-left-color:var(--mc-circle); }
-#nav-group-circle .nav-item.active .nav-icon { color:var(--mc-circle); }
-#nav-group-circle .nav-item:hover { background:color-mix(in srgb, var(--mc-circle) 7%, transparent); color:var(--mc-circle); }
-#nav-group-circle .nav-item:hover .nav-icon { color:var(--mc-circle); }
-
-#nav-group-projects .nav-item.active { background:color-mix(in srgb, var(--mc-projects) 10%, transparent); color:var(--mc-projects); border-left-color:var(--mc-projects); }
-#nav-group-projects .nav-item.active .nav-icon { color:var(--mc-projects); }
-#nav-group-projects .nav-item:hover { background:color-mix(in srgb, var(--mc-projects) 7%, transparent); color:var(--mc-projects); }
-#nav-group-projects .nav-item:hover .nav-icon { color:var(--mc-projects); }
-
-#nav-group-system .nav-item.active { background:color-mix(in srgb, var(--mc-system) 10%, transparent); color:var(--mc-system); border-left-color:var(--mc-system); }
-#nav-group-system .nav-item.active .nav-icon { color:var(--mc-system); }
-#nav-group-system .nav-item:hover { background:color-mix(in srgb, var(--mc-system) 7%, transparent); color:var(--mc-system); }
-#nav-group-system .nav-item:hover .nav-icon { color:var(--mc-system); }
-
-#nav-group-spaces .nav-item.active { background:color-mix(in srgb, var(--mc-spaces) 10%, transparent); color:var(--mc-spaces); border-left-color:var(--mc-spaces); }
-#nav-group-spaces .nav-item.active .nav-icon { color:var(--mc-spaces); }
-#nav-group-spaces .nav-item:hover { background:color-mix(in srgb, var(--mc-spaces) 7%, transparent); color:var(--mc-spaces); }
-#nav-group-spaces .nav-item:hover .nav-icon { color:var(--mc-spaces); }
+/* BG26091401 (15 Sep 2026): the seven per-nav-group accent override blocks
+   that used to live here were removed -- Sconl wants one consistent green
+   everywhere (the base .nav-item:hover/.active rule above already applies
+   uniformly), except renderSpaceInsight()'s landing-page callout card
+   (app.js), which keeps its own per-space accentColor and is explicitly
+   NOT touched by this. The --mc-* custom properties themselves are
+   untouched -- still consumed by Settings > Menu Colors and by
+   renderSpaceInsight()'s inline styling. */
 
 #nav-space-writer.active { background:color-mix(in srgb, var(--mc-writer) 10%, transparent); color:var(--mc-writer); border-left-color:var(--mc-writer); }
 #nav-space-writer.active .nav-icon { color:var(--mc-writer); }
