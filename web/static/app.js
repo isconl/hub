@@ -17905,7 +17905,7 @@ function renderLearning() {
           <button id="lesson-scroll-top-btn" class="lesson-scroll-top-btn" onclick="learnScrollToTop()" title="Scroll to top">${LESSON_ICONS.scrollTop}</button>
         </div>
       </div>
-      ${course.ID === 'financial-intelligence' || (learnOpen.content || '').includes('$$') ? renderDynamicFinancialCalculators() : ''}
+      ${course.ID === 'applied-financial-intelligence' || (learnOpen.content || '').includes('$$') ? renderDynamicFinancialCalculators() : ''}
       <div class="card" style="margin-top:2rem">
         <div class="card-header"><span class="card-title">Your notes on this module</span>
           <span class="card-meta" id="lesson-note-status">${learnNote.loadedFor === `${learnOpen.course}/${learnOpen.file}`
