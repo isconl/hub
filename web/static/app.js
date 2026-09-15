@@ -18802,14 +18802,17 @@ function learnMd(src, courseId) {
       const { text, nextIdx } = gatherWrapped(i);
       const m = text.match(/^\*\*(In a book|Book|Book quote):?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
       if (m) out.push(`<div class="lesson-book"><span>Book</span>&ldquo;${restoreMath(inline(m[2]))}&rdquo;<div class="lesson-cite">${restoreMath(inline(m[3]))}</div></div>`);
-      else out.push(`<p>${restoreMath(inline(text))}</p>`);
+      // FL26091209: this silently drops the callout formatting -- the
+      // policy comment above calls that deliberate, but it was invisible.
+      // Now at least logged, naming where, so it's catchable in review.
+      else { console.warn(`[learn] Book callout missing citation, degraded to plain text -- course "${learnMdCourseId}", source line ${i + 1}`); out.push(`<p>${restoreMath(inline(text))}</p>`); }
       i = nextIdx; continue;
     }
     if (/^\*\*Research:?\*\*/i.test(line)) {
       const { text, nextIdx } = gatherWrapped(i);
       const m = text.match(/^\*\*Research:?\*\*\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/i);
       if (m) out.push(`<div class="lesson-research"><span>Research</span>${restoreMath(inline(m[1]))}<div class="lesson-cite">${restoreMath(inline(m[2]))}</div></div>`);
-      else out.push(`<p>${restoreMath(inline(text))}</p>`);
+      else { console.warn(`[learn] Research callout missing citation, degraded to plain text -- course "${learnMdCourseId}", source line ${i + 1}`); out.push(`<p>${restoreMath(inline(text))}</p>`); }
       i = nextIdx; continue;
     }
     if (/^\*\*(Fun fact|Fact):?\*\*/i.test(line)) {
