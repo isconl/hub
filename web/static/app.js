@@ -11292,10 +11292,10 @@ async function loadOpsStatus() {
       fetch('/api/ops/vm-stats').then(r => r.json()),
       fetch('/api/ops/deploy-status').then(r => r.json()),
     ]);
-    opsStatus = s.services || [];
+    opsStatus = s;
     opsStats = v;
     opsDeploy = d.services || [];
-  } catch { opsStatus = opsStatus || []; }
+  } catch { opsStatus = opsStatus || null; }
   if (currentView === 'ops') document.getElementById('view-container').innerHTML = renderOps();
 }
 
@@ -11364,13 +11364,11 @@ function opsTileTier(s, dep) {
   return 'tile-1x1';
 }
 
-function renderOps() {
-  const deployByService = new Map((opsDeploy || []).map(d => [d.service, d]));
-  const rows = (opsStatus || []).map(s => {
-    const dep = deployByService.get(s.service) || {};
-    const tier = opsTileTier(s, dep);
-    const broken = !s.running || s.exists === false;
-    return `
+function opsRenderTile(s, deployByService) {
+  const dep = deployByService.get(s.service) || {};
+  const tier = opsTileTier(s, dep);
+  const broken = !s.running || s.exists === false;
+  return `
     <div class="ops-tile ${tier} ${broken ? 'broken' : ''}">
       <div class="ops-tile-top">
         <span class="audit-tier-dot" style="background:${s.running ? 'var(--green-bright,#2ecc71)' : 'var(--red)'}"></span>
@@ -11386,7 +11384,34 @@ function renderOps() {
         <button class="btn btn-ghost" style="color:var(--red)" onclick="opsServiceAction('${s.service}','destroy')" title="Destroy">Destroy</button>
       </div>
     </div>`;
-  }).join('') || '<div class="empty-state">Loading…</div>';
+}
+
+function renderOps() {
+  const deployByService = new Map((opsDeploy || []).map(d => [d.service, d]));
+  // BI26091401: ops/status now reports {services, groups, ungrouped,
+  // discoveryOk, discoveryError} instead of a flat array -- each service
+  // self-declares its group via an `ops.group` compose label, so this
+  // renders whatever groups are actually discovered rather than a fixed
+  // set of section headings.
+  const groups = (opsStatus && opsStatus.groups) || {};
+  const ungrouped = (opsStatus && opsStatus.ungrouped) || [];
+  const hasAnyService = Object.keys(groups).length > 0 || ungrouped.length > 0;
+
+  const discoveryBanner = opsStatus && opsStatus.discoveryOk === false ? `
+    <div class="card" style="border-color:var(--red)">
+      <div class="card-header"><span class="card-title" style="color:var(--red)">Service discovery failed</span></div>
+      <div class="empty-state">${escHtml(opsStatus.discoveryError || 'docker compose config could not be read')}</div>
+    </div>` : '';
+
+  const groupSection = (label, services) => `
+    <div class="card">
+      <div class="card-header"><span class="card-title">${escHtml(label)}</span></div>
+      <div class="ops-tile-grid">${services.map(s => opsRenderTile(s, deployByService)).join('')}</div>
+    </div>`;
+
+  const groupSections = Object.keys(groups).sort().map(g => groupSection(g, groups[g])).join('');
+  const ungroupedSection = ungrouped.length ? groupSection('Ungrouped', ungrouped) : '';
+  const servicesHtml = discoveryBanner ? '' : (hasAnyService ? (groupSections + ungroupedSection) : '<div class="card"><div class="empty-state">Loading…</div></div>');
 
   const stats = opsStats;
   const statsHtml = stats ? `
@@ -11426,10 +11451,8 @@ function renderOps() {
       <div class="card-header"><span class="card-title">VM</span></div>
       ${statsHtml}
     </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">Services</span></div>
-      <div class="ops-tile-grid">${rows}</div>
-    </div>
+    ${discoveryBanner}
+    ${servicesHtml}
     ${logsPanel}
     ${securitySection}`;
 }
