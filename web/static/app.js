@@ -18455,6 +18455,37 @@ function parseChartSpec(body) {
   return { type, title, rows };
 }
 
+/** FL26091001: word-wraps a category label into up to 2 lines (never
+ *  mid-word) instead of the old fixed-width slice() truncation, which cut
+ *  labels off mid-word regardless of how much room the chart actually had.
+ *  Only a single word still longer than maxChars gets a hard ellipsis. */
+function wrapChartLabel(label, maxChars) {
+  const words = String(label).trim().split(/\s+/);
+  const lines = [];
+  let current = '';
+  for (const w of words) {
+    const candidate = current ? `${current} ${w}` : w;
+    if (candidate.length <= maxChars || !current) {
+      current = candidate;
+    } else {
+      lines.push(current);
+      current = w;
+    }
+    if (lines.length === 1 && current.length > maxChars) {
+      // second line still overflows -- hard-truncate only as a last resort
+      current = current.slice(0, Math.max(1, maxChars - 1)) + '…';
+      break;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.slice(0, 2);
+}
+
+function chartLabelTspans(label, x, yBase, maxChars) {
+  const lines = wrapChartLabel(label, maxChars);
+  return lines.map((line, i) => `<tspan x="${x}" dy="${i === 0 ? 0 : 10}">${escHtml(line)}</tspan>`).join('');
+}
+
 /** Dependency-free inline SVG so a module can show a real comparison rather
  *  than a table pretending to be one - no chart library, themed entirely off
  *  the lesson's own six callout colours so it never clashes with them. */
@@ -18463,7 +18494,11 @@ function renderChartSVG(spec) {
   if (!rows.length) return '<div class="reader-note">Chart has no readable data rows.</div>';
   const palette = ['var(--lb-accent,#6fc0af)', 'var(--lb-info,#8aa9d9)', 'var(--lb-book,#a892d9)',
     'var(--lb-quote,#d98a4f)', 'var(--lb-warm,#d9a259)', 'var(--lb-research,#6ea6d9)'];
-  const W = 560, H = 220, padL = 34, padB = 28, padT = 14, padR = 12;
+  const W = 560, H = 220, padL = 34, padT = 14, padR = 12;
+  // Bottom margin sizes to the actual label text instead of a fixed
+  // truncation -- 2 lines' worth of room whenever any label needs to wrap.
+  const maxLabelLines = Math.max(...rows.map(r => wrapChartLabel(r.label, 12).length), 1);
+  const padB = 20 + maxLabelLines * 11;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const vals = rows.map(r => r.value);
   const max = Math.max(...vals, 0), min = Math.min(...vals, 0);
@@ -18485,21 +18520,24 @@ function renderChartSVG(spec) {
     const n = rows.length;
     const x = (i) => padL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
     const y = (v) => padT + plotH - ((v - min) / ((max - min) || 1)) * plotH;
+    const labelY = H - padB + 12;
     inner += `<polyline points="${rows.map((r, i) => `${x(i).toFixed(1)},${y(r.value).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--lb-accent,#6fc0af)" stroke-width="2.5"/>`;
     rows.forEach((r, i) => { inner += `<circle cx="${x(i).toFixed(1)}" cy="${y(r.value).toFixed(1)}" r="3.5" fill="var(--lb-accent,#6fc0af)"><title>${escHtml(r.label)}: ${r.value}</title></circle>`;
-      inner += `<text x="${x(i).toFixed(1)}" y="${H - 6}" font-size="9" text-anchor="middle" fill="var(--text-3)">${escHtml(String(r.label).slice(0, 12))}</text>`; });
+      inner += `<text x="${x(i).toFixed(1)}" y="${labelY}" font-size="9" text-anchor="middle" fill="var(--text-3)">${chartLabelTspans(r.label, x(i).toFixed(1), labelY, 12)}</text>`; });
     inner += `<line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" stroke="var(--border)" stroke-width="1"/>`;
   } else {
     const n = rows.length, gap = plotW / n, bw = gap * 0.6;
     const zeroY = padT + plotH - ((0 - min) / ((max - min) || 1)) * plotH;
+    const labelY = H - padB + 12;
     rows.forEach((r, i) => {
       const h = Math.abs(((r.value - Math.max(0, min > 0 ? min : 0)) / ((max - min) || 1)) * plotH) || 0;
       const barH = Math.abs((r.value / ((max - min) || 1)) * plotH);
       const yPos = r.value >= 0 ? zeroY - barH : zeroY;
       const xPos = padL + i * gap + (gap - bw) / 2;
+      const labelX = (xPos + bw / 2).toFixed(1);
       inner += `<rect x="${xPos.toFixed(1)}" y="${yPos.toFixed(1)}" width="${bw.toFixed(1)}" height="${barH.toFixed(1)}" rx="3" fill="${palette[i % palette.length]}" opacity="0.85"><title>${escHtml(r.label)}: ${r.value}</title></rect>`;
-      inner += `<text x="${(xPos + bw / 2).toFixed(1)}" y="${H - 6}" font-size="9" text-anchor="middle" fill="var(--text-3)">${escHtml(String(r.label).slice(0, 10))}</text>`;
-      inner += `<text x="${(xPos + bw / 2).toFixed(1)}" y="${(yPos - 4).toFixed(1)}" font-size="9" text-anchor="middle" fill="var(--text-2)">${r.value}</text>`;
+      inner += `<text x="${labelX}" y="${labelY}" font-size="9" text-anchor="middle" fill="var(--text-3)">${chartLabelTspans(r.label, labelX, labelY, 10)}</text>`;
+      inner += `<text x="${labelX}" y="${(yPos - 4).toFixed(1)}" font-size="9" text-anchor="middle" fill="var(--text-2)">${r.value}</text>`;
     });
     inner += `<line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${padL + plotW}" y2="${zeroY.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>`;
   }
