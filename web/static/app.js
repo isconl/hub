@@ -17655,10 +17655,6 @@ function renderCampus(resumeBanner) {
       ${campusOpen ? `
         <div class="campus-body">
           ${bands}
-          ${resumeBanner ? `<div class="campus-alt">
-            <div class="campus-alt-label">Or simply carry on</div>
-            ${resumeBanner}
-          </div>` : ''}
           <div class="campus-foot">Advice retires itself - each entry carries its own trigger and expiry.
             Ask the agent to re-set the reading order whenever the week changes shape.</div>
         </div>` : ''}
