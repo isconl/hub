@@ -17559,13 +17559,13 @@ function renderRhythm() {
       </div>
     </div>
 
-    ${renderSpaceInsight('rhythm')}
-
     <div class="card-header" style="margin-bottom:0.6rem">
       <div class="task-tabs control-style">
         ${filters.map(f => `<button class="task-tab${rhythmFilter === f.id ? ' on' : ''}" onclick="setRhythmFilter('${f.id}')">${f.label}</button>`).join('')}
       </div>
     </div>
+
+    ${renderSpaceInsight('rhythm')}
 
     ${renderContributionMap({ days: activeDays })}
 
@@ -18047,8 +18047,6 @@ function renderLearning() {
       </div>
     </div>
 
-    ${renderSpaceInsight('learning')}
-
     <div class="card-header" style="margin-bottom:0.6rem">
       <div class="task-tabs control-style">
         <button class="task-tab${learnSpaceTab === 'campus' ? ' on' : ''}" onclick="learnSetSpaceTab('campus')">Campus</button>
@@ -18056,6 +18054,8 @@ function renderLearning() {
         <button class="task-tab${learnSpaceTab === 'commission' ? ' on' : ''}" onclick="learnSetSpaceTab('commission')">Commission New Course</button>
       </div>
     </div>
+
+    ${renderSpaceInsight('learning')}
 
     ${learnSpaceTab === 'campus' ? `
       <!-- Activity map first, Campus advice board below (BL26090401) -->
