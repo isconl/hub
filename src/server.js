@@ -26,6 +26,7 @@ const apk = require('../lib/apk');
 const backlog = require('../lib/backlog');
 const { createChatThreadStore } = require('../lib/chat-threads');
 const { buildChatTools, runChatTurn, executeConfirmedToolCall } = require('../lib/chat-tools');
+const gallery = require('../lib/gallery');
 
 const PORT = parseInt(process.env.HUB_PORT || process.env.PORT || '8080', 10);
 const BIND = process.env.HUB_BIND || '127.0.0.1';
@@ -429,6 +430,32 @@ async function main() {
         }
         res.writeHead(302, { Location: r.data.item.downloadUrl });
         return res.end();
+      }
+
+      // BM26091507: Circle Gallery -- composes circle's people/tags with
+      // vault's OneDrive browser (see lib/gallery.js's own header for the
+      // real folder paths and the reasoning behind them). Native here
+      // (not api-compat.js) because every one of these does more than one
+      // capability call, unlike a plain pass-through route.
+      if (pathname === '/api/circle/gallery/filters' && req.method === 'GET') {
+        try {
+          return sendJson(res, 200, await gallery.listFilters(router));
+        } catch (e) { return sendJson(res, 502, { error: String(e.message || e) }); }
+      }
+      if (pathname === '/api/circle/gallery/items' && req.method === 'GET') {
+        try {
+          const scope = url.searchParams.get('scope');
+          const id = url.searchParams.get('id');
+          return sendJson(res, 200, await gallery.listItems(router, { scope, id }));
+        } catch (e) { return sendJson(res, 400, { error: String(e.message || e) }); }
+      }
+      if (pathname === '/api/circle/gallery/upload' && req.method === 'POST') {
+        try {
+          const body = JSON.parse((await readBody(req)) || '{}');
+          const result = await gallery.uploadItem(router, body);
+          if (result.ok) auditLog.log('gallery_upload', { scope: body.scope, id: body.id, kind: body.kind, fileName: body.fileName });
+          return sendJson(res, 200, result);
+        } catch (e) { return sendJson(res, 400, { ok: false, error: String(e.message || e) }); }
       }
 
       // Reshapes vault's onThisDay ({date, entries, world, card}) into the
