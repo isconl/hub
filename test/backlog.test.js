@@ -1,45 +1,11 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildBacklog, discoverProjects, parseRows } = require('../lib/backlog');
+const { buildBacklog, discoverProjects, INDEX_PATH } = require('../lib/backlog');
 
-test('parseRows extracts id/title/status from a 5-cell row (has Status column)', () => {
-  const text = [
-    '| # | Title | Task | Status | Notes |',
-    '|---|-------|------|--------|-------|',
-    '| BB26091401 (new) | **Do the thing** | some task text | ⬜ Queued | a note |',
-  ].join('\n');
-  const rows = parseRows(text);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].id, 'BB26091401');
-  assert.equal(rows[0].title, 'Do the thing');
-  assert.equal(rows[0].status, '⬜ Queued');
-});
-
-test('parseRows extracts id/title with no status for a 4-cell plan.md-shaped row', () => {
-  const text = [
-    '| # | Title | Task | Notes |',
-    '|---|-------|------|--------|',
-    '| PB26091401 | **Decide something** | the decision | a note |',
-  ].join('\n');
-  const rows = parseRows(text);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].id, 'PB26091401');
-  assert.equal(rows[0].title, 'Decide something');
-  assert.equal(rows[0].status, null);
-});
-
-test('parseRows skips header/separator lines and comment-only pipe lines with no real id', () => {
-  const text = [
-    '| # | Title | Task | Status | Notes |',
-    '|---|-------|------|--------|-------|',
-    '<!-- a comment starting with | is not a row -->',
-    '| BB26091401 | **Real row** | task | Queued | note |',
-  ].join('\n');
-  const rows = parseRows(text);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].id, 'BB26091401');
-});
+// Backlog v2: rows come from the derived index, not from parsing category
+// files. The prose-parsing tests this file used to carry are gone with the
+// prose parser -- a row's state is a field now, so there is nothing to infer.
 
 // 15 Sep 2026: discoverProjects (the tree-walk) and buildBacklog's own
 // has-live-rows filter got conflated in a real report ("only 10 of 20
@@ -64,44 +30,83 @@ test('discoverProjects finds a project folder even when it has zero live rows --
   assert.ok(projects.has('finance-core'));
 });
 
-function fakeRequest(tree, files) {
+/** Build a v2 index payload from shorthand row specs. */
+function fakeIndex(rows = []) {
+  return JSON.stringify({
+    generated: '2026-09-16T00:00:00.000Z',
+    fingerprint: 'test',
+    projects: [],
+    rows: rows.map(r => ({
+      id: r.id, p: r.p, t: r.t || 'build', s: r.s || null,
+      st: r.st || 'ready', pr: r.pr == null ? 3 : r.pr, ef: r.ef || null,
+      ti: r.ti || 'A row', b: r.b || [], d: r.d || [], cb: r.cb || null,
+      u: r.u || '2026-09-16', ar: !!r.ar, f: `work/dev/${r.p}/_next/rows/${r.id}.md`,
+    })),
+  });
+}
+
+function fakeRequest(tree, files, indexRows = []) {
   return async (pathAndQuery) => {
     if (pathAndQuery.includes('/git/trees/')) {
       return { status: 200, data: JSON.stringify({ tree }) };
     }
     const m = pathAndQuery.match(/\/contents\/(.+?)\?ref=/);
     const filePath = decodeURIComponent(m[1]);
+    if (filePath === INDEX_PATH) return { status: 200, data: fakeIndex(indexRows) };
     return { status: 200, data: files[filePath] || '' };
   };
 }
 
-test('buildBacklog sums new-scheme and legacy-scheme files, labelling the legacy source', async () => {
-  const tree = [
-    { path: 'work/dev/migrated-proj/_next/backlog/build.md', type: 'blob' },
-    { path: 'work/dev/old-proj/_next/backlog/build.md', type: 'blob' },
-    { path: 'work/dev/old-proj/_next/backlog/fix.md', type: 'blob' },
+test('buildBacklog reads rows from the derived index, carrying subset as a field', async () => {
+  const tree = [{ path: 'work/dev/iSconl/_next/backlog/build.md', type: 'blob' }];
+  const rows = [
+    { id: 'BB26091401', p: 'iSconl', t: 'build', ti: 'A build row' },
+    { id: 'FI26091401', p: 'iSconl', t: 'build', s: 'fix', ti: 'A fix row' },
+    { id: 'JV26091501', p: 'iSconl', t: 'work', s: 'jira', ti: 'A jira row' },
   ];
-  const files = {
-    'work/dev/migrated-proj/_next/backlog/build.md':
-      '| # | Title | Task | Status | Notes |\n|---|---|---|---|---|\n| BB26091401 | **New scheme row** | t | Queued | n |\n',
-    'work/dev/old-proj/_next/backlog/build.md':
-      '| # | Title | Task | Status | Notes |\n|---|---|---|---|---|\n| BB26091402 | **Old proj build row** | t | Queued | n |\n',
-    'work/dev/old-proj/_next/backlog/fix.md':
-      '| # | Title | Task | Status | Notes |\n|---|---|---|---|---|\n| FI26091401 | **Old proj fix row** | t | Queued | n |\n',
-  };
-  const { projects: result } = await buildBacklog({ force: true, token: '', request: fakeRequest(tree, files) });
+  const { projects: result } = await buildBacklog({ force: true, token: '', request: fakeRequest(tree, {}, rows) });
+  const proj = result.find(p => p.project === 'iSconl');
+  assert.equal(proj.rows.length, 3);
 
-  const migrated = result.find(p => p.project === 'migrated-proj');
-  assert.equal(migrated.rows.length, 1);
-  assert.equal(migrated.rows[0].legacySource, null);
+  const fix = proj.rows.find(r => r.id === 'FI26091401');
+  assert.equal(fix.category, 'build', 'fix is a subset OF build, not its own category');
+  assert.equal(fix.subset, 'fix', 'the subset survives as a field rather than as a filename');
 
-  const old = result.find(p => p.project === 'old-proj');
-  assert.equal(old.rows.length, 2);
-  const buildRow = old.rows.find(r => r.id === 'BB26091402');
-  const fixRow = old.rows.find(r => r.id === 'FI26091401');
-  assert.equal(buildRow.legacySource, null, 'build.md is the primary/new-scheme name for the build category');
-  assert.equal(fixRow.legacySource, 'fix.md', 'fix.md is the legacy source, labelled distinctly');
-  assert.equal(fixRow.category, 'build', 'fix.md rows fold into the build category');
+  const jira = proj.rows.find(r => r.id === 'JV26091501');
+  assert.equal(jira.category, 'work');
+  assert.equal(jira.subset, 'jira');
+});
+
+test('buildBacklog computes ready, and a blocked row is never ready', async () => {
+  const tree = [{ path: 'work/dev/relay/_next/backlog/build.md', type: 'blob' }];
+  const rows = [
+    { id: 'BB26091401', p: 'relay', st: 'ready' },
+    { id: 'BB26091402', p: 'relay', st: 'blocked', b: ['sconl:decision'] },
+    { id: 'BB26091403', p: 'relay', st: 'ready', b: ['BB26091402'] },
+  ];
+  const { projects: result, totals } = await buildBacklog({ force: true, token: '', request: fakeRequest(tree, {}, rows) });
+  const proj = result.find(p => p.project === 'relay');
+  assert.equal(proj.rows.find(r => r.id === 'BB26091401').ready, true);
+  assert.equal(proj.rows.find(r => r.id === 'BB26091402').ready, false, 'blocked is never ready');
+  assert.equal(proj.rows.find(r => r.id === 'BB26091403').ready, false, 'a row waiting on another is not ready');
+  assert.equal(totals.ready, 1);
+  assert.equal(totals.blocked, 1);
+});
+
+test('buildBacklog excludes archived rows', async () => {
+  const tree = [{ path: 'work/dev/relay/_next/backlog/build.md', type: 'blob' }];
+  const rows = [
+    { id: 'BB26091401', p: 'relay' },
+    { id: 'BB26091400', p: 'relay', st: 'done', ar: true },
+  ];
+  const { projects: result } = await buildBacklog({ force: true, token: '', request: fakeRequest(tree, {}, rows) });
+  assert.equal(result.find(p => p.project === 'relay').rows.length, 1);
+});
+
+test('buildBacklog surfaces a project that is in the index but absent from the tree walk', async () => {
+  const rows = [{ id: 'BB26091401', p: 'ghost-proj' }];
+  const { projects: result } = await buildBacklog({ force: true, token: '', request: fakeRequest([], {}, rows) });
+  assert.ok(result.find(p => p.project === 'ghost-proj'), 'an indexed project is never dropped for having no tree entries');
 });
 
 test('buildBacklog surfaces a non-backlog _next/*.md document without trying to parse it into rows', async () => {
@@ -125,13 +130,9 @@ test('buildBacklog skips a project with neither live rows nor documents from the
     { path: 'work/dev/empty-proj/_next/backlog/build.md', type: 'blob' },
     { path: 'work/dev/busy-proj/_next/backlog/build.md', type: 'blob' },
   ];
-  const files = {
-    'work/dev/empty-proj/_next/backlog/build.md': '',
-    'work/dev/busy-proj/_next/backlog/build.md':
-      '| # | Title | Task | Status | Notes |\n|---|---|---|---|---|\n| BB26091401 | **Real row** | t | Queued | n |\n',
-  };
+  const rows = [{ id: 'BB26091401', p: 'busy-proj', ti: 'Real row' }];
   const { projects: result, discoveredProjectCount, shownProjectCount } =
-    await buildBacklog({ force: true, token: '', request: fakeRequest(tree, files) });
+    await buildBacklog({ force: true, token: '', request: fakeRequest(tree, {}, rows) });
   assert.equal(result.find(p => p.project === 'empty-proj'), undefined, 'empty-proj has nothing to show');
   assert.ok(result.find(p => p.project === 'busy-proj'), 'busy-proj has a live row');
   // The acceptance guard: discovery (2 projects found in the tree) must
