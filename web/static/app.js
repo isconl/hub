@@ -5230,6 +5230,10 @@ function inboxToggle(id) {
 }
 function repaintView(name) {
   if (currentView === name) document.getElementById('view-container').innerHTML = viewFns[name]();
+  // A repaint is usually what a secondary-nav button just caused, so the
+  // strip's active state has to follow it -- otherwise the content switches
+  // and the button still highlights the tab you left.
+  if (currentView === name && typeof renderNavActions === 'function') renderNavActions();
   // renderSettings() emits the APK card as a skeleton and fills it over the
   // network. A repaint throws that away, so without this the card sits on
   // "Checking for the current build..." for as long as the page stays open.
@@ -9964,7 +9968,11 @@ function renderDayBlocks() {
   return `
     <div class="day-card">
       <div class="card-header">
-        <span class="card-title day-title">Today</span>
+        <!-- The weekday, not the word "Today". This view is the one place a
+             date label earns its space: everywhere else the title names the
+             space, here it names the day you are actually standing in. Per
+             Sconl, 16 Sep 2026 -- deliberately the only view treated this way. -->
+        <span class="card-title day-title">${new Date().toLocaleDateString(undefined, { weekday: 'long' })}</span>
         <span class="card-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</span>
       </div>
       <div class="card-sub" id="day-card-sub">${escHtml(dayCardWittyLine(getEquicycleContext()))}</div>
@@ -11608,7 +11616,7 @@ const viewFns = {
   // gets renamed in the database, not here. Drop this alias once it is.
   qpress:renderWriter, writer:renderWriter,
   xspan:renderXSpan, qpages:renderQPages, qpulse:renderQPulse,
-  qspace:renderQSpace, codex:renderCodex,
+  qspace:renderQSpace, codex:renderCodex, isconl:renderISconl,
   'identity-persona':renderIdentityPersonaRing,
 };
 
@@ -11667,6 +11675,22 @@ const QSPACE_PRODUCTS = [
   { view: 'qpulse', name: 'QPulse', blurb: 'Signals. Scope not yet defined.', status: 'scaffold' },
 ];
 
+/* iSconl is the personal family -- the fleet this console is part of. Listed
+   as a space in its own right so the thing you are standing inside is visible
+   beside the ones it builds. */
+function renderISconl() {
+  return renderFamilyScaffold({
+    title: 'iSconl',
+    tagline: 'the personal fleet',
+    body: `<p>The fleet this console runs on &mdash; engines across three layers.</p>
+      <p><strong>Substrate</strong> &mdash; safe, store, sync.
+         <strong>Domain</strong> &mdash; spark, scope, social, stock.
+         <strong>Surface</strong> &mdash; hub, ops, and the app client.</p>
+      <p>Nine running services. See <code>work/_arc/iSconl/</code> for the
+      architecture canon.</p>`,
+  });
+}
+
 function renderQSpace() {
   const cards = QSPACE_PRODUCTS.map(p => `
     <div class="card" style="cursor:pointer" onclick="navigate('${p.view}')">
@@ -11686,8 +11710,6 @@ function renderQSpace() {
 let codexTab = 'journal';
 
 function renderCodex() {
-  const tab = (key, label) => `<button class="chip${codexTab === key ? ' active' : ''}"
-    onclick="codexTab='${key}';repaintView('codex')">${label}</button>`;
   // renderJournal() carries its own <h1>Journal</h1> inside a view-head.
   // Dropping just that heading leaves its explanatory meta text intact as a
   // subtitle under Codex, rather than stacking two page titles. Targeted at
@@ -11696,8 +11718,9 @@ function renderCodex() {
   const body = codexTab === 'journal'
     ? renderJournal().replace('<h1>Journal</h1>', '')
     : renderIdeas().replace('<h1>Ideas</h1>', '');
+  // The Journal/Ideas switch lives in the navbar strip (VIEW_ACTIONS.codex),
+  // not here -- see the secondary-navigation template above.
   return `<div class="view-head"><h1>Codex</h1><div class="view-head-meta">what you thought, and what you did about it</div></div>
-    <div style="display:flex;gap:0.5rem;margin:0 0 1rem">${tab('journal', 'Journal')}${tab('ideas', 'Ideas')}</div>
     ${body}`;
 }
 
@@ -12034,7 +12057,7 @@ const VIEW_LABELS = {
   integrations:'Integrations Hub', audit:'Audit', backlog:'Backlog', settings:'Settings',
   task:'Task', 'whatsapp-guide':'WhatsApp', qpress:'QPress', writer:'QPress', ops:'Ops',
   xspan:'XSpan', qpages:'QPages', qpulse:'QPulse', identity:'Identity',
-  qspace:'QSpace', codex:'Codex',
+  qspace:'QSpace', codex:'Codex', isconl:'iSconl',
 };
 let NAV_TRAIL = [];
 const TRAIL_MAX = 8;
@@ -12061,6 +12084,90 @@ function trailPush(view, taskId) {
   if (NAV_TRAIL.length > TRAIL_MAX) NAV_TRAIL.shift();
 }
 
+/* ── SECONDARY NAVIGATION, ONE TEMPLATE FOR EVERY SPACE ──────────────────────
+   A space declares up to five buttons here and they render into the navbar
+   strip beside the breadcrumb. Views must NOT grow their own button row above
+   their content: that is how five spaces end up with five slightly different
+   toolbars in five slightly different places.
+
+   Each entry is { key, label, active?, run }. `active` marks the current
+   sub-view; `run` does the work and is followed by a repaint of that view. */
+const VIEW_ACTIONS = {
+  codex: () => ['journal', 'ideas'].map(k => ({
+    key: k,
+    label: k === 'journal' ? 'Journal' : 'Ideas',
+    active: codexTab === k,
+    run: () => { codexTab = k; repaintView('codex'); },
+  })),
+  qspace: () => QSPACE_PRODUCTS.map(p => ({
+    key: p.view, label: p.name, run: () => navigate(p.view),
+  })),
+};
+
+/** The cap is five. Anything beyond it is dropped rather than silently
+ *  wrapping into a second row, so the overflow is a visible bug in the space
+ *  that declared it, not a quietly degraded strip. */
+const MAX_VIEW_ACTIONS = 5;
+
+function renderNavActions() {
+  const host = document.getElementById('navbar-actions');
+  if (!host) return 0;
+  const build = VIEW_ACTIONS[currentView];
+  const items = (typeof build === 'function' ? build() : []).slice(0, MAX_VIEW_ACTIONS);
+  host.innerHTML = items.map((a, i) =>
+    `<button class="navbar-action${a.active ? ' active' : ''}" data-action-idx="${i}">${escHtml(a.label)}</button>`
+  ).join('');
+  host.querySelectorAll('[data-action-idx]').forEach(b => {
+    b.onclick = () => items[Number(b.dataset.actionIdx)].run();
+  });
+  // The meters fill from a separate async path, so the first measurement
+  // after a nav render can land while they are still empty. Re-measure once
+  // the frame has settled; the ResizeObserver covers everything after that.
+  if (items.length) {
+    requestAnimationFrame(syncMetersOffset);
+    setTimeout(syncMetersOffset, 400);
+  }
+  return items.length;
+}
+
+/* .eq-header is flex/space-between, so the meters' left edge moves with the
+   date text beside it. Measure it rather than guess, and keep it measured --
+   a hardcoded value would be right only at the width it was written at. */
+function syncMetersOffset() {
+  const bar = document.getElementById('navbar');
+  const meters = document.getElementById('eq-meters');
+  if (!bar || !meters || bar.hidden) return;
+  const cs = getComputedStyle(bar);
+  const padLeft = parseFloat(cs.paddingLeft) || 0;
+  // The second grid column starts one column-gap after the first column ends,
+  // so the gap has to come out of the width or the row lands a gap too far right.
+  const gap = parseFloat(cs.columnGap) || 0;
+  const offset = meters.getBoundingClientRect().left - bar.getBoundingClientRect().left - padLeft - gap;
+  if (offset > 0) bar.style.setProperty('--meters-offset', `${Math.round(offset)}px`);
+  else bar.style.removeProperty('--meters-offset');
+}
+window.addEventListener('resize', syncMetersOffset);
+
+/* The meters are populated asynchronously, so measuring once after a nav
+   render catches them at whatever width they happened to be mid-fill. Watch
+   the element instead of guessing when it has settled. */
+if (typeof ResizeObserver === 'function') {
+  const startMetersWatch = () => {
+    const meters = document.getElementById('eq-meters');
+    const bar = document.getElementById('navbar');
+    if (!meters || !bar) { setTimeout(startMetersWatch, 200); return; }
+    // Watch the navbar as well as the meters: it starts hidden (zero-sized),
+    // and a measurement taken then is thrown away, so un-hiding has to be what
+    // re-triggers it.
+    const ro = new ResizeObserver(syncMetersOffset);
+    ro.observe(meters);
+    ro.observe(bar);
+    syncMetersOffset();
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startMetersWatch);
+  else startMetersWatch();
+}
+
 function renderNavBar() {
   const bar   = document.getElementById('navbar');
   const back  = document.getElementById('navbar-back');
@@ -12070,9 +12177,17 @@ function renderNavBar() {
   const prev = NAV_TRAIL[NAV_TRAIL.length - 2];
   const here = NAV_TRAIL[NAV_TRAIL.length - 1];
 
-  // Nothing behind you means no bar at all - chrome you cannot use is noise.
-  if (!prev) { bar.hidden = true; return; }
+  const actionCount = renderNavActions();
+
+  // Nothing behind you AND nothing to do in here means no bar at all - chrome
+  // you cannot use is noise. A space with its own actions keeps the bar even
+  // at the top level, since that row is the only place those buttons live.
+  if (!prev && !actionCount) { bar.hidden = true; return; }
   bar.hidden = false;
+  if (!prev) { back.hidden = true; trail.innerHTML = ''; }
+  else back.hidden = false;
+  requestAnimationFrame(syncMetersOffset);
+  if (!prev) return;
   back.textContent = `← ${prev.label}`;
   back.onclick = goBack;
 

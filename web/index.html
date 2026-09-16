@@ -281,6 +281,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18V9l9-5 9 5v9"/><path d="M3 18h18"/><path d="M7 18v-5h10v5"/></svg>
             XSpan
           </button>
+          <button class="nav-item nav-axis" data-view="isconl" data-axis="AX-ISC" id="nav-space-isconl">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            iSconl
+          </button>
           <!-- QSpace holds Press, Pages and Pulse rather than each taking a
                top-level slot, 16 Sep 2026. One family, one entry; the three
                products keep their own routes underneath. This leaves three
@@ -367,9 +371,18 @@
 
       <!-- Where you are, and the way back. Hidden on the top-level view so it
            never adds chrome you cannot use. Populated by renderNavBar(). -->
+      <!-- Secondary navigation WITHIN a space sits here, beside the trail, so
+           a view never grows its own private button row above its content.
+           On a wide screen the row starts exactly where the SPRINT meter
+           starts above it (see --meters-offset); on a narrow one the row moves
+           above the trail, because the buttons are used far more often than
+           the breadcrumb and should not be the thing that wraps. -->
       <nav class="navbar" id="navbar" hidden>
-        <button class="navbar-back" id="navbar-back" title="Back (Alt+←)"></button>
-        <div class="navbar-trail" id="navbar-trail"></div>
+        <div class="navbar-crumbs">
+          <button class="navbar-back" id="navbar-back" title="Back (Alt+←)"></button>
+          <div class="navbar-trail" id="navbar-trail"></div>
+        </div>
+        <div class="navbar-actions" id="navbar-actions"></div>
       </nav>
 
       <!-- Altitude and next move. Deliberately OUTSIDE view-container: several code

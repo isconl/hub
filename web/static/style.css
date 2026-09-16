@@ -2110,12 +2110,53 @@ textarea:focus { outline:none; border-color:var(--green-dim); }
    top-level view, because chrome you cannot use is noise. The back control names
    its destination - "← Spaces" says what will happen, a bare arrow does not.
    ══════════════════════════════════════════════════════════════════════════ */
+/* The strip holds two things: where you are (crumbs) and where you can go
+   inside this space (actions). On a wide screen they sit side by side, with
+   the action row starting exactly where the SPRINT meter starts in the header
+   above -- `--meters-offset` is measured at runtime because .eq-header is
+   space-between, so that x moves with the date text's width and cannot be a
+   fixed value. If the variable is ever missing the row simply right-aligns,
+   which is wrong-looking but never broken. */
 .navbar {
-  display:flex; align-items:center; gap:0.7rem;
+  display:grid;
+  grid-template-columns:var(--meters-offset, 1fr) 1fr;
+  align-items:center; gap:0.7rem;
   padding:0.4rem 1rem; border-bottom:1px solid var(--border);
   background:var(--panel);
 }
 .navbar[hidden] { display:none; }
+
+.navbar-crumbs {
+  display:flex; align-items:center; gap:0.7rem; min-width:0;
+}
+
+/* At most five. Enforced in renderNavActions() too -- this is the visual
+   half of that rule, not the rule itself. */
+.navbar-actions {
+  display:flex; align-items:center; gap:0.35rem; flex-wrap:nowrap; min-width:0;
+}
+.navbar-actions:empty { display:none; }
+
+.navbar-action {
+  background:transparent; border:1px solid var(--border); border-radius:999px;
+  color:var(--text-2); font-family:inherit; font-size:0.68rem; font-weight:600;
+  padding:3px 11px; cursor:pointer; white-space:nowrap; flex-shrink:0;
+}
+.navbar-action:hover { border-color:var(--border-mid); color:var(--text); background:var(--panel-hover); }
+.navbar-action.active { border-color:var(--green); color:var(--text); }
+.navbar-action:focus-visible { outline:2px solid var(--green); outline-offset:1px; }
+
+/* Narrow screens (the X260 at 1366 lands here): the action row moves ABOVE
+   the crumbs. The buttons are used many times per visit and the breadcrumb
+   is read once, so the crumbs are what should give way and wrap. */
+@media (max-width:1180px) {
+  .navbar {
+    grid-template-columns:1fr;
+    row-gap:0.4rem;
+  }
+  .navbar-actions { order:1; flex-wrap:wrap; }
+  .navbar-crumbs  { order:2; }
+}
 .navbar-back {
   background:transparent; border:1px solid var(--border); border-radius:var(--r-sm,4px);
   color:var(--text-2); font-family:inherit; font-size:0.72rem; font-weight:600;
