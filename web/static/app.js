@@ -17620,12 +17620,15 @@ async function learnResume(course, lesson, pct) {
 // ── PERSONAL SPACE: RHYTHM HABIT TRACKER ─────────────────────────────────────
 let RHYTHM = null;
 let rhythmFilter = 'all';
+// FI26091507: 'ideas'/'planning'/'finance'/'rhythm' each got a real,
+// data-driven insight function below (they used to sit here as permanent
+// hardcoded copy indistinguishable from computed data -- the same bug that
+// hid FI26091501 for weeks). Only 'calendar' still reads this object, and
+// only as an honest loading placeholder until fetchInsights() replaces it
+// with vault's real onthisday card -- it must never be fabricated content
+// that could pass for a real answer if the fetch silently fails.
 let SPACE_INSIGHTS = {
-  calendar: { title: 'Temporal Alignment & Focus', category: 'Today in History', text: 'On August 1, 1971, the Concert for Bangladesh pioneered global music philanthropy. Structure your day with singular focus.', tone: 'gold' },
-  ideas: { title: 'Spark & Innovation Discipline', category: 'Executive Foresight', text: 'Great products come from ruthless iteration. Promoted ideas are 4.2x more likely to ship when paired with a clear Definition of Done.', tone: 'cyan' },
-  planning: { title: 'Strategic Execution & Runway', category: 'Execution Discipline', text: 'Runway is measured by delivered software, not drafted roadmaps. Focus on closing open rungs in the fortnight sprint.', tone: 'violet' },
-  finance: { title: 'Asset Preservation & 50/30/20 Rule', category: 'Financial Strategy', text: 'Target 50% Needs, 30% Wants, and 20% Savings. Keeping variable wants under target secures a high liquidity buffer.', tone: 'green' },
-  rhythm: { title: 'Personal Discipline & Peak Performance', category: 'Consistency & Momentum', text: 'Discipline is consistency over intensity. Small daily habit check-ins compound into sovereign execution power.', tone: 'green' }
+  calendar: { title: 'Reading today in history…', category: 'Today in History', text: 'Loading your personal record and world-history corpus.', tone: 'gold' },
 };
 
 async function fetchInsights() {
@@ -17768,9 +17771,42 @@ function learningInsight() {
     text: `${course.TITLE}${pct ? ` · ${pct}% in` : ''}. Carry on exactly where you left off.`, tone: 'cyan' };
 }
 
+/**
+ * FI26091507: real replacement for SPACE_INSIGHTS.rhythm's hardcoded
+ * "Personal Discipline & Peak Performance / consistency over intensity"
+ * placeholder -- same bug class as the calendar/planning/finance/ideas
+ * placeholders above (all already fixed), just missed at the time. Nothing
+ * ever overwrote this one: pulse's own getInsights() always returns its
+ * DEFAULT_INSIGHTS.rhythm unchanged (readInsightsOverride is never supplied
+ * in pulse/src/server.js), and hub's /api/insights route only ever sets the
+ * calendar key, so this card rendered the same static sentence regardless of
+ * actual habit activity. Computed from the real RHYTHM global (same data the
+ * habit grid and contribution map on this view already read) -- current
+ * streak of consecutive active days, or an honest "not started" read.
+ */
+function rhythmInsight() {
+  if (!RHYTHM) return { title: 'Reading the rhythm log', category: 'Consistency & momentum',
+    text: 'Open Rhythm once this session to load real streak data here.', tone: 'green' };
+  const days = RHYTHM.days || [];
+  let streak = 0;
+  for (let i = days.length - 1; i >= 0; i--) {
+    if (days[i].count > 0) streak++; else break;
+  }
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayCount = (days[days.length - 1] && days[days.length - 1].date === todayStr) ? days[days.length - 1].count : 0;
+  const habitCount = (RHYTHM.habits || []).length;
+  if (!streak) {
+    return { title: 'No active streak right now', category: 'Consistency & momentum',
+      text: habitCount ? 'Nothing logged yet today or yesterday. One check-in restarts the streak.' : 'No habits configured yet. Add one to start tracking a streak here.', tone: 'green' };
+  }
+  return { title: `${streak}-day streak`, category: 'Consistency & momentum',
+    text: `${todayCount ? `${todayCount} check-in${todayCount === 1 ? '' : 's'} logged today. ` : ''}Consistency compounds faster than any single good day - keep it unbroken.`, tone: 'green' };
+}
+
 function renderSpaceInsight(space) {
   const ins = space === 'planning' ? planningInsight() : space === 'finance' ? financeInsight()
-    : space === 'ideas' ? ideasInsight() : space === 'learning' ? learningInsight() : SPACE_INSIGHTS[space];
+    : space === 'ideas' ? ideasInsight() : space === 'learning' ? learningInsight()
+    : space === 'rhythm' ? rhythmInsight() : SPACE_INSIGHTS[space];
   if (!ins) return '';
   const accentColor = ins.tone === 'gold' ? 'var(--amber)' : ins.tone === 'cyan' ? 'var(--cyan)' : ins.tone === 'violet' ? 'var(--violet)' : 'var(--green)';
   return `
@@ -18157,23 +18193,15 @@ function sortGroupCourses(list) {
     .map(x => x.c);
 }
 
-const DEFAULT_LEARNING_GROUPS = [
-  { id: 'corporate-mandate', label: 'Corporate & Mandate', description: 'The house, the people, the rules, the mandate, and task execution.', color: '#3b82f6', sortOrder: 1, status: 'active' },
-  { id: 'sales-persuasion', label: 'Sales & Persuasion', description: 'Negotiation, closing, and public speaking - the full persuasion arc.', color: '#ec4899', sortOrder: 2, status: 'active' },
-  { id: 'medicine-surgery', label: 'Medicine & Surgery', description: 'Anatomy, first aid, trauma, clinical conditions, pharmacology, and surgical practice.', color: '#ef4444', sortOrder: 3, status: 'active' },
-  { id: 'markets-economics', label: 'Markets & Economics', description: 'The ten markets and how they actually move.', color: '#8b5cf6', sortOrder: 4, status: 'active' },
-  { id: 'wealth-finance', label: 'Wealth & Finance', description: 'Financial intelligence, capital allocation, valuation, and wealth velocity.', color: '#f59e0b', sortOrder: 5, status: 'active' },
-  { id: 'platforms-experience', label: 'Platforms & Experience', description: 'The B2B portals, publishing pipeline, and UX journeys.', color: '#10b981', sortOrder: 6, status: 'active' },
-  { id: 'profiles-psychology', label: 'Profiles & Psychology', description: 'Reading people, behavior, influence, and profiling - real and archetypal.', color: '#06b6d4', sortOrder: 7, status: 'active' },
-  { id: 'systems-architecture', label: 'Systems & Architecture', description: 'Systems thinking, software architecture, business systems, and scaling.', color: '#6366f1', sortOrder: 8, status: 'active' },
-  { id: 'projects-memory', label: 'Projects & Memory', description: 'Every project drive-wide -- progress, decisions and reasoning, open risks, and current state. The first thing an AI reads before advising Sconl on anything.', color: '#f97316', sortOrder: 9, status: 'active' },
-  { id: 'legal-compliance', label: 'Legal & Compliance', description: 'Kenyan and international law worth practical awareness of -- drug law, employment law, financial and tax regulation, and related subjects still being scoped.', color: '#64748b', sortOrder: 10, status: 'active' },
-  { id: 'identity-self', label: 'Identity & Self', description: 'Self-understanding and personal architecture -- a very helpful personal coach function, not a conventional course subject.', color: '#a855f7', sortOrder: 11, status: 'active' },
-  { id: 'brands-ventures', label: 'Brands & Ventures', description: "Understanding Sconl's own brand portfolio inside out and building each one from the ground up.", color: '#ec4899', sortOrder: 12, status: 'active' },
-];
-
+// FI26091507: a hardcoded fallback group list used to stand in here whenever
+// the backend returned an empty array, rendering with zero visual difference
+// from real data -- the exact bug class that hid FI26091501 for weeks (spark's
+// own DEFAULT_GROUPS in lib/learning.js). learning/groups.tsv is real,
+// queryable, editable data now (vault/lib/default-schema.js), so an empty
+// backend response here means the store is genuinely empty and the UI must
+// say so honestly rather than quietly paint over it.
 function getResolvedGroups(courses, backendGroups) {
-  const baseGroups = (backendGroups && backendGroups.length) ? backendGroups : DEFAULT_LEARNING_GROUPS;
+  const baseGroups = backendGroups || [];
 
   return baseGroups.map(g => {
     const groupCourses = (courses || []).filter(c => c.GROUP_ID === g.id);
@@ -18434,9 +18462,11 @@ function renderLearning() {
       </div>
       ${learnViewMode === 'groups' ? `
         <div class="learn-section-head" style="margin-bottom:0.75rem">Learning Tracks & Classifications</div>
+        ${groups.length ? `
         <div class="learn-groups-grid" style="margin-bottom:1.5rem">
           ${assignLearnTrackTiers(groups).map(renderLearnGroupCard).join('')}
-        </div>
+        </div>` : `
+        <div class="empty-state" style="padding:0.8rem">No learning tracks configured yet.</div>`}
       ` : `
         ${groups.map(g => {
           const groupCourses = courses.filter(c => c.GROUP_ID === g.id);
