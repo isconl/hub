@@ -602,11 +602,12 @@ select option { background:var(--panel); color:var(--text); }
   font-size:0.62rem; text-transform:uppercase; letter-spacing:0.12em;
   color:var(--text-3); font-weight:700; margin-bottom:0.25rem;
 }
+/* One bold sentence, then plain text explaining it. */
 .day-card .checkpoint-title {
-  font-size:1.02rem; font-weight:650; line-height:1.35; color:var(--text);
+  font-size:0.98rem; font-weight:700; line-height:1.4; color:var(--text);
 }
 .day-card .checkpoint-desc {
-  font-size:0.78rem; color:var(--text-2); line-height:1.5; margin-top:0.2rem;
+  font-size:0.84rem; font-weight:400; color:var(--text-2); line-height:1.55; margin-top:0.3rem;
 }
 /* An empty day should look calm, not broken. */
 .day-card .checkpoint-empty { border-left-color:var(--border); cursor:default; }

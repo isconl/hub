@@ -9957,14 +9957,19 @@ function renderCheckpointCallout() {
   if (top.JIRA_KEY && top.JIRA_KEY !== '-') bits.push(escHtml(top.JIRA_KEY));
   if (top.PROJECT && top.PROJECT !== '-') bits.push(escHtml(top.PROJECT));
 
-  const desc = top.NOTES && top.NOTES !== '-'
-    ? escHtml(top.NOTES)
-    : (bits.length ? bits.join(' · ') : 'The highest-weighted item on the board right now.');
+  // The eyebrow stays the single word "Checkpoint". Everything that explains
+  // the focus -- why it is urgent, where it lives, what it says -- belongs in
+  // the sentence below it, not crammed into a label nobody reads twice.
+  const explain = [
+    top.NOTES && top.NOTES !== '-' ? escHtml(top.NOTES) : null,
+    bits.length ? bits.join(' · ') : null,
+  ].filter(Boolean).join(' — ')
+    || 'The highest-weighted item on the board right now.';
 
   return `<div class="checkpoint" onclick="navigate('tasks')" title="Open tasks">
-    <div class="checkpoint-label">Checkpoint${bits.length ? ` · ${bits.join(' · ')}` : ''}</div>
+    <div class="checkpoint-label">Checkpoint</div>
     <div class="checkpoint-title">${escHtml(top.TITLE || 'Untitled')}</div>
-    <div class="checkpoint-desc">${desc}</div>
+    <div class="checkpoint-desc">${explain}</div>
   </div>`;
 }
 
