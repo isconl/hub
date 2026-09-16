@@ -19012,8 +19012,22 @@ function learnMd(src, courseId) {
     return `\n\n___MATH_PH_${idx}___\n\n`;
   });
 
-  // Extract $...$ inline math
-  rawSrc = rawSrc.replace(/(^|[\s(])\$([^\$\n]+)\$(?=[\s.,;:)]|$)/g, (_m, prefix, eq) => {
+  // Extract $...$ inline math. FL26091210: the boundary classes originally
+  // only allowed whitespace/'('/start-of-string before the opening $ and
+  // whitespace/'.,;:)'/end-of-string after the closing $ -- meant to stop a
+  // prose currency mention like "$50 today. Also $100 tomorrow." from
+  // pairing up as fake math (the digit right after the second $ still fails
+  // the boundary check below, so that guard is preserved). But it also
+  // silently dropped the match whenever real inline math sat next to
+  // ordinary markdown punctuation -- a bold marker, a table pipe, a closing
+  // bracket/quote -- which is exactly what left literal "$> 1.4x$" on the
+  // page in the applied-financial-intelligence "Compounding Velocity"
+  // module (its "Target: $> 1.4x$" line is written inside a bolded/table
+  // cell context, so the "$" immediately touches "**"/"|"/etc rather than
+  // whitespace). Widened both classes to also accept common markdown
+  // structural characters, without touching digits/letters, so currency
+  // text still won't false-positive.
+  rawSrc = rawSrc.replace(/(^|[\s(*_|[{"'`])\$([^\$\n]+)\$(?=[\s.,;:)\]}*_|"'`]|$)/g, (_m, prefix, eq) => {
     const idx = mathPlaceholders.length;
     const html = `<span class="math-inline-badge">${renderMathLatex(eq, false)}</span>`;
     mathPlaceholders.push(html);
