@@ -1182,41 +1182,13 @@ function renderToday() {
       <div class="command-left">
         <div id="day-card-slot">${renderDayBlocks()}</div>
 
-        <!-- ── EXECUTIVE BRIEF ──
-             The "Morning Brief / Afternoon Checkpoint / Evening Review"
-             heading is gone (16 Sep 2026, per Sconl): the day's one focus now
-             sits in the checkpoint callout at the top of the day card, above
-             the rail, where it is read. What remains here is the supporting
-             detail -- events, services, repos -- which does not need a
-             time-of-day title announcing it. -->
-        <div class="morning-brief">
-          <div class="morning-brief-head">
-            <div class="morning-brief-title-wrap"></div>
-            <div class="morning-brief-meta-pills">
-              <span class="brief-pill ${STATE.services.msgraph==='connected'?'connected':'idle'}" onclick="navigate('settings')" title="Microsoft 365 Sync">
-                ${svgIcon('cloud', 11)} M365: ${STATE.services.msgraph==='connected'?'Online':'Offline'}
-              </span>
-              <span class="brief-pill" onclick="navigate('github')" title="GitHub Contributions">
-                ${svgIcon('github', 11)} ${STATE.github.repos.length} Repos
-              </span>
-            </div>
-          </div>
-
-          <div class="morning-brief-grid">
-            <!-- "Primary Focus" removed 16 Sep 2026: it listed the top three
-                 tasks, and three focuses is not a focus. The single one now
-                 leads the day card as the checkpoint callout. -->
-            ${upcomingEvents.length ? `
-              <div class="morning-brief-card event-card" onclick="navigate('calendar')">
-                <div class="brief-card-label">${svgIcon('calendar', 11)} Next Milestone</div>
-                <div class="brief-card-content">
-                  <strong>${escHtml(upcomingEvents[0].title || upcomingEvents[0].TITLE || 'Event')}</strong>
-                  <span class="brief-card-sub">${escHtml(upcomingEvents[0].date || upcomingEvents[0].DATE || '')}</span>
-                </div>
-              </div>
-            ` : ''}
-          </div>
-        </div>
+        <!-- The EXECUTIVE BRIEF card is gone entirely (16 Sep 2026, per
+             Sconl). It held a time-of-day heading, two service pills and a
+             "next milestone" tile. The heading duplicated the checkpoint, the
+             milestone duplicates the Upcoming list in the right rail, and the
+             pills restated what the status dots at the bottom of the sidebar
+             already say. None of it was the day's focus, and all of it sat
+             above the numbers that are. -->
 
         <!-- Every tile drills through to the view the number is computed from. -->
         <div class="cards-grid-3">
@@ -9930,6 +9902,29 @@ function workingDayLeftLine(d) {
    and putting it below the fold said it did not matter. One item, at the top,
    is the whole point -- so this deliberately shows the single highest-scoring
    task and never a list. */
+/* ── CALLOUT ──────────────────────────────────────────────────────────────────
+   The house callout, as one function. Anywhere the console needs to say "here
+   is the one thing about this", it calls this rather than hand-rolling a box.
+   See .callout in style.css for the anatomy and the tones.
+
+     label  small uppercase eyebrow
+     title  one sentence, bold
+     body   plain text explaining it (optional)
+     tone   green | amber | red | cyan | blue | muted
+     href   optional JS to run on click; makes the whole callout clickable
+
+   Title and body are escaped here, so callers pass plain text and cannot
+   accidentally inject markup from something like a task title. */
+function renderCallout({ label, title, body, tone = 'green', href, tip } = {}) {
+  const cls = ['callout', tone && tone !== 'green' ? `tone-${tone}` : '', href ? 'is-link' : '']
+    .filter(Boolean).join(' ');
+  return `<div class="${cls}"${href ? ` onclick="${href}"` : ''}${tip ? ` title="${escHtml(tip)}"` : ''}>
+    ${label ? `<div class="callout-label">${escHtml(label)}</div>` : ''}
+    <div class="callout-title">${escHtml(title || '')}</div>
+    ${body ? `<div class="callout-body">${escHtml(body)}</div>` : ''}
+  </div>`;
+}
+
 function renderCheckpointCallout() {
   const tasks = (STATE.tasks || []).filter(t => t.STATUS !== 'done');
   const top = tasks
@@ -9938,11 +9933,12 @@ function renderCheckpointCallout() {
     .sort((a, b) => b._score - a._score)[0];
 
   if (!top) {
-    return `<div class="checkpoint checkpoint-empty">
-      <div class="checkpoint-label">Checkpoint</div>
-      <div class="checkpoint-title">Nothing is flagged for today</div>
-      <div class="checkpoint-desc">No task carries enough weight to be the day's focus. That is either a clear day or an unfiled one.</div>
-    </div>`;
+    return renderCallout({
+      label: 'Checkpoint',
+      title: 'Nothing is flagged for today.',
+      body: "No task carries enough weight to be the day's focus. That is either a clear day or an unfiled one.",
+      tone: 'muted',
+    });
   }
 
   // The description says why this is the focus, from what the row actually
@@ -9954,23 +9950,33 @@ function renderCheckpointCallout() {
     else if (diff === 0) bits.push('due today');
     else bits.push(`due in ${diff} day${diff === 1 ? '' : 's'}`);
   }
-  if (top.JIRA_KEY && top.JIRA_KEY !== '-') bits.push(escHtml(top.JIRA_KEY));
-  if (top.PROJECT && top.PROJECT !== '-') bits.push(escHtml(top.PROJECT));
+  // Plain text, not escaped: renderCallout escapes, and escaping twice turns
+  // an ampersand in a project name into &amp;amp;.
+  if (top.JIRA_KEY && top.JIRA_KEY !== '-') bits.push(top.JIRA_KEY);
+  if (top.PROJECT && top.PROJECT !== '-') bits.push(top.PROJECT);
 
   // The eyebrow stays the single word "Checkpoint". Everything that explains
   // the focus -- why it is urgent, where it lives, what it says -- belongs in
   // the sentence below it, not crammed into a label nobody reads twice.
   const explain = [
-    top.NOTES && top.NOTES !== '-' ? escHtml(top.NOTES) : null,
+    top.NOTES && top.NOTES !== '-' ? top.NOTES : null,
     bits.length ? bits.join(' · ') : null,
   ].filter(Boolean).join(' — ')
     || 'The highest-weighted item on the board right now.';
 
-  return `<div class="checkpoint" onclick="navigate('tasks')" title="Open tasks">
-    <div class="checkpoint-label">Checkpoint</div>
-    <div class="checkpoint-title">${escHtml(top.TITLE || 'Untitled')}</div>
-    <div class="checkpoint-desc">${explain}</div>
-  </div>`;
+  return renderCallout({
+    label: 'Checkpoint',
+    title: top.TITLE || 'Untitled',
+    body: explain,
+    // Always green. I had this switch to amber when the task was overdue;
+    // Sconl asked for green, and he is right -- the checkpoint is the agent
+    // speaking, and the agent's colour is green throughout this UI. Urgency
+    // belongs in the words ("overdue by 48 days"), not in a colour that makes
+    // the day's focus look like a warning.
+    tone: 'green',
+    href: "navigate('tasks')",
+    tip: 'Open tasks',
+  });
 }
 
 function renderDayBlocks() {

@@ -587,31 +587,55 @@ select option { background:var(--panel); color:var(--text); }
    is right for "Decision Log" and wrong for "XSpan", "QPress", "QPages" and
    "QPulse" -- it renders them "Xspan" and "Qpress". Product names are spelled
    the way they are spelled; add .brand to a view title to opt out. */
-/* THE CHECKPOINT — the one thing today is about.
-   Sits between the day's name and the rail, so it is the first thing read
-   after the date. Given a left accent rather than a full card border: it is
-   part of the day card, not another box competing with it. */
-.day-card .checkpoint {
-  margin:0.7rem 0 0.9rem;
-  padding:0.6rem 0 0.6rem 0.9rem;
-  border-left:3px solid var(--green);
-  cursor:pointer;
+/* ── CALLOUT ────────────────────────────────────────────────────────────────
+   THE house callout. When Sconl says "callout", this is the thing.
+
+   The shape was already established by the lesson body (.lesson-watch,
+   .lesson-book, .lesson-essentials) but existed only as five near-identical
+   copies, one per lesson type. This is that shape as ONE component, so a
+   callout anywhere in the console is the same object rather than a
+   re-implementation that drifts.
+
+   Anatomy, always in this order:
+     .callout-label   small uppercase eyebrow, in the tone colour
+     .callout-title   one sentence, bold
+     .callout-body    plain text explaining it
+
+   Tone is two custom properties, so a variant sets colour once and every
+   part follows. Green is the default because green is the agent's own colour
+   throughout this UI -- and since --green/--green-bg re-theme together, a
+   callout follows whatever theme is selected instead of pinning a hue. */
+.callout {
+  --tone: var(--green);
+  --tone-bg: var(--green-bg);
+  font-family:system-ui,sans-serif;
+  border-left:3px solid var(--tone);
+  background:var(--tone-bg);
+  border-radius:0 var(--r-md) var(--r-md) 0;
+  padding:0.65rem 0.9rem;
+  margin:0.9rem 0;
 }
-.day-card .checkpoint:hover { background:var(--panel-hover, #ffffff06); }
-.day-card .checkpoint-label {
-  font-size:0.62rem; text-transform:uppercase; letter-spacing:0.12em;
-  color:var(--text-3); font-weight:700; margin-bottom:0.25rem;
+.callout-label {
+  display:block; font-size:0.6rem; text-transform:uppercase;
+  letter-spacing:0.09em; color:var(--tone); margin-bottom:0.2rem; font-weight:600;
 }
-/* One bold sentence, then plain text explaining it. */
-.day-card .checkpoint-title {
-  font-size:0.98rem; font-weight:700; line-height:1.4; color:var(--text);
-}
-.day-card .checkpoint-desc {
-  font-size:0.84rem; font-weight:400; color:var(--text-2); line-height:1.55; margin-top:0.3rem;
-}
-/* An empty day should look calm, not broken. */
-.day-card .checkpoint-empty { border-left-color:var(--border); cursor:default; }
-.day-card .checkpoint-empty .checkpoint-title { color:var(--text-2); font-weight:500; }
+.callout-title { font-size:0.92rem; font-weight:700; line-height:1.45; color:var(--text); }
+.callout-body  { font-size:0.84rem; font-weight:400; line-height:1.6; color:var(--text-2); margin-top:0.3rem; }
+
+/* Clickable variant. Only add it when the whole callout really does navigate
+   somewhere -- a cursor that lies is worse than no affordance. */
+.callout.is-link { cursor:pointer; }
+.callout.is-link:hover { filter:brightness(1.14); }
+
+/* Tones. Each reuses a colour the UI already has rather than inventing one. */
+.callout.tone-amber { --tone:var(--amber, #d29922); --tone-bg:var(--amber-bg, rgba(210,153,34,0.10)); }
+.callout.tone-red   { --tone:var(--red,   #f85149); --tone-bg:var(--red-bg,   rgba(248,81,73,0.10)); }
+.callout.tone-cyan  { --tone:var(--cyan,  #39c5cf); --tone-bg:var(--cyan-bg,  rgba(57,197,207,0.10)); }
+.callout.tone-blue  { --tone:var(--blue,  #58a6ff); --tone-bg:var(--blue-bg,  rgba(88,166,255,0.10)); }
+/* Quiet: nothing is wrong, there is simply nothing to say. */
+.callout.tone-muted { --tone:var(--border); --tone-bg:var(--bg-raised); }
+.callout.tone-muted .callout-label { color:var(--text-3); }
+.callout.tone-muted .callout-title { color:var(--text-2); font-weight:500; }
 
 .view-head h1.brand { text-transform:none; }
 .view-head h1.brand::first-letter { text-transform:none; }
