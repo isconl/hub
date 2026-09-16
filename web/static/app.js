@@ -4803,14 +4803,63 @@ let inboxPersonKey = null; // grouping key of the open thread (person.ID, or 'se
 let inboxTab = 'threads';  // 'threads' | 'surfaced' -- BG26082401's distinct tab, separate feed from the person threads above
 let inboxGmailComposeFor = null; // ID of the gmail message currently showing an inline reply box (BM26082011)
 
+// Names that mean "the account owner sent this," never a real counterparty.
+// A legacy/manual capture path sometimes wrote the operator's own name as
+// SENDER on an outbound row instead of leaving it '-' -- grouping/display
+// must never treat that as a thread's identity, or every outbound message
+// across every conversation collapses into one thread literally named
+// "Sconl" (FM26091202b). Matched as an exact, case-insensitive string so a
+// genuinely different label like "Sconl (via bot)" -- a real, single-party
+// thread with his own Telegram bot, not a misattributed counterparty --
+// is left alone.
+const INBOX_SELF_NAMES = new Set(['sconl', 'sconl peter', 'you', 'me']);
+
+/**
+ * BM26081807/FM26091202: resolve one inbox row's grouping identity.
+ * PERSON_ID (set by circle's chat-import and inbox.js's own auto-match) is
+ * the real link and always wins. Failing that, a real SENDER groups by
+ * sender text as before -- unless that "sender" is actually the account
+ * owner's own name on an outbound message, which carries no information
+ * about who the thread is actually with. In that case (or when SENDER is
+ * blank), derive a stable per-conversation label from SOURCE instead of
+ * ever surfacing the raw key: a chat-import SOURCE
+ * (`chatimport:<slug>:<in|out>:<date>:<snippet>`) is keyed on its
+ * person-slug alone (not the direction/date/message-snippet suffix, which
+ * would otherwise fragment one conversation into one group per message),
+ * and any other SOURCE has its channel prefix stripped and is title-cased
+ * into a readable label. A row with neither a usable SENDER nor SOURCE
+ * groups under its own id rather than leaking storage internals into the
+ * thread list.
+ */
+function inboxIdentity(m) {
+  const hasPerson = m.PERSON_ID && m.PERSON_ID !== '-';
+  if (hasPerson) return { key: m.PERSON_ID, personId: m.PERSON_ID, fallbackName: null };
+
+  const senderIsSelf = m.SENDER && INBOX_SELF_NAMES.has(String(m.SENDER).trim().toLowerCase());
+  if (m.SENDER && m.SENDER !== '-' && !senderIsSelf) {
+    return { key: `sender:${m.SENDER}`, personId: null, fallbackName: m.SENDER };
+  }
+
+  const source = m.SOURCE && m.SOURCE !== '-' ? m.SOURCE : null;
+  if (source) {
+    const ciMatch = source.match(/^chatimport:([^:]+):/);
+    const convoId = ciMatch ? `chatimport:${ciMatch[1]}` : source;
+    const label = (ciMatch ? ciMatch[1] : source)
+      .replace(/^(whatsapp|telegram|signal|mail)-/i, '')
+      .replace(/[-_]+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, c => c.toUpperCase());
+    return { key: `source:${convoId}`, personId: null, fallbackName: label || 'Unknown' };
+  }
+
+  return { key: `row:${m.ID}`, personId: null, fallbackName: 'Unknown' };
+}
+
 /**
  * BM26081807: group the flat inbox feed into one thread per person.
- * PERSON_ID is the real link (set by circle's chat-import and inbox.js's
- * own auto-match); a manually-captured row with no match yet falls back to
- * grouping by SENDER text so it still reads as one thread rather than
- * scattering across "unknown". Computed on every render, not persisted --
- * a new WhatsApp import (BM26081801) or inbox capture just shows up next
- * render, no separate merge/refresh step.
+ * Computed on every render, not persisted -- a new WhatsApp import
+ * (BM26081801) or inbox capture just shows up next render, no separate
+ * merge/refresh step.
  */
 function inboxGroups() {
   const feed = STATE.feed || [];
@@ -4818,13 +4867,12 @@ function inboxGroups() {
   const peopleById = new Map((STATE.circlePeople || []).map(p => [p.ID, p]));
   const groups = new Map();
   for (const m of rows) {
-    const hasPerson = m.PERSON_ID && m.PERSON_ID !== '-';
-    const key = hasPerson ? m.PERSON_ID : `sender:${m.SENDER && m.SENDER !== '-' ? m.SENDER : m.SOURCE}`;
+    const { key, personId, fallbackName } = inboxIdentity(m);
     if (!groups.has(key)) {
-      const person = hasPerson ? peopleById.get(m.PERSON_ID) : null;
+      const person = personId ? peopleById.get(personId) : null;
       groups.set(key, {
-        key, personId: hasPerson ? m.PERSON_ID : null,
-        name: person ? person.NAME : (m.SENDER && m.SENDER !== '-' ? m.SENDER : m.SOURCE),
+        key, personId,
+        name: person ? person.NAME : fallbackName,
         messages: [], unread: 0, channels: new Set(),
       });
     }
@@ -4833,8 +4881,27 @@ function inboxGroups() {
     g.channels.add(m.CHANNEL);
     if (m.STATUS === 'new') g.unread++;
   }
-  for (const g of groups.values()) g.messages.sort((a, b) => (a.RECEIVED_AT < b.RECEIVED_AT ? -1 : a.RECEIVED_AT > b.RECEIVED_AT ? 1 : 0));
-  return [...groups.values()].sort((a, b) => {
+  // A person with no PERSON_ID yet can still arrive under two different
+  // fallback keys -- a real SENDER on inbound rows (`sender:Swen Uusjaerv`)
+  // vs a SOURCE-derived label on self-authored outbound rows
+  // (`source:whatsapp-swen-uusjaerv` -> "Swen Uusjaerv") -- since neither
+  // path has a PERSON_ID to unify on upfront. Merge any such groups that
+  // land on the same display name so the thread list shows one row per
+  // person, not a duplicate split by direction (FM26091202).
+  const merged = new Map();
+  for (const g of groups.values()) {
+    const mergeKey = g.personId ? `p:${g.personId}` : `n:${String(g.name || '').trim().toLowerCase()}`;
+    const existing = merged.get(mergeKey);
+    if (existing) {
+      existing.messages.push(...g.messages);
+      for (const c of g.channels) existing.channels.add(c);
+      existing.unread += g.unread;
+    } else {
+      merged.set(mergeKey, g);
+    }
+  }
+  for (const g of merged.values()) g.messages.sort((a, b) => (a.RECEIVED_AT < b.RECEIVED_AT ? -1 : a.RECEIVED_AT > b.RECEIVED_AT ? 1 : 0));
+  return [...merged.values()].sort((a, b) => {
     const la = a.messages[a.messages.length - 1]?.RECEIVED_AT || '';
     const lb = b.messages[b.messages.length - 1]?.RECEIVED_AT || '';
     return lb < la ? -1 : lb > la ? 1 : 0;
@@ -4842,6 +4909,35 @@ function inboxGroups() {
 }
 
 function inboxSelectPerson(key) { inboxPersonKey = key; inboxSelected.clear(); repaintView('inbox'); }
+
+// FM26091202c: a per-thread hide affordance, client-side only (localStorage,
+// same pattern as the branding/interface prefs above). Lead-scraper/spam
+// rows (bare-URL bodies from sources like fundwise.me/lusha.com) and any
+// stale, corrupted-at-capture rows (garbled TSV columns from a since-fixed
+// import bug) sit in the same feed as real conversations with no way to
+// get them out of view -- the existing per-message Delete goes through
+// /api/inbox/delete, which several other rows in this feed also need but
+// isn't itself one of this row's three defects. Hiding is reversible (a
+// "Hidden" toggle lists what's hidden, with an Unhide) so a real thread
+// dismissed by mistake is never silently lost the way a delete would be.
+const INBOX_HIDDEN_KEY = 'isconl.inbox.hiddenThreads';
+function getInboxHidden() {
+  try { return new Set(JSON.parse(localStorage.getItem(INBOX_HIDDEN_KEY) || '[]')); } catch { return new Set(); }
+}
+function setInboxHidden(set) {
+  try { localStorage.setItem(INBOX_HIDDEN_KEY, JSON.stringify([...set])); } catch {}
+}
+function inboxHideThread(key) {
+  const hidden = getInboxHidden(); hidden.add(key); setInboxHidden(hidden);
+  if (inboxPersonKey === key) inboxPersonKey = null;
+  repaintView('inbox');
+}
+function inboxUnhideThread(key) {
+  const hidden = getInboxHidden(); hidden.delete(key); setInboxHidden(hidden);
+  repaintView('inbox');
+}
+let inboxShowHidden = false;
+function inboxToggleShowHidden() { inboxShowHidden = !inboxShowHidden; repaintView('inbox'); }
 
 function renderSurfacedTasks() {
   const items = STATE.surfacedTasks || [];
@@ -4872,7 +4968,10 @@ function renderInbox() {
   const feed = STATE.feed || [];
   const channels = [...new Set(feed.map(i => i.CHANNEL).filter(c => c && c !== '-'))];
   const tags = STATE.tags || [];
-  const groups = inboxGroups();
+  const allGroups = inboxGroups();
+  const hiddenKeys = getInboxHidden();
+  const hiddenGroups = allGroups.filter(g => hiddenKeys.has(g.key));
+  const groups = inboxShowHidden ? hiddenGroups : allGroups.filter(g => !hiddenKeys.has(g.key));
   const active = groups.find(g => g.key === inboxPersonKey) || groups[0] || null;
   if (active && inboxPersonKey === null) inboxPersonKey = active.key;
   const rows = active ? active.messages : [];
@@ -4893,8 +4992,9 @@ function renderInbox() {
     ${inboxTab === 'surfaced' ? renderSurfacedTasks() : `
     <div class="card">
       <div class="card-header">
-        <span class="card-title">Inbox</span>
+        <span class="card-title">Inbox${inboxShowHidden ? ' · Hidden' : ''}</span>
         <span class="card-meta">${groups.length} thread${groups.length === 1 ? '' : 's'}${inboxChannel ? ` · ${escHtml(inboxChannel)}` : ''} · ${feed.length} messages</span>
+        ${hiddenGroups.length ? `<button class="btn btn-ghost" style="font-size:0.7rem;padding:2px 9px;margin-left:auto" onclick="inboxToggleShowHidden()">${inboxShowHidden ? 'Back to threads' : `Hidden (${hiddenGroups.length})`}</button>` : ''}
       </div>
       ${channels.length ? `
         <div class="inbox-channels">
@@ -4915,8 +5015,10 @@ function renderInbox() {
               ${g.unread ? `<span class="inbox-thread-unread">${g.unread}</span>` : ''}
               <span class="inbox-thread-preview">${escHtml((last.BODY || '').slice(0, 40))}</span>
               <span class="inbox-thread-date">${escHtml(last.RECEIVED_AT || '').slice(0, 10)}</span>
+              <button class="btn btn-ghost" style="font-size:0.65rem;padding:1px 7px" title="${inboxShowHidden ? 'Unhide this thread' : 'Hide this thread from the Inbox'}"
+                onclick="event.stopPropagation();${inboxShowHidden ? 'inboxUnhideThread' : 'inboxHideThread'}('${escHtml(g.key).replace(/'/g, "\\'")}')">${inboxShowHidden ? 'Unhide' : 'Hide'}</button>
             </div>`;
-          }).join('') : `<div class="empty-state">${inboxChannel ? 'Nothing on this channel.' : 'Inbox zero. Enjoy it … it never lasts.'}</div>`}
+          }).join('') : `<div class="empty-state">${inboxShowHidden ? 'Nothing hidden.' : inboxChannel ? 'Nothing on this channel.' : 'Inbox zero. Enjoy it … it never lasts.'}</div>`}
         </div>
         <div class="inbox-thread-view">
           ${active ? `
