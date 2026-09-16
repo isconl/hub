@@ -587,6 +587,31 @@ select option { background:var(--panel); color:var(--text); }
    is right for "Decision Log" and wrong for "XSpan", "QPress", "QPages" and
    "QPulse" -- it renders them "Xspan" and "Qpress". Product names are spelled
    the way they are spelled; add .brand to a view title to opt out. */
+/* THE CHECKPOINT — the one thing today is about.
+   Sits between the day's name and the rail, so it is the first thing read
+   after the date. Given a left accent rather than a full card border: it is
+   part of the day card, not another box competing with it. */
+.day-card .checkpoint {
+  margin:0.7rem 0 0.9rem;
+  padding:0.6rem 0 0.6rem 0.9rem;
+  border-left:3px solid var(--green);
+  cursor:pointer;
+}
+.day-card .checkpoint:hover { background:var(--panel-hover, #ffffff06); }
+.day-card .checkpoint-label {
+  font-size:0.62rem; text-transform:uppercase; letter-spacing:0.12em;
+  color:var(--text-3); font-weight:700; margin-bottom:0.25rem;
+}
+.day-card .checkpoint-title {
+  font-size:1.02rem; font-weight:650; line-height:1.35; color:var(--text);
+}
+.day-card .checkpoint-desc {
+  font-size:0.78rem; color:var(--text-2); line-height:1.5; margin-top:0.2rem;
+}
+/* An empty day should look calm, not broken. */
+.day-card .checkpoint-empty { border-left-color:var(--border); cursor:default; }
+.day-card .checkpoint-empty .checkpoint-title { color:var(--text-2); font-weight:500; }
+
 .view-head h1.brand { text-transform:none; }
 .view-head h1.brand::first-letter { text-transform:none; }
 .view-head-meta { font-size:0.76rem; color:var(--text-3); line-height:1.55; text-transform:lowercase; }

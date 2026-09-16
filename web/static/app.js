@@ -1136,7 +1136,6 @@ function renderToday() {
   const tasks = (STATE.tasks || []).filter(t => t.STATUS !== 'done');
   const jc = STATE.services && STATE.services.jiraConfig ? STATE.services.jiraConfig : {};
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Morning Brief' : hour < 18 ? 'Afternoon Checkpoint' : 'Evening Review';
 
   // ── Intelligent top-3 task selection ─────────────────────────────────────
   // Score each task based on urgency signals so the hub always surfaces the
@@ -1170,7 +1169,6 @@ function renderToday() {
     .sort((a, b) => b._score - a._score)
     .slice(0, 3);
 
-  const taskBullet = topTasks.length ? topTasks.map(t => t.TITLE).join(', ') : 'No high-priority tasks flagged.';
 
   // Upcoming events (next 5 for the right-rail events list)
   const upcomingEvents = (STATE.calendarEvents || [])
@@ -1184,12 +1182,16 @@ function renderToday() {
       <div class="command-left">
         <div id="day-card-slot">${renderDayBlocks()}</div>
 
-        <!-- ── EXECUTIVE BRIEF ── -->
+        <!-- ── EXECUTIVE BRIEF ──
+             The "Morning Brief / Afternoon Checkpoint / Evening Review"
+             heading is gone (16 Sep 2026, per Sconl): the day's one focus now
+             sits in the checkpoint callout at the top of the day card, above
+             the rail, where it is read. What remains here is the supporting
+             detail -- events, services, repos -- which does not need a
+             time-of-day title announcing it. -->
         <div class="morning-brief">
           <div class="morning-brief-head">
-            <div class="morning-brief-title-wrap">
-              <h2 class="morning-brief-title">${svgIcon('zap', 14, 'icon-green')} ${greeting}</h2>
-            </div>
+            <div class="morning-brief-title-wrap"></div>
             <div class="morning-brief-meta-pills">
               <span class="brief-pill ${STATE.services.msgraph==='connected'?'connected':'idle'}" onclick="navigate('settings')" title="Microsoft 365 Sync">
                 ${svgIcon('cloud', 11)} M365: ${STATE.services.msgraph==='connected'?'Online':'Offline'}
@@ -1201,11 +1203,9 @@ function renderToday() {
           </div>
 
           <div class="morning-brief-grid">
-            <div class="morning-brief-card focus-card" onclick="navigate('tasks')">
-              <div class="brief-card-label">${svgIcon('check-square', 11)} Primary Focus</div>
-              <div class="brief-card-content">${escHtml(taskBullet)}</div>
-            </div>
-
+            <!-- "Primary Focus" removed 16 Sep 2026: it listed the top three
+                 tasks, and three focuses is not a focus. The single one now
+                 leads the day card as the checkpoint callout. -->
             ${upcomingEvents.length ? `
               <div class="morning-brief-card event-card" onclick="navigate('calendar')">
                 <div class="brief-card-label">${svgIcon('calendar', 11)} Next Milestone</div>
@@ -9922,6 +9922,52 @@ function workingDayLeftLine(d) {
  * did not fit. Ported from legacy's renderDayBlocks(); no day-space
  * subpage here yet, so the header is informational (not a click-through).
  */
+/* The checkpoint: the ONE thing today is actually about, stated once, right
+   under the day's name and above the rail.
+
+   It replaces the "Afternoon Checkpoint" card that used to sit further down
+   the page listing three "primary focus" tasks. Three focuses is not a focus,
+   and putting it below the fold said it did not matter. One item, at the top,
+   is the whole point -- so this deliberately shows the single highest-scoring
+   task and never a list. */
+function renderCheckpointCallout() {
+  const tasks = (STATE.tasks || []).filter(t => t.STATUS !== 'done');
+  const top = tasks
+    .filter(t => !t.PARENT_ID || t.PARENT_ID === '-')
+    .map(t => ({ ...t, _score: typeof scoreTask === 'function' ? scoreTask(t) : 0 }))
+    .sort((a, b) => b._score - a._score)[0];
+
+  if (!top) {
+    return `<div class="checkpoint checkpoint-empty">
+      <div class="checkpoint-label">Checkpoint</div>
+      <div class="checkpoint-title">Nothing is flagged for today</div>
+      <div class="checkpoint-desc">No task carries enough weight to be the day's focus. That is either a clear day or an unfiled one.</div>
+    </div>`;
+  }
+
+  // The description says why this is the focus, from what the row actually
+  // carries -- not a generic encouragement.
+  const bits = [];
+  if (top.DUE_DATE && top.DUE_DATE !== '-') {
+    const diff = Math.floor((new Date(top.DUE_DATE) - new Date(new Date().toISOString().slice(0, 10))) / 864e5);
+    if (diff < 0) bits.push(`overdue by ${Math.abs(diff)} day${Math.abs(diff) === 1 ? '' : 's'}`);
+    else if (diff === 0) bits.push('due today');
+    else bits.push(`due in ${diff} day${diff === 1 ? '' : 's'}`);
+  }
+  if (top.JIRA_KEY && top.JIRA_KEY !== '-') bits.push(escHtml(top.JIRA_KEY));
+  if (top.PROJECT && top.PROJECT !== '-') bits.push(escHtml(top.PROJECT));
+
+  const desc = top.NOTES && top.NOTES !== '-'
+    ? escHtml(top.NOTES)
+    : (bits.length ? bits.join(' · ') : 'The highest-weighted item on the board right now.');
+
+  return `<div class="checkpoint" onclick="navigate('tasks')" title="Open tasks">
+    <div class="checkpoint-label">Checkpoint${bits.length ? ` · ${bits.join(' · ')}` : ''}</div>
+    <div class="checkpoint-title">${escHtml(top.TITLE || 'Untitled')}</div>
+    <div class="checkpoint-desc">${desc}</div>
+  </div>`;
+}
+
 function renderDayBlocks() {
   if (!DAY) { fetchDay(); return `
     <div class="day-card"><div class="empty-state">Reading your blocks…</div></div>`; }
@@ -9978,6 +10024,7 @@ function renderDayBlocks() {
         <span class="card-meta" id="day-card-line">${escHtml(live ? workingDayLeftLine(live) : (n.line || ''))}</span>
       </div>
       <div class="card-sub" id="day-card-sub">${escHtml(dayCardWittyLine(getEquicycleContext()))}</div>
+      ${renderCheckpointCallout()}
       <div class="day-rail day-rail-24" id="day-rail">
         <div class="day-rail-strip">
           ${railPieces.join('')}
