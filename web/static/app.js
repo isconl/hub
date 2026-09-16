@@ -4234,10 +4234,15 @@ const MENU_COLOR_GROUPS = [
   { key: 'circle',    label: 'Circle',     hint: 'People, Contacts' },
   { key: 'system',    label: 'Systems',    hint: 'Files, Audit' },
   { key: 'spaces',    label: 'Spaces',     hint: 'Sidebar menu' },
-  { key: 'writer',    label: 'QPress',     hint: 'Space cards' },
-  { key: 'visionary', label: 'Visionary',  hint: 'Space cards' },
-  { key: 'innovator', label: 'Innovator',  hint: 'Space cards' },
-  { key: 'creator',   label: 'Creator',    hint: 'Space cards' },
+  { key: 'qpress',    label: 'QPress',     hint: 'Space cards' },
+  { key: 'xspan',     label: 'XSpan',      hint: 'Space cards' },
+  { key: 'qpages',    label: 'QPages',     hint: 'Space cards' },
+  { key: 'qpulse',    label: 'QPulse',     hint: 'Space cards' },
+  // The archetypes keep their swatches -- they moved to PERSONAL > Identity,
+  // they did not stop existing.
+  { key: 'visionary', label: 'Visionary',  hint: 'Identity cards' },
+  { key: 'innovator', label: 'Innovator',  hint: 'Identity cards' },
+  { key: 'creator',   label: 'Creator',    hint: 'Identity cards' },
   { key: 'rail',      label: 'Right Panel', hint: 'Console, Chat, Context' },
 ];
 const MENU_COLORS_KEY = 'isconl.menuColors';
@@ -6534,8 +6539,10 @@ function renderSpaces() {
 
   return `
     <div class="view-head">
-      <h1>${current ? escHtml(current.LABEL || current.NAME) : 'Spaces'}</h1>
-      <div class="view-head-meta">everything you do sits under exactly one of them</div>
+      <h1>${current ? escHtml(current.LABEL || current.NAME) : 'Identity'}</h1>
+      <div class="view-head-meta">${current
+        ? 'everything you do sits under exactly one of them'
+        : 'the three archetypes you read yourself through'}</div>
     </div>
     <div class="card space-shell${axis ? ` axis-${escHtml(axis.toLowerCase())}` : ''}">
       <div class="card-header">
@@ -6980,7 +6987,7 @@ async function loadWriterEngagements(force = false) {
     const d = await r.json();
     WRITER_ENGAGEMENTS = d.engagements || [];
   } catch (e) { WRITER_ENGAGEMENTS = []; }
-  if (currentView === 'writer') repaintView('writer');
+  if (currentView === 'qpress') repaintView('qpress');
 }
 async function loadWriterProjects(force = false) {
   if (WRITER_PROJECTS && !force) return;
@@ -6989,7 +6996,7 @@ async function loadWriterProjects(force = false) {
     const d = await r.json();
     WRITER_PROJECTS = d.projects || [];
   } catch (e) { WRITER_PROJECTS = []; }
-  if (currentView === 'writer') repaintView('writer');
+  if (currentView === 'qpress') repaintView('qpress');
 }
 
 /** kind: 'engagement' | 'project' | 'general'. id/label identify the
@@ -7002,7 +7009,7 @@ function setWriterTarget(kind, id, label) {
   writerNamespace = (kind === 'engagement' && id) ? id : '_common';
   WRITER_ARCHETYPES = null;
   writerActiveArchetype = null;
-  repaintView('writer');
+  repaintView('qpress');
   loadWriterArchetypes(true);
 }
 
@@ -7013,7 +7020,7 @@ async function loadWriterArchetypes(force = false) {
     const d = await r.json();
     WRITER_ARCHETYPES = d.archetypes || [];
   } catch (e) { WRITER_ARCHETYPES = []; }
-  if (currentView === 'writer') repaintView('writer');
+  if (currentView === 'qpress') repaintView('qpress');
 }
 
 /** Recency order for the archetype picker (step 2) -- BA26081810's "most
@@ -7046,27 +7053,27 @@ function writerBreadcrumb() {
 function writerGoToStep(step) {
   if (step > writerWizardStep) return;   // never skip ahead past what's actually been gathered
   writerWizardStep = step;
-  repaintView('writer');
+  repaintView('qpress');
 }
 
 function renderWriter() {
   if (!WRITER_ARCHETYPES) {
     loadWriterArchetypes();
-    return `<div class="view-head"><h1>QPress</h1><div class="view-head-meta">Document Studio</div></div>
+    return `<div class="view-head"><h1 class="brand">QPress</h1><div class="view-head-meta">Document Studio</div></div>
             <div class="card"><div class="reader-loading"><div class="spinner-inline"></div><div>Reading the archetype registry…</div></div></div>`;
   }
 
   return `
     <div class="view-head">
-      <h1>QPress</h1>
+      <h1 class="brand">QPress</h1>
       <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
         ${writerView === 'wizard' ? writerBreadcrumb() : `<div class="view-head-meta">${writerView === 'binder' ? 'The Decision Architect binder' : 'Generated documents'}</div>`}
         ${writerView === 'wizard' && writerWizardStep > 1 ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px" onclick="writerStartNewDocument()">+ New document</button>` : ''}
         ${writerView !== 'wizard' ? `<button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px"
-                onclick="writerView='${writerView === 'binder' ? 'documents' : 'binder'}';repaintView('writer')">
+                onclick="writerView='${writerView === 'binder' ? 'documents' : 'binder'}';repaintView('qpress')">
           ${writerView === 'binder' ? 'Documents' : 'Binder'}</button>` : ''}
         <button class="btn btn-ghost" style="font-size:0.72rem;padding:3px 9px;margin-left:${writerView === 'wizard' ? '0' : 'auto'}"
-                onclick="writerView='${writerView === 'wizard' ? 'documents' : 'wizard'}';repaintView('writer')">
+                onclick="writerView='${writerView === 'wizard' ? 'documents' : 'wizard'}';repaintView('qpress')">
           ${writerView === 'wizard' ? 'Documents' : '← Back to Writer'}</button>
       </div>
     </div>
@@ -7092,17 +7099,17 @@ async function loadWriterBinderEpisodes() {
     const r = await (await fetch('/api/writer/binder/episodes')).json();
     WRITER_BINDER_EPISODES = r.ok ? r.episodes : { error: r.error || 'could not list episodes' };
   } catch (e) { WRITER_BINDER_EPISODES = { error: e.message }; }
-  if (currentView === 'writer') repaintView('writer');
+  if (currentView === 'qpress') repaintView('qpress');
 }
 
 async function compileWriterBinderEpisode(episodeId, itemId) {
   writerBinderCompiled = 'loading';
-  repaintView('writer');
+  repaintView('qpress');
   try {
     const r = await (await fetch(`/api/writer/binder/compile?itemId=${encodeURIComponent(itemId)}`)).json();
     writerBinderCompiled = { episodeId, ...(r.ok ? r : { error: r.error || 'compile failed' }) };
   } catch (e) { writerBinderCompiled = { episodeId, error: e.message }; }
-  repaintView('writer');
+  repaintView('qpress');
 }
 
 function copyWriterBinderPost(btn) {
@@ -7150,7 +7157,7 @@ function writerStartNewDocument() {
   writerLastResult = null;
   writerPreviewMd = '';
   writerBrief = '';
-  repaintView('writer');
+  repaintView('qpress');
 }
 
 // ── BA26081811: generated-documents list ──────────────────────────────────
@@ -7173,7 +7180,7 @@ async function loadWriterDocs(force = false) {
     // CREATED_AT first (server already sorts that way), deduped.
     WRITER_RECENT_ARCHETYPE_IDS = [...new Set(WRITER_DOCS.map(x => x.ARCHETYPE_ID))];
   } catch (e) { WRITER_DOCS = []; }
-  if (currentView === 'writer') repaintView('writer');
+  if (currentView === 'qpress') repaintView('qpress');
 }
 function writerDocsSetFilter(patch) { Object.assign(writerDocsFilter, patch); loadWriterDocs(true); }
 
@@ -7215,13 +7222,13 @@ function writerDocsGroup(docs) {
 function writerDocsSearchInput(el) {
   const pos = el.selectionStart;
   writerDocsSearch = el.value;
-  repaintView('writer');
+  repaintView('qpress');
   const ni = document.getElementById('writer-docs-search');
   if (ni) { ni.focus(); ni.setSelectionRange(pos, pos); }
 }
 function writerDocsToggleGroup(kind) {
   if (writerDocsCollapsed.has(kind)) writerDocsCollapsed.delete(kind); else writerDocsCollapsed.add(kind);
-  repaintView('writer');
+  repaintView('qpress');
 }
 
 function renderWriterDocuments() {
@@ -7345,7 +7352,7 @@ async function writerDocEdit(id) {
     writerPreviewMd = '';
     writerView = 'wizard';
     writerWizardStep = 3;
-    repaintView('writer');
+    repaintView('qpress');
   } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -7403,7 +7410,7 @@ function renderWriterStepTarget() {
   return `
     ${renderWriterTargetPicker()}
     <div style="display:flex;justify-content:flex-end;margin-top:0.6rem">
-      <button class="btn btn-primary" style="font-size:0.78rem;padding:5px 14px" onclick="writerWizardStep=2;repaintView('writer')">Continue →</button>
+      <button class="btn btn-primary" style="font-size:0.78rem;padding:5px 14px" onclick="writerWizardStep=2;repaintView('qpress')">Continue →</button>
     </div>`;
 }
 
@@ -7477,7 +7484,7 @@ function renderWriterTargetPicker() {
 function switchWriterTargetKind(kind) {
   if (kind === 'general') { setWriterTarget('general', '', ''); return; }
   writerTargetKind = kind;
-  repaintView('writer');
+  repaintView('qpress');
   if (kind === 'engagement') loadWriterEngagements();
   if (kind === 'project') loadWriterProjects();
 }
@@ -7535,7 +7542,7 @@ function writerDiscardDraft() {
   const key = writerDraftKey();
   if (key) { try { localStorage.removeItem(key); } catch {} }
   writerContent = {};
-  repaintView('writer');
+  repaintView('qpress');
 }
 
 function openWriterStudio(archetypeId) {
@@ -7558,15 +7565,15 @@ function openWriterStudio(archetypeId) {
   writerPreviewMd = '';
   writerLastResult = null;
   writerWizardStep = 3;
-  repaintView('writer');
+  repaintView('qpress');
 }
 let writerPendingDraft = null;
 function writerResumeDraft() {
   if (writerPendingDraft) writerContent = { ...writerContent, ...writerPendingDraft.content };
   writerPendingDraft = null;
-  repaintView('writer');
+  repaintView('qpress');
 }
-function writerDismissDraftBanner() { writerPendingDraft = null; repaintView('writer'); }
+function writerDismissDraftBanner() { writerPendingDraft = null; repaintView('qpress'); }
 
 /** Raw form-field text -> the value shape doc-builder.js's archetype.build() expects.
  *  Mirrors the `type`/`keys` convention each archetype's `fields` schema declares
@@ -7773,7 +7780,7 @@ async function writerResearchField(fieldName, btn) {
     writerContent[fieldName] = d.value;
     writerAutosave();
     const el = document.getElementById(`wf-${fieldName}`);
-    if (el) el.value = d.value; else repaintView('writer');
+    if (el) el.value = d.value; else repaintView('qpress');
   } catch (e) { showToast(e.message, 'error'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
 }
@@ -7801,7 +7808,7 @@ async function writerFullDraft(btn) {
       writerContent[name] = Array.isArray(value) ? value.join('\n') : value;
     }
     writerAutosave();
-    repaintView('writer');
+    repaintView('qpress');
     showToast('Draft filled in -- review before generating', 'success');
   } catch (e) { showToast(e.message, 'error'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
@@ -7827,7 +7834,7 @@ async function generateWriterDoc(btn) {
     const key = writerDraftKey();
     if (key) { try { localStorage.removeItem(key); } catch {} }
     WRITER_DOCS = null;   // BA26081811's list is now stale -- refetch next time it's opened
-    repaintView('writer');
+    repaintView('qpress');
     showToast('Document generated', 'success');
   } catch (e) {
     showToast(e.message, 'error');
@@ -11584,14 +11591,71 @@ const viewFns = {
   calendar:renderCalendar, settings:renderSettings, github:renderGitHub,
   inbox:renderInbox, tasks:renderTasks, decisions:renderDecisions,
   risks:renderRisks, 'whatsapp-guide':renderWhatsAppGuide, audit:renderAudit, ops:renderOps, backlog:renderBacklog,
-  files:renderFileManager, social:renderSocial, spaces:renderSpaces,
+  // `identity` and `spaces` are the same renderer. The axis tree is reached
+  // only from PERSONAL > Identity now, so the entry point is named for what
+  // it holds -- the three archetypes -- rather than for the tree's mechanism.
+  // Drilling into an axis stays on `spaces`, which is accurate: at that point
+  // you are inside the tree.
+  files:renderFileManager, social:renderSocial, spaces:renderSpaces, identity:renderSpaces,
   task:renderTaskView, finance:renderFinance, planning:renderPlanning,
   journal:renderJournal, learning:renderLearning, circle:renderCircle, ideas:renderIdeas,
   projects:renderProjects, portfolio:renderPortfolio, corporate:renderCorporate, 'corporate-detail':renderCorporateDetail, notifications:renderNotifications, articles:renderArticles,
   rhythm:renderRhythm, personal:renderRhythm, teams:renderTeams,
-  contacts:renderContacts, writer:renderWriter,
+  contacts:renderContacts,
+  // QPress was called `writer` until 16 Sep 2026. `qpress` is the name now;
+  // `writer` stays mapped because vault's space/spaces.tsv still carries
+  // VIEW=writer on DM-VIS-COP-WRITER, and that row is data, not code -- it
+  // gets renamed in the database, not here. Drop this alias once it is.
+  qpress:renderWriter, writer:renderWriter,
+  xspan:renderXSpan, qpages:renderQPages, qpulse:renderQPulse,
   'identity-persona':renderIdentityPersonaRing,
 };
+
+/* PRODUCT-FAMILY SPACES. XSpan, QPages and QPulse are scaffolds: the nav
+   entry and the route are real so the space exists and can be navigated to,
+   but each says plainly that nothing is behind it yet rather than rendering a
+   convincing empty shell. A stub that admits what it is gets finished; one
+   that looks populated survives three months unnoticed. */
+function renderFamilyScaffold({ title, tagline, body }) {
+  return `<div class="view-head"><h1 class="brand">${title}</h1><div class="view-head-meta">${tagline}</div></div>
+    <div class="panel">
+      <div class="panel-body">
+        <p class="muted">Scaffolded 16 Sep 2026 &mdash; no data behind this space yet.</p>
+        ${body}
+      </div>
+    </div>`;
+}
+
+function renderXSpan() {
+  return renderFamilyScaffold({
+    title: 'XSpan',
+    tagline: 'Developer engines',
+    body: `<p>The engine family everything else is built on &mdash; nine engines in three
+      families of three, published from the <code>x-span</code> org. Each ships a CLI
+      suffixed <code>x</code>.</p>
+      <p><strong>Ground</strong> &mdash; system, source, forge.
+         <strong>Keep</strong> &mdash; store, guard, ledger.
+         <strong>Move</strong> &mdash; slate, link, render.</p>
+      <p><code>slate</code> is scaffolded; the rest are being consolidated from the
+      former xcorekit libraries.</p>`,
+  });
+}
+
+function renderQPages() {
+  return renderFamilyScaffold({
+    title: 'QPages',
+    tagline: 'QSpace &mdash; sites',
+    body: '<p>Site publishing, alongside QPress in the QSpace family.</p>',
+  });
+}
+
+function renderQPulse() {
+  return renderFamilyScaffold({
+    title: 'QPulse',
+    tagline: 'QSpace &mdash; signals',
+    body: '<p>Repo created at <code>q-space/pulse</code>. Scope not yet defined.</p>',
+  });
+}
 
 /* ── THE NOTIFICATION CENTRE ──────────────────────────────────────────────────
    Everything that wanted attention, from every source, in one list. The console
@@ -11924,7 +11988,8 @@ const VIEW_LABELS = {
   journal:'Journal', learning:'Study', circle:'Circle', contacts:'Contacts', projects:'Projects', ideas:'Ideas',
   decisions:'Decision Log', risks:'Risk Register', social:'Buffer',
   integrations:'Integrations Hub', audit:'Audit', backlog:'Backlog', settings:'Settings',
-  task:'Task', 'whatsapp-guide':'WhatsApp', writer:'QPress', ops:'Ops',
+  task:'Task', 'whatsapp-guide':'WhatsApp', qpress:'QPress', writer:'QPress', ops:'Ops',
+  xspan:'XSpan', qpages:'QPages', qpulse:'QPulse', identity:'Identity',
 };
 let NAV_TRAIL = [];
 const TRAIL_MAX = 8;
@@ -13531,8 +13596,13 @@ function navigate(viewName, params = {}, opts = {}) {
       }
     });
   }
-  if (viewName==='spaces' && !STATE.spacesTree) {
-    fetchSpaces().then(()=>{ if(currentView==='spaces') container.innerHTML=renderSpaces(); });
+  // Both view names render the axis tree, so both must trigger its fetch --
+  // missing the second one leaves the view stuck on "Loading spaces..."
+  // forever, which is exactly how this broke once before (server.js, 15 Aug).
+  if ((viewName==='spaces' || viewName==='identity') && !STATE.spacesTree) {
+    fetchSpaces().then(()=>{
+      if (currentView==='spaces' || currentView==='identity') container.innerHTML=renderSpaces();
+    });
   }
 }
 

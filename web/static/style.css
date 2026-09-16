@@ -582,6 +582,13 @@ select option { background:var(--panel); color:var(--text); }
   margin:0 0 0.35rem;
 }
 .view-head h1::first-letter { text-transform:uppercase; }
+/* Brand names are the one thing this styling must not touch. The rule above
+   lowercases the whole title and re-capitalises only the first letter, which
+   is right for "Decision Log" and wrong for "XSpan", "QPress", "QPages" and
+   "QPulse" -- it renders them "Xspan" and "Qpress". Product names are spelled
+   the way they are spelled; add .brand to a view title to opt out. */
+.view-head h1.brand { text-transform:none; }
+.view-head h1.brand::first-letter { text-transform:none; }
 .view-head-meta { font-size:0.76rem; color:var(--text-3); line-height:1.55; text-transform:lowercase; }
 .view-head-meta::first-letter { text-transform:uppercase; }
 
