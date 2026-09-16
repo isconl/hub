@@ -11608,6 +11608,7 @@ const viewFns = {
   // gets renamed in the database, not here. Drop this alias once it is.
   qpress:renderWriter, writer:renderWriter,
   xspan:renderXSpan, qpages:renderQPages, qpulse:renderQPulse,
+  qspace:renderQSpace, codex:renderCodex,
   'identity-persona':renderIdentityPersonaRing,
 };
 
@@ -11655,6 +11656,49 @@ function renderQPulse() {
     tagline: 'QSpace &mdash; signals',
     body: '<p>Repo created at <code>q-space/pulse</code>. Scope not yet defined.</p>',
   });
+}
+
+/* QSpace is the family entry: Press, Pages and Pulse live under it rather
+   than each holding a top-level nav slot. The three keep their own routes,
+   so every existing link still resolves. */
+const QSPACE_PRODUCTS = [
+  { view: 'qpress', name: 'QPress', blurb: 'Document studio &mdash; governed generation from reusable archetypes.', status: 'live' },
+  { view: 'qpages', name: 'QPages', blurb: 'Site publishing.', status: 'scaffold' },
+  { view: 'qpulse', name: 'QPulse', blurb: 'Signals. Scope not yet defined.', status: 'scaffold' },
+];
+
+function renderQSpace() {
+  const cards = QSPACE_PRODUCTS.map(p => `
+    <div class="card" style="cursor:pointer" onclick="navigate('${p.view}')">
+      <div class="card-header">
+        <span class="card-title">${p.name}</span>
+        <span class="${p.status === 'live' ? 'ok' : 'muted'}">${p.status}</span>
+      </div>
+      <div class="card-body"><p>${p.blurb}</p></div>
+    </div>`).join('');
+  return `<div class="view-head"><h1 class="brand">QSpace</h1><div class="view-head-meta">the commercial family</div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0.8rem">${cards}</div>`;
+}
+
+/* Codex: Journal and Ideas were always the same act -- writing down what you
+   thought -- split only by whether it had already happened. One entry, two
+   tabs, both original routes intact. */
+let codexTab = 'journal';
+
+function renderCodex() {
+  const tab = (key, label) => `<button class="chip${codexTab === key ? ' active' : ''}"
+    onclick="codexTab='${key}';repaintView('codex')">${label}</button>`;
+  // renderJournal() carries its own <h1>Journal</h1> inside a view-head.
+  // Dropping just that heading leaves its explanatory meta text intact as a
+  // subtitle under Codex, rather than stacking two page titles. Targeted at
+  // the exact string so it fails loudly (the heading reappears) rather than
+  // silently eating markup the way a structural regex would.
+  const body = codexTab === 'journal'
+    ? renderJournal().replace('<h1>Journal</h1>', '')
+    : renderIdeas().replace('<h1>Ideas</h1>', '');
+  return `<div class="view-head"><h1>Codex</h1><div class="view-head-meta">what you thought, and what you did about it</div></div>
+    <div style="display:flex;gap:0.5rem;margin:0 0 1rem">${tab('journal', 'Journal')}${tab('ideas', 'Ideas')}</div>
+    ${body}`;
 }
 
 /* ── THE NOTIFICATION CENTRE ──────────────────────────────────────────────────
@@ -11990,6 +12034,7 @@ const VIEW_LABELS = {
   integrations:'Integrations Hub', audit:'Audit', backlog:'Backlog', settings:'Settings',
   task:'Task', 'whatsapp-guide':'WhatsApp', qpress:'QPress', writer:'QPress', ops:'Ops',
   xspan:'XSpan', qpages:'QPages', qpulse:'QPulse', identity:'Identity',
+  qspace:'QSpace', codex:'Codex',
 };
 let NAV_TRAIL = [];
 const TRAIL_MAX = 8;
@@ -20154,8 +20199,13 @@ let ideaOpen = null;      // the id of the expanded card
 async function fetchIdeas() {
   try { IDEAS = await (await fetch('/api/ideas')).json(); }
   catch { IDEAS = null; }
+  // Codex renders Ideas too, so it must repaint here as well -- otherwise the
+  // tab sits on "Opening the pipeline..." forever. Same trap as the spaces
+  // fetch; the guard has to name every view that can show this data.
   if (currentView === 'ideas') {
     document.getElementById('view-container').innerHTML = renderIdeas();
+  } else if (currentView === 'codex') {
+    repaintView('codex');
   }
 }
 
@@ -20517,6 +20567,8 @@ async function fetchJournal() {
   catch { JOURNAL = null; }
   if (currentView === 'journal') {
     document.getElementById('view-container').innerHTML = renderJournal();
+  } else if (currentView === 'codex') {
+    repaintView('codex');
   }
 }
 
