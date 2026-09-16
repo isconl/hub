@@ -11635,19 +11635,85 @@ function renderFamilyScaffold({ title, tagline, body }) {
     </div>`;
 }
 
+let xspanTab = 'overview';
+
+/* The nine engines, three families of three. `built` is honest about which
+   ones exist: eight are scaffolds, and saying so beats a grid that implies
+   nine working tools. */
+const XSPAN_ENGINES = [
+  { family: 'Ground', name: 'system', blurb: 'OS, shell, processes, environment, provisioning, logging', built: false },
+  { family: 'Ground', name: 'source', blurb: 'version control, history, diffs, review', built: false },
+  { family: 'Ground', name: 'forge',  blurb: 'build, compile, package, test, release', built: false },
+  { family: 'Keep',   name: 'store',  blurb: 'data, files, schemas, migrations, caching', built: false },
+  { family: 'Keep',   name: 'guard',  blurb: 'secrets, identity, auth, backup, recovery, policy', built: false },
+  { family: 'Keep',   name: 'ledger', blurb: 'value, accounting, metering, usage', built: false },
+  { family: 'Move',   name: 'slate',  blurb: 'work: rows, dependencies, claiming, scheduling, archiving', built: true },
+  { family: 'Move',   name: 'link',   blurb: 'integrations, vendor APIs, transport, webhooks', built: false },
+  { family: 'Move',   name: 'render', blurb: 'animation, diagrams, documents, media, templating', built: false },
+];
+
 function renderXSpan() {
-  return renderFamilyScaffold({
-    title: 'XSpan',
-    tagline: 'Developer engines',
-    body: `<p>The engine family everything else is built on &mdash; nine engines in three
-      families of three, published from the <code>x-span</code> org. Each ships a CLI
-      suffixed <code>x</code>.</p>
-      <p><strong>Ground</strong> &mdash; system, source, forge.
-         <strong>Keep</strong> &mdash; store, guard, ledger.
-         <strong>Move</strong> &mdash; slate, link, render.</p>
-      <p><code>slate</code> is scaffolded; the rest are being consolidated from the
-      former xcorekit libraries.</p>`,
-  });
+  if (xspanTab === 'slate') return renderXSpanSlate();
+
+  const families = ['Ground', 'Keep', 'Move'];
+  const grid = families.map(f => `
+    <div class="card">
+      <div class="card-header"><span class="card-title">${f}</span></div>
+      <div class="card-body">
+        ${XSPAN_ENGINES.filter(e => e.family === f).map(e => `
+          <p><strong>${e.name}</strong>${e.built ? ' <span class="ok">built</span>' : ' <span class="muted">scaffold</span>'}<br>
+             <span class="muted">${e.blurb}</span></p>`).join('')}
+      </div>
+    </div>`).join('');
+
+  return `<div class="view-head"><h1 class="brand">XSpan</h1><div class="view-head-meta">developer engines</div></div>
+    <p class="muted">Nine engines, three families of three, published from the
+      <code>x-span</code> org. Each is a <em>domain of concern</em>, not a single tool &mdash;
+      new capability folds into one of the nine rather than adding a tenth. Every engine
+      ships a CLI suffixed <code>x</code>.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0.8rem">${grid}</div>`;
+}
+
+/* Slate's own dashboard, rendered from the same index the Backlog space reads.
+   Deliberately NOT an iframe of slate-server: the console already has this
+   data locally, and an iframe would need the server running and a token in
+   the browser just to look at rows the console can already see. */
+function renderXSpanSlate() {
+  if (!BACKLOG || !BACKLOG.length) {
+    fetchBacklog();
+    return `<div class="view-head"><h1 class="brand">Slate</h1><div class="view-head-meta">XSpan &mdash; the register of work</div></div>
+      <div class="card"><div class="empty-state">Loading the register…</div></div>`;
+  }
+  const rows = BACKLOG.flatMap(p => p.rows || []);
+  const ready = rows.filter(r => r.ready).length;
+  const blocked = rows.filter(r => r.status === 'blocked').length;
+  const types = ['plan', 'build', 'work', 'light', 'content', 'manual'];
+  const projects = [...new Set(rows.map(r => r.project))].sort();
+
+  const matrix = projects.map(p => {
+    const mine = rows.filter(r => r.project === p);
+    // `category`, not `type`: lib/backlog.js maps the index's short `t` field
+    // to `category` on the way through. Using `type` silently yielded zero in
+    // every column while the totals stayed right, which is the kind of wrong
+    // that looks plausible.
+    return `<tr><td>${escHtml(p)}</td>${types.map(t =>
+      `<td style="text-align:right">${mine.filter(r => r.category === t).length || '·'}</td>`).join('')}
+      <td style="text-align:right"><strong>${mine.length}</strong></td></tr>`;
+  }).join('');
+
+  return `<div class="view-head"><h1 class="brand">Slate</h1><div class="view-head-meta">XSpan &mdash; the register of work</div></div>
+    <p class="muted">${rows.length} live rows &middot; <span class="ok">${ready} ready</span> &middot; ${blocked} blocked &middot; ${projects.length} projects
+      &middot; tenant <code>isconl</code></p>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Queue inventory</span></div>
+      <div class="card-body" style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+          <thead><tr><th style="text-align:left">Project</th>${types.map(t =>
+            `<th style="text-align:right">${t}</th>`).join('')}<th style="text-align:right">Total</th></tr></thead>
+          <tbody>${matrix}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 function renderQPages() {
@@ -12102,6 +12168,15 @@ const VIEW_ACTIONS = {
   qspace: () => QSPACE_PRODUCTS.map(p => ({
     key: p.view, label: p.name, run: () => navigate(p.view),
   })),
+  // XSpan's engines. Only `slate` has a surface today; the rest are scaffolds
+  // and are deliberately not listed, because a nav entry that leads nowhere
+  // teaches people the menu lies.
+  xspan: () => [
+    { key: 'overview', label: 'Overview', active: xspanTab === 'overview',
+      run: () => { xspanTab = 'overview'; repaintView('xspan'); } },
+    { key: 'slate', label: 'Slate', active: xspanTab === 'slate',
+      run: () => { xspanTab = 'slate'; repaintView('xspan'); } },
+  ],
 };
 
 /** The cap is five. Anything beyond it is dropped rather than silently
@@ -16310,7 +16385,11 @@ async function fetchBacklog(force) {
   catch { BACKLOG = []; }
   // BI26091304 also renders from BACKLOG inside the projects view's detail
   // (open) branch -- repaint there too, not just the SYSTEMS-level space.
-  if (currentView === 'backlog' || currentView === 'projects') repaintView(currentView);
+  // Every view that renders BACKLOG has to be named here. XSpan's Slate tab
+  // is the third one, and the third time this exact guard has needed widening
+  // -- a fetch guard that names only the view its renderer was written for
+  // leaves every other consumer stuck on its loading placeholder.
+  if (['backlog', 'projects', 'xspan'].includes(currentView)) repaintView(currentView);
 }
 
 function backlogSetFilter(key, val) {
