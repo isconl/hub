@@ -60,6 +60,9 @@ const SVG_ICONS = {
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
   menu: '<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>',
   star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  // BM26091507: Circle Gallery's own icon -- checked the existing set first
+  // (grid/layers/folder/file are all generic, none read as "photo").
+  image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
 };
 
 function svgIcon(name, size=15, cls='', extra='') {
@@ -15110,6 +15113,7 @@ async function fetchCircle() {
 
 let circleRing = 'all';   // the sidebar menu selection: all / family / professional / social
 let circleOpenPerson = null;
+let circleView = 'people';   // 'people' (the existing ring view) or 'gallery' (BM26091507)
 
 // BM26091204: TAGS is the multi-value replacement for the scalar GROUP
 // column (vault/circle keep them in lockstep until the tag-management UI,
@@ -15157,6 +15161,24 @@ function renderCircle() {
 
   if (circleOpenPerson) return renderCirclePerson();
 
+  const VIEWS = [['people', 'People'], ['gallery', 'Gallery']];
+  const viewTabs = `
+    <div class="task-tabs" style="margin-bottom:0.8rem">
+      ${VIEWS.map(([id, label]) => `
+        <button class="task-tab${circleView === id ? ' on' : ''}"
+          onclick="circleView='${id}';repaintView('circle')">${svgIcon(id === 'gallery' ? 'image' : 'users', 12)} ${label}</button>`).join('')}
+    </div>`;
+
+  if (circleView === 'gallery') {
+    return `
+      <div class="view-head">
+        <h1>Circle</h1>
+        <div class="view-head-meta">private … synced to your OneDrive like everything else</div>
+      </div>
+      ${viewTabs}
+      ${renderCircleGallery()}`;
+  }
+
   setTimeout(circleLoadAnalysis, 0);
   const RINGS = [['all', 'Everyone'], ['family', 'Family'], ['professional', 'Professional'], ['social', 'Social']];
   return `
@@ -15164,6 +15186,7 @@ function renderCircle() {
       <h1>Circle</h1>
       <div class="view-head-meta">private … synced to your OneDrive like everything else</div>
     </div>
+    ${viewTabs}
     <div class="task-tabs" style="margin-bottom:0.8rem">
       ${RINGS.map(([id, label]) => `
         <button class="task-tab${circleRing === id ? ' on' : ''}"
@@ -15198,6 +15221,245 @@ function renderCircle() {
     </div>
     ${renderChatImport()}
     <div id="circle-analysis-slot"></div>`;
+}
+
+/* ── GALLERY (BM26091507) ─────────────────────────────────────────────────
+   Image/video viewer over the same live OneDrive vault.lib/onedrive-browse.js
+   already exposes for the File Manager -- filtered by person or event,
+   narrowed further by tag, grid-of-thumbnails + lightbox, with upload and
+   move/reclassify both in scope. See hub/lib/gallery.js for the real
+   folder paths this reads/writes. */
+let GALLERY = {
+  filters: null,          // {people, tags, events} from /api/circle/gallery/filters
+  loading: false,
+  error: null,
+  mode: 'person',         // 'person' | 'event'
+  tag: '',                // narrows the person dropdown only
+  personId: null,
+  eventName: null,
+  kind: 'photos',         // upload target subfolder for person mode
+  items: [],
+  itemsLoading: false,
+};
+
+async function fetchGalleryFilters() {
+  if (GALLERY.loading) return;
+  GALLERY.loading = true;
+  try {
+    GALLERY.filters = await (await fetch('/api/circle/gallery/filters')).json();
+    GALLERY.error = null;
+  } catch (e) {
+    GALLERY.error = e.message;
+  }
+  GALLERY.loading = false;
+  if (currentView === 'circle') repaintView('circle');
+}
+
+async function galleryLoadItems() {
+  const scope = GALLERY.mode;
+  const id = scope === 'person' ? GALLERY.personId : GALLERY.eventName;
+  if (!id) { GALLERY.items = []; repaintView('circle'); return; }
+  GALLERY.itemsLoading = true;
+  repaintView('circle');
+  try {
+    const d = await (await fetch(`/api/circle/gallery/items?scope=${scope}&id=${encodeURIComponent(id)}`)).json();
+    GALLERY.items = d.items || [];
+    GALLERY.error = d.error || null;
+  } catch (e) {
+    GALLERY.items = [];
+    GALLERY.error = e.message;
+  }
+  GALLERY.itemsLoading = false;
+  repaintView('circle');
+}
+
+function gallerySetMode(mode) {
+  GALLERY.mode = mode;
+  GALLERY.items = [];
+  repaintView('circle');
+}
+
+function gallerySetTag(tag) {
+  GALLERY.tag = tag;
+  // A person no longer matching the tag filter shouldn't stay "selected"
+  // behind the scenes with a stale grid showing.
+  const people = (GALLERY.filters?.people || []).filter(p => !tag || p.tags.includes(tag));
+  if (GALLERY.personId && !people.some(p => p.id === GALLERY.personId)) {
+    GALLERY.personId = null;
+    GALLERY.items = [];
+  }
+  repaintView('circle');
+}
+
+function gallerySetPerson(id) {
+  GALLERY.personId = id || null;
+  galleryLoadItems();
+}
+
+function gallerySetEvent(name) {
+  GALLERY.eventName = name || null;
+  galleryLoadItems();
+}
+
+function renderCircleGallery() {
+  if (!GALLERY.filters) { fetchGalleryFilters(); return `<div class="card"><div class="empty-state">Loading the gallery…</div></div>`; }
+  const { people = [], tags = [], events = [] } = GALLERY.filters;
+  const visiblePeople = people.filter(p => !GALLERY.tag || p.tags.includes(GALLERY.tag));
+
+  const filterBar = `
+    <div class="card">
+      <div class="jr-compose-row">
+        <div class="task-tabs">
+          <button class="task-tab${GALLERY.mode === 'person' ? ' on' : ''}" onclick="gallerySetMode('person')">By person</button>
+          <button class="task-tab${GALLERY.mode === 'event' ? ' on' : ''}" onclick="gallerySetMode('event')">By event</button>
+        </div>
+        ${GALLERY.mode === 'person' ? `
+          <select class="jira-input" onchange="gallerySetTag(this.value)">
+            <option value="">any tag</option>
+            ${tags.map(t => `<option value="${escAttr(t)}"${GALLERY.tag === t ? ' selected' : ''}>${escHtml(t)}</option>`).join('')}
+          </select>
+          <select class="jira-input" onchange="gallerySetPerson(this.value)">
+            <option value="">choose a person…</option>
+            ${visiblePeople.map(p => `<option value="${escAttr(p.id)}"${GALLERY.personId === p.id ? ' selected' : ''}>${escHtml(p.name)}</option>`).join('')}
+          </select>
+        ` : `
+          <select class="jira-input" onchange="gallerySetEvent(this.value)">
+            <option value="">choose an event…</option>
+            ${events.map(e => `<option value="${escAttr(e)}"${GALLERY.eventName === e ? ' selected' : ''}>${escHtml(e)}</option>`).join('')}
+          </select>
+        `}
+      </div>
+      ${!events.length && GALLERY.mode === 'event' ? `<div class="fin-warn" style="margin-top:0.5rem">No event folders found under Sconl/Circle/Social/Events yet.</div>` : ''}
+    </div>`;
+
+  const target = GALLERY.mode === 'person' ? GALLERY.personId : GALLERY.eventName;
+  const uploadRow = target ? `
+    <div class="card">
+      <div class="card-header"><span class="card-title">Add to gallery</span></div>
+      <div class="jr-compose-row">
+        ${GALLERY.mode === 'person' ? `
+          <select id="gallery-kind" class="jira-input" onchange="GALLERY.kind=this.value">
+            <option value="photos"${GALLERY.kind === 'photos' ? ' selected' : ''}>photos</option>
+            <option value="videos"${GALLERY.kind === 'videos' ? ' selected' : ''}>videos</option>
+            <option value="captures"${GALLERY.kind === 'captures' ? ' selected' : ''}>captures</option>
+          </select>` : ''}
+        <label class="btn btn-primary" style="padding:6px 14px;cursor:pointer">
+          ${svgIcon('upload', 13)} Upload
+          <input type="file" accept="image/*,video/*" hidden onchange="galleryUpload(this)"/>
+        </label>
+      </div>
+    </div>` : '';
+
+  const grid = GALLERY.itemsLoading
+    ? `<div class="card"><div class="empty-state">Loading…</div></div>`
+    : !target
+      ? `<div class="card"><div class="empty-state">Pick ${GALLERY.mode === 'person' ? 'a person' : 'an event'} to see their gallery.</div></div>`
+      : !GALLERY.items.length
+        ? `<div class="card"><div class="empty-state">Nothing here yet.</div></div>`
+        : `<div class="fm-grid gallery-grid">${GALLERY.items.map(galleryCard).join('')}</div>`;
+
+  return `${filterBar}${uploadRow}${GALLERY.error ? `<div class="fin-warn">${escHtml(GALLERY.error)}</div>` : ''}${grid}`;
+}
+
+function galleryCard(item) {
+  const isVideo = /\.(mp4|mov|m4v|avi|mkv|webm)$/i.test(item.name || '');
+  const safe = escAttr(JSON.stringify(item));
+  return `
+    <div class="gallery-card" onclick='galleryOpenLightbox(${safe})' title="${escHtml(item.name)}">
+      ${isVideo
+        ? `<div class="gallery-thumb gallery-thumb-video">${svgIcon('play', 22)}</div>`
+        : `<img class="gallery-thumb" src="${escAttr(item.downloadUrl || '')}" alt="${escAttr(item.name)}" loading="lazy"/>`}
+      <div class="gallery-card-name">${escHtml(item.name)}</div>
+    </div>`;
+}
+
+function galleryOpenLightbox(item) {
+  galleryCloseLightbox();
+  const overlay = document.createElement('div');
+  overlay.className = 'lesson-lightbox-overlay gallery-lightbox-overlay';
+  overlay.id = 'gallery-lightbox';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', item.name || 'Media');
+
+  const isVideo = /\.(mp4|mov|m4v|avi|mkv|webm)$/i.test(item.name || '');
+  const media = document.createElement(isVideo ? 'video' : 'img');
+  media.src = item.downloadUrl || '';
+  if (isVideo) { media.controls = true; media.autoplay = true; }
+  else { media.alt = item.name || ''; media.onclick = (e) => e.stopPropagation(); }
+  media.draggable = false;
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'lesson-lightbox-close';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.textContent = '×';
+  closeBtn.onclick = (e) => { e.stopPropagation(); galleryCloseLightbox(); };
+
+  const bar = document.createElement('div');
+  bar.className = 'gallery-lightbox-bar';
+  bar.onclick = (e) => e.stopPropagation();
+  const moveBtn = document.createElement('button');
+  moveBtn.className = 'btn btn-ghost';
+  moveBtn.textContent = 'Move / reclassify…';
+  moveBtn.onclick = () => galleryMoveItem(item);
+  bar.appendChild(moveBtn);
+
+  overlay.onclick = () => galleryCloseLightbox();
+  overlay.appendChild(media);
+  overlay.appendChild(closeBtn);
+  overlay.appendChild(bar);
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') galleryCloseLightbox(); });
+  document.body.appendChild(overlay);
+  overlay.focus();
+}
+
+function galleryCloseLightbox() {
+  const el = document.getElementById('gallery-lightbox');
+  if (el) el.remove();
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') galleryCloseLightbox(); });
+
+/** Organize-from-the-app: reclassify/move an item into another person's or
+ *  event's Gallery folder, or any other OneDrive path -- reuses the same
+ *  onedrive.browse.move capability the File Manager's fmMoveItem already
+ *  calls (via /api/onedrive/move), just prompted from inside the lightbox. */
+async function galleryMoveItem(item) {
+  const dest = await uiPrompt({ title: `Move "${item.name}"`, label: 'Destination folder',
+    value: item.path || '', placeholder: 'Circle/Social/jane-doe/Gallery/photos-jane-doe',
+    hint: 'Full OneDrive path to the destination folder (e.g. another person\'s Gallery subfolder, or an event folder).',
+    confirmLabel: 'Move' });
+  if (dest === null) return;
+  const toPath = dest.trim().replace(/^\/+|\/+$/g, '');
+  if (!toPath) return;
+  try {
+    const d = await (await fetch('/api/onedrive/move', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId: item.id, toPath }) })).json();
+    showToast(d.success ? 'Moved' : `Move failed: ${d.error}`, d.success ? 'success' : 'error');
+    if (d.success) { galleryCloseLightbox(); await galleryLoadItems(); }
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function galleryUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const scope = GALLERY.mode;
+  const id = scope === 'person' ? GALLERY.personId : GALLERY.eventName;
+  if (!id) { input.value = ''; return; }
+  showToast(`Uploading ${file.name}…`, 'info');
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const d = await (await fetch('/api/circle/gallery/upload', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope, id, kind: GALLERY.kind, fileName: file.name, contentBase64: base64, contentType: file.type }) })).json();
+    if (d.ok) { showToast(`${file.name} uploaded!`, 'success'); await galleryLoadItems(); }
+    else { showToast('Upload failed: ' + (d.error || 'unknown error'), 'error'); }
+  } catch (e) { showToast('Upload error: ' + e.message, 'error'); }
+  input.value = '';
 }
 
 async function circleLoadAnalysis() {
