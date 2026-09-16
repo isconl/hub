@@ -571,7 +571,9 @@ function getEquicycleContext() {
   const startOfYear = new Date(today.getFullYear(), 0, 1);
   const dayOfYear = Math.ceil((today - startOfYear) / 86400000);
   const yearPct = Math.round((dayOfYear / 365) * 100);
-  const opts = { weekday:'long', year:'numeric', month:'long', day:'numeric' };
+  // No weekday: the Hub view's own title is the weekday now (16 Sep 2026), so
+  // the header would say "Wednesday" twice on the same screen.
+  const opts = { year:'numeric', month:'long', day:'numeric' };
   return {
     gregorian: today.toLocaleDateString('en-US', opts),
     eqYear, cycleNum, cycleKey, dayInCycle, sprintNum, sprintDay, theme,
