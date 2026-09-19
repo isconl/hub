@@ -226,6 +226,15 @@ services:
       MEDIA_TOKEN: ${MEDIA_TOKEN}
       OPS_URL: http://ops:8087
       OPS_TOKEN: ${OPS_TOKEN}
+      # BB26091205: QSpace Press (q-space/press) -- a separate repo/deploy,
+      # not one of this compose file's own services, so (unlike the seven
+      # above) there's no hardcoded http://press:PORT here -- point it at
+      # wherever Press is actually running (local dev port, staging VM,
+      # etc). PRESS_TOKEN is a D-010 scoped/short-lived/audience-restricted
+      # thin-client token (Press's `mint_token` CLI), not a normal engine
+      # static bearer.
+      PRESS_URL: ${PRESS_URL}
+      PRESS_TOKEN: ${PRESS_TOKEN}
       RENDER_API_KEY: ${RENDER_API_KEY}
       BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN}
       BWS_ORGANIZATION_ID: ${BWS_ORGANIZATION_ID}

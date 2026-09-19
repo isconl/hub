@@ -3,12 +3,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ROUTES, findRoute } = require('../lib/api-compat');
 
-test('every route entry is well-formed: a method, an /api/ path, and exactly one of capability/legacy/gap', () => {
+test('every route entry is well-formed: a method, an /api/ path, and exactly one of capability/engine/legacy/gap', () => {
   for (const r of ROUTES) {
     assert.match(r.method, /^(GET|POST|PUT|DELETE)$/, `${r.path}: bad method`);
     assert.match(r.path, /^\/api\//, `${r.method} ${r.path}: must start with /api/`);
-    const modes = ['capability', 'legacy', 'gap'].filter(k => r[k]);
-    assert.equal(modes.length, 1, `${r.method} ${r.path}: must be exactly one of capability/legacy/gap, got [${modes.join(',')}]`);
+    // `engine` (BB26091205): a static direct-to-engine target, bypassing
+    // the capability registry -- see api-compat.js's own header comment.
+    const modes = ['capability', 'engine', 'legacy', 'gap'].filter(k => r[k]);
+    assert.equal(modes.length, 1, `${r.method} ${r.path}: must be exactly one of capability/engine/legacy/gap, got [${modes.join(',')}]`);
+    if (r.engine) assert.ok(r.enginePath, `${r.method} ${r.path}: engine routes require enginePath`);
   }
 });
 

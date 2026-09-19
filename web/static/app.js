@@ -7001,6 +7001,32 @@ async function loadWriterArchetypes(force = false) {
   if (currentView === 'qpress') repaintView('qpress');
 }
 
+/** BB26091205: Qpress's `GET /archetypes` (the list this picker renders
+ *  from) intentionally returns summaries only -- `id`/`title`/`layout`/
+ *  `filenameFields` -- not each archetype's field schema. That's the row's
+ *  whole point (D-009's acceptance criteria: "iSconl wizard renders
+ *  against /archetypes/:id/schema with no local copy of the field
+ *  definitions") -- this wizard used to get `fields` inline from scope's
+ *  list response and must not silently re-embed a local copy to work
+ *  around the split. Every call site that's about to read `a.fields`
+ *  (open the studio, edit an existing doc) awaits this first; it's a
+ *  no-op once `a.fields` is already cached on the object. */
+async function ensureArchetypeSchema(a) {
+  if (!a || a.fields) return a;
+  try {
+    const r = await fetch(`/api/generate/archetypes/schema?archetypeId=${encodeURIComponent(a.id)}&namespace=${encodeURIComponent(writerNamespace)}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed to load archetype schema');
+    a.fields = d.fields || [];
+    if (d.filenameFields) a.filenameFields = d.filenameFields;
+    if (d.layout) a.layout = d.layout;
+  } catch (e) {
+    showToast(e.message, 'error');
+    a.fields = a.fields || [];
+  }
+  return a;
+}
+
 /** Recency order for the archetype picker (step 2) -- BA26081810's "most
  *  recently used first" ask. Reads generated_docs.tsv IDs once BA26081811
  *  builds it; that file/route doesn't exist yet, so this degrades to the
@@ -7320,6 +7346,7 @@ async function writerDocEdit(id) {
     if (data.error) throw new Error(data.error);
     const a = (WRITER_ARCHETYPES || []).find(x => x.id === data.archetypeId);
     if (!a) { showToast(`Archetype "${data.archetypeId}" not found in the current registry`, 'error'); return; }
+    await ensureArchetypeSchema(a);
     writerTargetKind = data.targetKind || 'general';
     writerTargetId = data.targetId || '';
     writerTargetLabel = data.targetLabel || '';
@@ -7523,9 +7550,10 @@ function writerDiscardDraft() {
   repaintView('qpress');
 }
 
-function openWriterStudio(archetypeId) {
+async function openWriterStudio(archetypeId) {
   const a = (WRITER_ARCHETYPES || []).find(x => x.id === archetypeId);
   if (!a) return;
+  await ensureArchetypeSchema(a);
   writerActiveArchetype = a;
   writerContent = {};
   // Intelligent naming, guided by the target picked in step 1 rather than
@@ -7719,12 +7747,17 @@ async function previewWriterDoc(btn) {
   const was = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Rendering…'; }
   try {
+    // BB26091205: Qpress's /archetypes/preview renders both `html` and
+    // `markdown` from the same tree in one call (see that repo's
+    // generate/handlers.rs) -- this pane uses `markdown` (fed through a
+    // client-side markdown renderer below); the web Creator Studio's own
+    // wizard uses `html` instead.
     const r = await fetch('/api/generate/preview', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ namespace: writerNamespace, archetypeId: writerActiveArchetype.id, content: buildWriterContentPayload() }),
     });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'Preview failed');
+    if (!r.ok) throw new Error((d.errors && d.errors.join('; ')) || d.error || 'Preview failed');
     writerPreviewMd = d.markdown || '';
     const host = document.getElementById('writer-preview');
     if (host) host.innerHTML = window.marked ? marked.parse(writerPreviewMd) : escHtml(writerPreviewMd);
@@ -7792,6 +7825,19 @@ async function writerFullDraft(btn) {
   finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
 }
 
+/** BB26091205: Qpress's /archetypes/generate builds every requested
+ *  format in ONE call (`formats: string[]` in the body) and returns
+ *  `files: {ext: {filename, bytes, base64}}` -- the same shape
+ *  `app/web/lib/archetypes.ts`'s `GenerateResponse` declares and
+ *  downloadWriterFile() below already expects, so this needed no
+ *  client-side reshaping once pointed at the new route. What it does NOT
+ *  do yet: disk write, OneDrive push, or generated_docs.tsv indexing
+ *  (`posts`/`publications` are still Week 2 scope on that repo -- see its
+ *  generate handler's own doc comment). scope's old /generate did all of
+ *  that. "Documents" (loadWriterDocs) stays scope-backed and will NOT
+ *  list anything generated through this path. Flagged as real follow-up
+ *  (`generate.docs.*` needs a Qpress-side equivalent once Qpress has a
+ *  DB), not silently dropped. */
 async function generateWriterDoc(btn) {
   const formats = Object.entries(writerFormats).filter(([, on]) => on).map(([f]) => f);
   if (!formats.length) { showToast('Pick at least one format to generate', 'error'); return; }
@@ -7800,18 +7846,16 @@ async function generateWriterDoc(btn) {
   try {
     const r = await fetch('/api/generate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ namespace: writerNamespace, archetypeId: writerActiveArchetype.id, content: buildWriterContentPayload(), formats,
-        targetKind: writerTargetKind, targetId: writerTargetId, targetLabel: writerTargetLabel }),
+      body: JSON.stringify({ namespace: writerNamespace, archetypeId: writerActiveArchetype.id, content: buildWriterContentPayload(), formats }),
     });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'Generate failed');
-    writerLastResult = d;
+    if (!r.ok) throw new Error((d.errors && d.errors.join('; ')) || d.error || 'Generate failed');
+    writerLastResult = { files: d.files || {} };
     // A successfully generated document's draft has served its purpose --
     // clearing it means reopening this archetype/target combo later starts
     // clean rather than re-offering a now-stale "resume?" banner.
     const key = writerDraftKey();
     if (key) { try { localStorage.removeItem(key); } catch {} }
-    WRITER_DOCS = null;   // BA26081811's list is now stale -- refetch next time it's opened
     repaintView('qpress');
     showToast('Document generated', 'success');
   } catch (e) {
