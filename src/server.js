@@ -184,6 +184,16 @@ async function main() {
     spark: { url: process.env.SPARK_URL, token: () => process.env.SPARK_TOKEN || secretStore.get('SPARK_TOKEN') || '' },
     media: { url: process.env.MEDIA_URL, token: () => process.env.MEDIA_TOKEN || secretStore.get('MEDIA_TOKEN') || '' },
     ops: { url: process.env.OPS_URL, token: () => process.env.OPS_TOKEN || secretStore.get('OPS_TOKEN') || '' },
+    // BB26091205: QSpace Press's Rust API, thin-client surface only
+    // (`/archetypes/*`). Not one of the five isconl/* spoke engines --
+    // lives in a separate repo (q-space/press) with its own deploy --
+    // but the same createEngineClient shape works unchanged since Press
+    // now answers GET /health and GET /manifest the same way (see that
+    // repo's main.rs). PRESS_TOKEN is a D-010 scoped/short-lived/
+    // audience-restricted thin-client token minted by that repo's
+    // `mint_token` CLI, NOT a normal engine-to-engine static bearer --
+    // never a creator's full session, per canon.
+    press: { url: process.env.PRESS_URL, token: () => process.env.PRESS_TOKEN || secretStore.get('PRESS_TOKEN') || '' },
   };
   const engines = {};
   for (const [name, def] of Object.entries(engineDefs)) {
@@ -681,22 +691,53 @@ async function main() {
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
         });
+        const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+        // BI26091901: this path now shares BI26091505's tool-calling loop
+        // with /api/chat above (same buildChatTools/runChatTurn, same
+        // tier policy in chat-tools.js) instead of calling spark directly
+        // with no `tools`. `onEvent` turns the loop's tool-call/tool-result/
+        // confirmation-needed moments into SSE frames as they happen,
+        // rather than the client only finding out after the whole turn
+        // resolves. A Tier 2 write still never executes over this path --
+        // `confirmation-needed` ends the stream the same way `/api/chat`
+        // returns `needsConfirmation`, and the client re-calls `/api/chat`
+        // with `confirmToolCall` to actually run it (that path is
+        // unchanged; streaming a write's execution is out of this row's
+        // scope).
         try {
-          const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: [{ role: 'user', content: p.message || '' }] } });
-          if (r.status !== 200) {
-            res.write(`event: error\ndata: ${JSON.stringify({ error: (r.data && r.data.error) || 'spark did not answer' })}\n\n`);
+          const { capabilities } = await registry.list();
+          const tools = buildChatTools(capabilities);
+          const chatFn = async (history, toolDefs) => {
+            const r = await engines.spark.call('POST', '/ai/chat', { body: { messages: history, tools: toolDefs } });
+            if (r.status !== 200) throw new Error((r.data && r.data.error) || 'spark did not answer');
+            return { content: r.data.response, toolCalls: r.data.toolCalls || [] };
+          };
+          const routeFn = (name, args) => router.route(name, { params: args.params, query: args.query, body: args.body });
+          const onEvent = (name, data) => {
+            send(name, data);
+            if (name === 'tool-call') auditLog.log('chat_tool_called', { name: data.name });
+            if (name === 'confirmation-needed') auditLog.log('chat_tool_gated', { name: data.toolCall.name });
+          };
+
+          const turn = await runChatTurn({
+            messages: [{ role: 'user', content: p.message || '' }],
+            tools, chatFn, routeFn, onEvent,
+          });
+
+          if (turn.needsConfirmation) {
+            // Already emitted by onEvent above; nothing more to send --
+            // ending the stream here (no 'done') tells the client this
+            // turn is paused, not finished.
+          } else if (turn.error) {
+            send('error', { error: turn.error });
           } else {
-            // spark's chatComplete is one-shot, not token-streamed -- send
-            // the whole answer as a single 'token' frame (still satisfies
-            // streamChat()'s paint()/frame parser) followed by 'done'.
-            // Real token-by-token streaming is a future refinement, not
-            // this fix's scope (restoring an answer at all).
-            res.write(`event: token\ndata: ${JSON.stringify({ t: r.data.response })}\n\n`);
-            res.write(`event: done\ndata: ${JSON.stringify({ response: r.data.response, captured: [] })}\n\n`);
-            try { await chatThreads.appendTurn(p.message || '', r.data.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
+            send('token', { t: turn.response });
+            send('done', { response: turn.response, captured: turn.captured || [] });
+            try { await chatThreads.appendTurn(p.message || '', turn.response || ''); } catch (e) { auditLog.log('chat_thread_append_failed', { error: String(e.message || e) }); }
           }
         } catch (e) {
-          res.write(`event: error\ndata: ${JSON.stringify({ error: String(e.message || e) })}\n\n`);
+          send('error', { error: String(e.message || e) });
         }
         return res.end();
       }
@@ -781,7 +822,8 @@ async function main() {
         const body = bodyText ? JSON.parse(bodyText) : undefined;
         const query = Object.fromEntries(url.searchParams);
 
-        // route.capability: reshape query -> params per paramFromQuery, then route deterministically.
+        // route.paramFromQuery: reshape query -> params either way (used by
+        // both route.engine and route.capability entries below).
         let params;
         if (route.paramFromQuery) {
           params = {};
@@ -790,6 +832,36 @@ async function main() {
             delete query[queryKey];
           }
         }
+
+        // route.engine + route.enginePath: a STATIC direct call to one
+        // named engine, bypassing the dynamic capability registry
+        // entirely (BB26091205). This is deliberately different from
+        // route.capability below: the registry resolves a capability name
+        // to whichever engine's live /manifest declares it, which only
+        // works for engines that speak that manifest protocol at all.
+        // Qpress (a Rust API in a separate repo, q-space/press) doesn't
+        // declare capabilities that way -- its /manifest is a fixed empty
+        // list (see that repo's main.rs) -- and re-pointing these 4
+        // thin-client routes by relying on manifest-merge collision
+        // priority against scope's still-live `generate.*` declarations
+        // would be nondeterministic (registry.js's own merge runs engine
+        // manifest fetches in parallel, so "last one wins" isn't even a
+        // stable last). A static target sidesteps that: these paths call
+        // Qpress directly, unconditionally, the same way /act below calls
+        // spark directly rather than through the registry.
+        if (route.engine) {
+          const client = engines[route.engine];
+          if (!client) return sendJson(res, 502, { error: `"${route.engine}" is not configured on this hub` });
+          try {
+            const r = await client.call(route.method, route.enginePath, { params, query, body });
+            return sendJson(res, r.status, r.data);
+          } catch (e) {
+            return sendJson(res, 502, { error: `${route.engine} did not respond: ${String(e.message || e)}` });
+          }
+        }
+
+        // route.capability: route deterministically via the dynamic
+        // capability registry (whichever engine's manifest declares it).
         const r = await router.route(route.capability, { params, query, body });
         return sendJson(res, r.status || (r.ok ? 200 : 502), r.data !== undefined ? r.data : r);
       }

@@ -122,6 +122,45 @@ test('BI26091505: runChatTurn gives up after MAX_TOOL_ROUNDS rather than looping
   assert.ok(r.error);
 });
 
+test('BI26091901: runChatTurn emits tool-call and tool-result via onEvent for a tier-1 call, in order', async () => {
+  const chatFn = async () => {
+    const calls = chatFn.calls = (chatFn.calls || 0) + 1;
+    if (calls === 1) return { content: null, toolCalls: [{ id: 'c1', name: 'tasks.list', args: {} }] };
+    return { content: 'you have 3 tasks', toolCalls: [] };
+  };
+  const routeFn = async () => ({ tasks: [1, 2, 3] });
+  const events = [];
+  const r = await runChatTurn({
+    messages: [{ role: 'user', content: 'what are my tasks' }],
+    tools: [], chatFn, routeFn,
+    onEvent: (name, data) => events.push({ name, data }),
+  });
+  assert.equal(r.response, 'you have 3 tasks');
+  assert.deepEqual(events.map(e => e.name), ['tool-call', 'tool-result']);
+  assert.deepEqual(events[0].data, { name: 'tasks.list', args: {} });
+  assert.deepEqual(events[1].data, { name: 'tasks.list', result: { tasks: [1, 2, 3] } });
+});
+
+test('BI26091901: runChatTurn emits confirmation-needed via onEvent for a tier-2 call, without executing it', async () => {
+  const chatFn = async () => ({ content: null, toolCalls: [{ id: 'c1', name: 'tasks.delete', args: { id: 'TK1' } }] });
+  const routeFn = async () => { throw new Error('a tier-2 call must never execute before confirmation'); };
+  const events = [];
+  const r = await runChatTurn({
+    messages: [{ role: 'user', content: 'delete task TK1' }],
+    tools: [], chatFn, routeFn,
+    onEvent: (name, data) => events.push({ name, data }),
+  });
+  assert.equal(r.needsConfirmation, true);
+  assert.deepEqual(events.map(e => e.name), ['confirmation-needed']);
+  assert.deepEqual(events[0].data.toolCall, { name: 'tasks.delete', args: { id: 'TK1' } });
+});
+
+test('BI26091901: runChatTurn works exactly as before when onEvent is omitted (backward compatible)', async () => {
+  const chatFn = async () => ({ content: 'hello there', toolCalls: [] });
+  const r = await runChatTurn({ messages: [{ role: 'user', content: 'hi' }], tools: [], chatFn, routeFn: async () => { throw new Error('should never be called'); } });
+  assert.equal(r.response, 'hello there');
+});
+
 test('BI26091505: executeConfirmedToolCall re-checks the tier server-side and refuses anything not tier 2, even if a client claims otherwise', async () => {
   const routeFn = async (name, args) => ({ ok: true, name, args });
   const ok = await executeConfirmedToolCall({ name: 'tasks.delete', args: { id: 'TK1' } }, routeFn);
