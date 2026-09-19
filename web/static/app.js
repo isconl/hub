@@ -14760,6 +14760,17 @@ async function streamChat(text) {
             if (target) target.innerHTML = chatFormat(buffer);
           }
         }
+        // BI26091902: a Tier 2 write chat's own tool-calling loop wants to
+        // make -- the same needsConfirmation shape /api/act's UI already
+        // knows how to render, but reached via /api/chat/stream's SSE path
+        // (BI26091901) rather than /api/act's own request/response call.
+        // Ends the stream here (the server sends nothing further) with a
+        // confirm/decline surface instead of a painted answer.
+        else if (ev === 'confirmation-needed') {
+          chatClearTyping();
+          renderChatToolConfirm(d.toolCall, d.describe);
+          return true;
+        }
         else if (ev === 'error') { chatClearTyping(); return false; }
       }
     }
@@ -14836,6 +14847,56 @@ function renderActionConfirm(plan, describe) {
       const d = await r.json();
       box.remove();
       await applyActionResult(d);
+    } catch (e) {
+      box.remove();
+      chatAppend('agent', escHtml(e.message), { error: true });
+    }
+  };
+}
+
+/**
+ * BI26091902: the "Do it"/"Leave it" surface for a Tier 2 tool call chat's
+ * own tool-calling loop (BI26091505/BI26091901) wants to make -- same
+ * shape and same buttons as `renderActionConfirm` above, but re-calling
+ * `/api/chat` with `confirmToolCall` (chat's own confirm round trip)
+ * rather than `/api/act` with `{plan, confirm: true}`. Kept as its own
+ * function rather than generalizing `renderActionConfirm` because the two
+ * response shapes genuinely differ (`/api/act` returns
+ * `{message, ok, refresh, navigate}`; `/api/chat`'s confirmToolCall
+ * returns `{response, toolResult, captured}`) -- forcing one shape through
+ * the other would need translation code that's harder to read than two
+ * small functions.
+ */
+function renderChatToolConfirm(toolCall, describe) {
+  const id = 'chat-confirm-' + Math.random().toString(36).slice(2, 9);
+  chatAppend('agent', `
+    <div class="action-confirm" id="${id}">
+      <div class="action-confirm-text">${escHtml(describe)}</div>
+      <div class="action-confirm-btns">
+        <button class="btn btn-primary" data-yes>Do it</button>
+        <button class="btn btn-ghost" data-no>Leave it</button>
+      </div>
+    </div>`, { transient: true });
+  const box = document.getElementById(id);
+  if (!box) return;
+  box.querySelector('[data-no]').onclick = () => {
+    box.outerHTML = `<div class="action-declined">Left alone.</div>`;
+  };
+  box.querySelector('[data-yes]').onclick = async () => {
+    box.querySelectorAll('button').forEach(b => b.disabled = true);
+    try {
+      const r = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ confirmToolCall: toolCall }),
+      });
+      const d = await r.json();
+      box.remove();
+      if (d.captured?.length) onIdeasCaptured(d.captured);
+      const tr = d.toolResult;
+      const ok = tr && tr.ok !== false;
+      chatAppend('agent', escHtml(ok ? (tr?.message || 'Done.') : (tr?.error || 'That did not work.')),
+                 ok ? {} : { error: true });
     } catch (e) {
       box.remove();
       chatAppend('agent', escHtml(e.message), { error: true });
